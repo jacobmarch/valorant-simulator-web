@@ -1,0 +1,4 @@
+---
+alwaysApply: true
+---
+This file uses Bun with React and TypeScript for the frontend
