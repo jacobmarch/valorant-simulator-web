@@ -1,4 +1,6 @@
 ---
 alwaysApply: true
 ---
-This file uses Bun with React and TypeScript for the frontend
+This file uses Bun with React and TypeScript for the frontend. Always use bun commands when running things in the terminal.
+
+For the purpose of the actual project, the user plays the role of a manager of a Valorant esports team. This is a purely single-player game that will happen entirely in the browser.
