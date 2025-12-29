@@ -1,0 +1,303 @@
+.new-game-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 100vh;
+  padding: 2rem;
+  background: 
+    radial-gradient(ellipse at 20% 20%, rgba(220, 38, 38, 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 80%, rgba(59, 130, 246, 0.08) 0%, transparent 50%),
+    linear-gradient(180deg, #0f0f12 0%, #1a1a24 50%, #0f0f12 100%);
+  animation: fadeIn 0.5s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.new-game-content {
+  width: 100%;
+  max-width: 560px;
+  background: linear-gradient(135deg, rgba(30, 30, 40, 0.95) 0%, rgba(20, 20, 28, 0.98) 100%);
+  border-radius: 16px;
+  padding: 3rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 
+    0 24px 48px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+  animation: slideUp 0.6s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.new-game-header {
+  text-align: center;
+  margin-bottom: 2.5rem;
+  padding-bottom: 2rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.new-game-title {
+  font-family: 'Bebas Neue', 'Anton', 'Impact', sans-serif;
+  font-size: 2.5rem;
+  font-weight: 400;
+  letter-spacing: 4px;
+  color: #ffffff;
+  margin-bottom: 0.5rem;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.new-game-subtitle {
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.5);
+  font-weight: 400;
+  letter-spacing: 0.5px;
+}
+
+.new-game-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+}
+
+.form-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.form-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.label-text {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.label-hint {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.4);
+  font-weight: 400;
+}
+
+.form-input,
+.form-select {
+  width: 100%;
+  padding: 1rem 1.25rem;
+  font-size: 1rem;
+  font-family: inherit;
+  color: #ffffff;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  outline: none;
+}
+
+.form-input::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.form-input:focus,
+.form-select:focus {
+  border-color: rgba(220, 38, 38, 0.6);
+  background: rgba(0, 0, 0, 0.5);
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.15);
+}
+
+.form-select {
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.5)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  background-size: 1.25rem;
+  padding-right: 3rem;
+}
+
+.form-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.form-select option {
+  background: #1a1a24;
+  color: #ffffff;
+  padding: 0.5rem;
+}
+
+.form-error {
+  padding: 1rem;
+  background: rgba(220, 38, 38, 0.15);
+  border: 1px solid rgba(220, 38, 38, 0.3);
+  border-radius: 8px;
+  color: #f87171;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.team-preview {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  overflow: hidden;
+  animation: fadeScale 0.3s ease-out;
+}
+
+@keyframes fadeScale {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.team-preview-header {
+  padding: 0.75rem 1rem;
+  background: rgba(220, 38, 38, 0.2);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.team-preview-content {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.25rem;
+}
+
+.team-logo {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 4px;
+}
+
+.team-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.team-name {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.team-region {
+  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.5);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.form-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.form-actions .btn {
+  flex: 1;
+  padding: 1rem 1.5rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  border: none;
+}
+
+.form-actions .btn-secondary {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.form-actions .btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.form-actions .btn-primary {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
+}
+
+.form-actions .btn-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(220, 38, 38, 0.4);
+}
+
+.form-actions .btn-primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.form-actions .btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+@media (max-width: 600px) {
+  .new-game-container {
+    padding: 1rem;
+  }
+
+  .new-game-content {
+    padding: 2rem 1.5rem;
+  }
+
+  .new-game-title {
+    font-size: 2rem;
+    letter-spacing: 2px;
+  }
+
+  .form-actions {
+    flex-direction: column-reverse;
+  }
+
+  .form-actions .btn {
+    width: 100%;
+  }
+}
+
