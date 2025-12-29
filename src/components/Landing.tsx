@@ -30,4 +30,3 @@ function Landing({ onNewGame, onLoadGame }: LandingProps) {
 }
 
 export default Landing;
-
