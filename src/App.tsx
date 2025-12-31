@@ -16,6 +16,7 @@ import {
 import './styles/global.css';
 
 type GameView = 'landing' | 'new-game' | 'load-game' | 'game';
+type GameTab = 'roster' | 'season';
 
 interface GameState {
   id: string;
@@ -27,9 +28,15 @@ interface GameState {
   teamLogoUrl?: string;
 }
 
+const GAME_TABS: { id: GameTab; label: string; icon: string }[] = [
+  { id: 'roster', label: 'View Roster', icon: '👥' },
+  { id: 'season', label: 'Season View', icon: '📅' },
+];
+
 function App() {
   const [currentView, setCurrentView] = useState<GameView>('landing');
   const [gameState, setGameState] = useState<GameState | null>(null);
+  const [activeTab, setActiveTab] = useState<GameTab>('roster');
   const [user, setUser] = useState<User | null>(null);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -164,32 +171,78 @@ function App() {
       )}
       {currentView === 'game' && gameState && (
         <div className="game-view">
-          <div className="game-header">
-            <div className="game-info">
-              {gameState.teamLogoUrl && (
-                <img
-                  src={gameState.teamLogoUrl}
-                  alt={`${gameState.teamName} logo`}
-                  className="game-team-logo"
-                />
-              )}
-              <div className="game-details">
-                <h1 className="game-save-name">{gameState.saveName}</h1>
-                <p className="game-team-name">
-                  {gameState.teamAbbreviation
-                    ? `[${gameState.teamAbbreviation}] `
-                    : ''}
-                  {gameState.teamName} • {gameState.teamRegion}
-                </p>
+          {/* Sidebar */}
+          <aside className="game-sidebar">
+            <div className="sidebar-header">
+              <div className="sidebar-team">
+                {gameState.teamLogoUrl ? (
+                  <img
+                    src={gameState.teamLogoUrl}
+                    alt={`${gameState.teamName} logo`}
+                    className="sidebar-team-logo"
+                  />
+                ) : (
+                  <div className="sidebar-team-logo-placeholder">
+                    {gameState.teamAbbreviation || gameState.teamName.charAt(0)}
+                  </div>
+                )}
+                <div className="sidebar-team-info">
+                  <span className="sidebar-team-name">
+                    {gameState.teamAbbreviation || gameState.teamName}
+                  </span>
+                  <span className="sidebar-save-name">{gameState.saveName}</span>
+                </div>
               </div>
             </div>
-            <button className="btn btn-secondary" onClick={handleBack}>
-              Exit to Menu
-            </button>
-          </div>
-          <div className="game-content">
-            <p>Main game interface coming soon...</p>
-          </div>
+
+            <nav className="sidebar-nav">
+              {GAME_TABS.map((tab) => (
+                <button
+                  key={tab.id}
+                  className={`sidebar-nav-item ${activeTab === tab.id ? 'active' : ''}`}
+                  onClick={() => setActiveTab(tab.id)}
+                >
+                  <span className="sidebar-nav-icon">{tab.icon}</span>
+                  <span className="sidebar-nav-label">{tab.label}</span>
+                </button>
+              ))}
+            </nav>
+
+            <div className="sidebar-footer">
+              <button className="sidebar-exit-btn" onClick={handleBack}>
+                Exit to Menu
+              </button>
+            </div>
+          </aside>
+
+          {/* Main Content */}
+          <main className="game-main">
+            <header className="game-main-header">
+              <h1 className="game-main-title">
+                {GAME_TABS.find((t) => t.id === activeTab)?.label}
+              </h1>
+            </header>
+
+            <div className="game-main-content">
+              {activeTab === 'roster' && (
+                <div className="placeholder-content">
+                  <div className="placeholder-icon">👥</div>
+                  <h2>View Roster</h2>
+                  <p>Manage your team's players, view stats, and make roster changes.</p>
+                  <span className="placeholder-badge">Coming Soon</span>
+                </div>
+              )}
+
+              {activeTab === 'season' && (
+                <div className="placeholder-content">
+                  <div className="placeholder-icon">📅</div>
+                  <h2>Season View</h2>
+                  <p>View your upcoming matches, league standings, and season schedule.</p>
+                  <span className="placeholder-badge">Coming Soon</span>
+                </div>
+              )}
+            </div>
+          </main>
         </div>
       )}
 
