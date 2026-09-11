@@ -1,0 +1,63 @@
+# Simulation Model
+
+## 1. Time
+
+The calendar starts on 2026-01-01. The player advances in weekly increments. Events belong to a week; if multiple events occur in one week, resolve them in configured order and show a weekly summary. The schedule must be data-driven so real 2026 dates can be represented as week buckets.
+
+## 2. Competition model
+
+Use the official 2026 sequence: regional Kickoff, Masters 1 (officially Masters Santiago), regional Stage 1, Masters 2 (officially Masters London), regional Stage 2, and Champions (officially Champions Shanghai). The 2026 configuration contains 48 teams across Americas, EMEA, Pacific, and China.
+
+Kickoff is a 12-team triple-elimination event in each territory. The top three teams from each territory qualify for Masters 1 and receive configured Championship Points. Stage 1 divides each territory's 12 teams into two groups of six; each team plays a five-match single round robin of Bo3 matches. The top four teams in each group advance to an eight-team double-elimination playoff. The lower final and grand final are Bo5. The top three Stage 1 finishers from each territory qualify for Masters 2 and receive configured Championship Points.
+
+Stage 2 uses redrawn groups, five matches per international-league team, and a playoff path that includes Challenger play-ins. For the MVP, Challenger participants are low-detail placeholders rather than a playable Tier 2 competition, but they must be sufficient to preserve the official qualification shape. The Stage 2 playoff top two and the configured Championship-Point qualifiers advance to the 16-team Champions field.
+
+International events use fictional host-city assignments selected from major real cities in different global regions. Within one season, Masters 1, Masters 2, and Champions must not repeat the same host region. City assignment is configuration, not random at runtime, so a save is reproducible. The official event names and real-world host cities are not required to be used as the game's venue assignments.
+
+## 3. Roster legality
+
+Every active roster must satisfy configured minimum and maximum sizes, starter/substitute rules, inactive-player rules, and the requested one-international-player limit, with the defined Game Changers exemption. Validation runs at game start, before each match, after every transaction, and when a transfer window closes.
+
+The engine distinguishes contracted/free-agent players, active/inactive/benched/starter/substitute status, VCT/Tier 2 affiliation, eligibility/import status, and legal match lineups. The UI explains the exact rule blocking an action.
+
+## 4. Transfer windows and contracts
+
+Transfer windows are configured by calendar week. MVP actions are sign free agent, buy out contracted player, release, bench, activate, and assign starter/substitute status. AI organizations perform equivalent actions automatically when allowed.
+
+Buyout is `annualSalary * remainingYears`, rounded according to currency configuration. The buyer pays the seller immediately; the buyer inherits the remaining salary commitment. The seller receives cash. Complex negotiations and clauses are later features.
+
+Salary is charged weekly using annual salary divided by the configured weeks-per-year value. If a transaction changes mid-week, apply it at the next weekly boundary unless configuration permits proration.
+
+## 5. Training
+
+Each player receives exactly 40 available training hours per week. The user allocates hours among Mechanics, Tactical Decision-Making, Utility, Consistency, Clutch, and Teamplay. Five hours per skill is the maintenance threshold. Below five hours creates bounded regression risk; above five hours increases improvement chance with diminishing returns, subject to rating caps. MVP development uses transparent bounded randomness, not potential.
+
+Training results show hours, maintenance status, prior rating, result, and reason. Training is individual only; team synergy is later.
+
+## 6. Scouting
+
+The user distributes a configured weekly scout-hour pool among targets. Basic identity, role, affiliation, and contract status are visible. Ratings begin hidden or low-confidence and become more accurate with accumulated hours. Tier 2 targets use low-detail placeholder organizations and lower salary/buyout values.
+
+## 7. Match preparation
+
+Before each user-team match, require or permit a legal starting lineup, map veto/pick-ban sequence, attack style, and defense style. Styles influence round probabilities but are broad MVP controls. Detailed agent compositions, pistol plans, economy plans, anti-stratting, timeouts, and between-map changes are later extensions.
+
+## 8. Match simulation
+
+Regular matches are best-of-3. Grand finals and lower finals are best-of-5. Each map is simulated round by round behind the scenes using team strength, player ratings, lineup legality, role fit, map/style modifiers, form, opponent strength, and seeded randomness.
+
+Overtime is win-by-two with side switches every round. The engine must guarantee termination through a configurable safety cap and deterministic tiebreak fallback clearly marked as a safeguard.
+
+Results include series/map scores, every round result, player kills/deaths/assists/ACS/ADR/KAST/first kills/first deaths/clutches/plants/defuses/headshot percentage, team economy, and highlights including aces, multikills, clutches, comeback rounds, and notable 1vX events. Timeout usage is not required in MVP output.
+
+## 9. Background simulation
+
+All matches not involving the user's current organization resolve automatically using the same engine and rules. Their results update standings, brackets, qualification, player form, financial ledgers, and news.
+
+## 10. Manager movement
+
+The MVP starts with a selected organization but does not lock the manager there. Organizations that struggled in the prior year can dismiss their manager and produce offers based on the user's success. A top-performing organization should not normally replace a successful manager. Rare retirement or personal-departure events may create exceptions. Unemployed starts are later.
+
+## 11. Official-format reference
+
+The 2026 event sequence and territory structure are based on the official [VALORANT Esports League Handbook](https://valorantesports.com/en-US/season/115571062868511862/handbook). The game intentionally uses fictional configured host cities per the product requirement, even where official venues are known.
