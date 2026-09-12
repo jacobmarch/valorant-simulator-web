@@ -61,6 +61,8 @@ Every area is a player capability and may eventually be delegated:
 - Hidden round simulation and post-match statistics/highlights.
 - Regional standings, Championship Points, brackets, qualification, Masters 1, Masters 2, Champions, and tournament host cities.
 - Player/team dashboard, calendar/inbox, roster, training, tactics, match center, standings, tournament, transfers/contracts, scouting, and finances views.
+- Competition hub with regional standings, international field views, week-by-week matchup results, and current tournament board.
+- Match center with entire-series and individual-map stat tabs.
 - One automatic local browser save plus New Game and Reset Save.
 - Basic automation settings and three delegation modes.
 
@@ -100,3 +102,12 @@ Secondary immersion systems may also be disabled. A disabled system does not cre
 ## 8. MVP acceptance criteria
 
 An MVP is complete when a user can choose any seeded VCT organization, play weekly from January 1 through the full 2026 regional and international calendar, make legal roster changes, assign training and scouting, prepare and simulate matches, view complete results and statistics, qualify for and play Masters/Champions, receive prize money, switch organizations through a job offer, and resume from the automatic browser save.
+
+## 9. Competition visibility acceptance criteria
+
+- The dashboard always names the actual scheduled opponent, or explicitly says that no match is scheduled.
+- Match preparation displays the same opponent and series format as the dashboard.
+- The side navigation exposes a Competition Center with a chronological event rail, regional league tables, weekly matchups, Kickoff life lanes, Masters Swiss standings, Champions groups, and upper/lower playoff paths.
+- Kickoff standings expose all three lives and elimination/qualification state.
+- International fixtures are drawn from qualified teams; opening draws avoid same-territory pairings, while later rounds follow bracket results.
+- Match summaries use neutral, grammatical labels such as Series win, Series loss, defeated, and fell to.

@@ -62,6 +62,15 @@ export const seedTeams: SeedTeam[] = ([
   ['drg', 'DRAGON RANGER GAMING', 'DRG', 'China', '#e53e3e', ['vo0kashu', 'TvirusLuke', 'Nicc', 'Lysoar', 'Spring']],
 ] as any[]).map(([id, name, short, region, color, players]) => ({ id, name, short, region, color, players }))
 
+// Seeded 2025 Champions qualifiers used for the opening 2026 Kickoff byes.
+// Later seasons derive this list from the prior Stage 2 playoff results.
+export const previousChampionsByRegion: Record<Region,string[]> = {
+  Americas: ['g2','sen','lev','envy'],
+  EMEA: ['fnc','th','navi','vit'],
+  Pacific: ['prx','gen','t1','drx'],
+  China: ['edg','xlg','blg','wolves'],
+}
+
 export const maps = ['Abyss', 'Bind', 'Breeze', 'Haven', 'Icebox', 'Lotus', 'Sunset']
 export const roles: Role[] = ['Duelist', 'Initiator', 'Controller', 'Sentinel', 'Flex']
 export const skills = ['Mechanics', 'Tactics', 'Utility', 'Consistency', 'Clutch', 'Teamplay'] as const

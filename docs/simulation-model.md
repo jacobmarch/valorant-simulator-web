@@ -2,7 +2,7 @@
 
 ## 1. Time
 
-The calendar starts on 2026-01-01. The player advances in weekly increments. Events belong to a week; if multiple events occur in one week, resolve them in configured order and show a weekly summary. The schedule must be data-driven so real 2026 dates can be represented as week buckets.
+The calendar starts on 2026-01-01. The player advances in weekly increments. Events belong to a week; if multiple events occur in one week, resolve them in configured order and show a weekly summary. Explicit transition weeks are no-match breaks before each major stage so the dashboard can clearly communicate the change from regional play to international play and back again. The schedule must be data-driven so real 2026 dates can be represented as week buckets.
 
 ## 2. Competition model
 
@@ -13,6 +13,10 @@ Kickoff is a 12-team triple-elimination event in each territory. The top three t
 Stage 2 uses redrawn groups, five matches per international-league team, and a playoff path that includes Challenger play-ins. For the MVP, Challenger participants are low-detail placeholders rather than a playable Tier 2 competition, but they must be sufficient to preserve the official qualification shape. The Stage 2 playoff top two and the configured Championship-Point qualifiers advance to the 16-team Champions field.
 
 International events use fictional host-city assignments selected from major real cities in different global regions. Within one season, Masters 1, Masters 2, and Champions must not repeat the same host region. City assignment is configuration, not random at runtime, so a save is reproducible. The official event names and real-world host cities are not required to be used as the game's venue assignments.
+
+Masters uses the official 12-team structure. Each territory's first seed advances directly to playoffs. The other eight teams play a two-win/two-loss Swiss stage for four playoff places. The resulting eight-team field plays double elimination. Champions uses four GSL-style double-elimination groups of four; two teams survive each group and enter an eight-team double-elimination playoff. Lower finals and grand finals are best-of-five.
+
+The MVP calendar compresses multiple sequential playoff rounds into a weekly resolution boundary when necessary. Fixtures are created and simulated in dependency order within that week, so every downstream participant comes from an actual completed upstream result. The Competition Center still displays each named round separately.
 
 ## 3. Roster legality
 
@@ -52,7 +56,11 @@ Results include series/map scores, every round result, player kills/deaths/assis
 
 ## 9. Background simulation
 
-All matches not involving the user's current organization resolve automatically using the same engine and rules. Their results update standings, brackets, qualification, player form, financial ledgers, and news.
+All matches not involving the user's current organization resolve automatically using the same engine and rules. Regional phases select opponents from the manager's territory; Masters and Champions select opponents from the full international field. Their results update standings, brackets, qualification, player form, financial ledgers, and news.
+
+## 10. Statistical guardrails
+
+Player lines are generated from map rounds and team outcome rather than independent high rolls. Kills and deaths use a shared round-volume scale, with winners receiving only a modest expected edge; negative K/D lines are normal. First kills and first deaths are separate bounded events, and zeroes are common. ACS normally falls in a professional range below 300; 300+ is a rare outlier and 360 is a hard ceiling. ADR, KAST, headshots, plants, defuses, assists, and clutches are also bounded. These rules are required for both map-level and series-aggregate views.
 
 ## 10. Manager movement
 
@@ -61,3 +69,11 @@ The MVP starts with a selected organization but does not lock the manager there.
 ## 11. Official-format reference
 
 The 2026 event sequence and territory structure are based on the official [VALORANT Esports League Handbook](https://valorantesports.com/en-US/season/115571062868511862/handbook). The game intentionally uses fictional configured host cities per the product requirement, even where official venues are known.
+
+## 12. Persisted fixture and event invariants
+
+The fixture list is the single source of truth for dashboard opponents, match preparation, weekly resolution, matchup lists, and bracket columns. A fixture is generated before its week is shown and stores both participants, format, round, scope, status, result link, and season. Existing version-one browser saves are migrated by adding this state and scheduling their current week.
+
+Kickoff uses three lives. Pairings are record-based, rematches are avoided when possible, and a third loss is the only elimination condition. Week-six qualification deciders reduce each territory to exactly three surviving Masters 1 qualifiers. The bracket screen shows every round, scheduled/completed state, and remaining lives.
+
+Every simulated death has an opposing killer. Each round creates exactly one first kill and one first death. The losing side has four or five casualties in a normal round, while the winning side has zero to four. A player cannot die twice in one round. This produces realistic death volume in close maps without independently fabricating player totals.
