@@ -37,7 +37,7 @@ function TeamTable({s,region,phase}:{s:GameState;region:Region;phase:PlayablePha
     const playoffComplete=phase==='Stage 1'||phase==='Stage 2'?s.fixtures.some(fixture=>fixture.season===s.season&&fixture.phase===phase&&fixture.region===region&&fixture.label==='Grand Final'&&fixture.status==='completed'):false
     const qualifiers=phase==='Stage 1'||phase==='Stage 2'?regionalPlayoffQualifiers(s,phase,region):[]
     const qualification=playoffComplete?qualifiers.indexOf(id):-1
-    const label=phase==='Kickoff'?(s.kickoff[id].status==='active'?record.losses===0?'Upper':record.losses===1?'Middle':'Lower':s.kickoff[id].status):qualification>=0?(phase==='Stage 1'?'Masters 2 #':'Champions #')+(qualification+1):index<6?'Playoff line':'Outside top 6'
+    const label=phase==='Kickoff'?(s.kickoff[id].status==='active'?record.losses===0?'Upper':record.losses===1?'Middle':'Lower':s.kickoff[id].status):qualification>=0?(phase==='Stage 1'?'Masters 2 #':'Champions #')+(qualification+1):index<8?'Playoff line':'Outside top 8'
     return <tr className={id===s.currentTeamId?'current':''} key={id}><td>{String(index+1).padStart(2,'0')}</td><td><strong><span className="mini" style={{background:team.color}}>{team.short.slice(0,2)}</span>{team.name}</strong></td><td>{record.wins}–{record.losses}</td><td>{'mapWins' in record?`${record.mapWins}–${record.mapLosses}`:'—'}</td><td><Badge color={label==='qualified'||label==='Playoff line'||label.includes('#')?'#d7ff56':label==='eliminated'?'#ff7882':'#94a3b8'}>{label}</Badge></td></tr>
   })}</tbody></table></div>
 }
@@ -70,7 +70,7 @@ function LeagueView({s,phase,region,week,setWeek,stage,setStage}:{s:GameState;ph
       <button className={stage==='playoffs'?'active':''} onClick={()=>setStage('playoffs')}><small>02</small>Regional playoffs</button>
     </div>
     {stage==='opening'
-      ?<div className="competition-split"><section className="panel"><PanelTitle eyebrow={region.toUpperCase()+' / '+phase.toUpperCase()} title="League table" right={<Badge color={colors[region]}>{"Top 6 playoffs · "+qualificationCount+" qualify"}</Badge>}/><TeamTable s={s} region={region} phase={phase}/></section><div><Matchday week={week} setWeek={setWeek} min={info.start} max={info.end}/><Schedule s={s} fixtures={current} title={region+' league fixtures'} empty="The league schedule begins when this split starts."/></div></div>
+      ?<div className="competition-split"><section className="panel"><PanelTitle eyebrow={region.toUpperCase()+' / '+phase.toUpperCase()} title="League table" right={<Badge color={colors[region]}>{"Top 8 playoffs · "+qualificationCount+" qualify"}</Badge>}/><TeamTable s={s} region={region} phase={phase}/></section><div><Matchday week={week} setWeek={setWeek} min={info.start} max={info.end}/><Schedule s={s} fixtures={current} title={region+' league fixtures'} empty="The league schedule begins when this split starts."/></div></div>
       :<><PlayoffBracket s={s} fixtures={playoffFixtures}/><Matchday week={week} setWeek={setWeek} min={info.start} max={info.end}/><Schedule s={s} fixtures={current} title={region+' playoff matchups'} empty="The regional playoff bracket fills after league play concludes."/></>}
   </>
 }

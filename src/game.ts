@@ -30,7 +30,7 @@ export type Fixture = {
 export type KickoffRecord = { wins:number; losses:number; status:'active'|'qualified'|'eliminated'; openingBye:boolean }
 export type JobOffer = { id:string; teamId:string; expiresWeek:number; reason:string; salary:number; status:'pending'|'accepted'|'declined' }
 export type GameState = {
-  version:5; season:number; week:number; managerName:string; currentTeamId:string; teams:Record<string,Team>; players:Record<string,Player>
+  version:6; season:number; week:number; managerName:string; currentTeamId:string; teams:Record<string,Team>; players:Record<string,Player>
   matches:MatchResult[]; fixtures:Fixture[]; kickoff:Record<string,KickoffRecord>; inbox:string[]; jobs:JobOffer[]
   training:Record<string,Partial<Record<Skill,number>>>; scoutingHours:Record<string,number>
   settings:Record<string,DelegationMode|boolean>; rng:number; saveTimestamp:string
@@ -106,7 +106,7 @@ export function createGame(managerName:string,currentTeamId:string):GameState{
       status:'free-agent',isImport:false,scoutProgress:0,form:0}
   })
   const state:GameState={
-    version:5,season:2026,week:1,managerName:managerName||'Manager',currentTeamId,teams,players,matches:[],fixtures:[],
+    version:6,season:2026,week:1,managerName:managerName||'Manager',currentTeamId,teams,players,matches:[],fixtures:[],
     kickoff:Object.fromEntries(Object.keys(teams).map(id=>[id,{wins:0,losses:0,status:'active',openingBye:openingKickoffByes.has(id)}])),
     inbox:['Welcome to the 2026 VCT season. Your first Kickoff matchup is on the competition board.'],jobs:[],training:{},scoutingHours:{},
     settings:{roster:'hands-on',training:'hands-on',scouting:'hands-on',finances:'balanced',sponsorships:false,personalities:false},
@@ -135,6 +135,10 @@ function migrateGame(raw:unknown):GameState|null{
     if(state.week===1)state.fixtures=state.fixtures.filter(fixture=>!(fixture.season===state.season&&fixture.phase==='Kickoff'&&fixture.week===1&&fixture.status==='scheduled'))
     state.inbox.unshift('Kickoff now gives returning Champions teams an opening-round bye.')
   }
+  if(previousVersion<6){
+    state.fixtures.filter(fixture=>fixture.season===state.season&&fixture.phase==="Kickoff"&&fixture.status==="scheduled"&&(fixture.round>=6||fixture.label==="Qualification decider")).forEach(fixture=>{fixture.bestOf=5})
+    state.inbox.unshift("Kickoff closing-path series now use best-of-five.")
+  }
   const active=phaseForWeek(state.week)
   if(previousVersion<3&&isInternationalPhase(active)){
     const phase=active as 'Masters 1'|'Masters 2'|'Champions'
@@ -147,7 +151,7 @@ function migrateGame(raw:unknown):GameState|null{
       state.inbox.unshift(`${phase} was restarted with the corrected 2026 tournament format.`)
     }
   }
-  state.version=5
+  state.version=6
   ensureWeekScheduled(state,state.week)
   return state
 }
@@ -215,11 +219,11 @@ function regionalRoundRobin(teamIds:string[],round:number){
   }
   return pairs
 }
-type RegionalPlayoffConfig={regularEnd:number;playoffStart:number;playoffEnd:number;qualifiers:number}
+type RegionalPlayoffConfig={regularEnd:number;playoffStart:number;playoffEnd:number;playoffTeams:number;qualifiers:number}
 function regionalPlayoffConfig(phase:'Stage 1'|'Stage 2'):RegionalPlayoffConfig{
   return phase==='Stage 1'
-    ?{regularEnd:15,playoffStart:16,playoffEnd:18,qualifiers:3}
-    :{regularEnd:31,playoffStart:32,playoffEnd:34,qualifiers:4}
+    ?{regularEnd:15,playoffStart:16,playoffEnd:18,playoffTeams:8,qualifiers:3}
+    :{regularEnd:31,playoffStart:32,playoffEnd:34,playoffTeams:8,qualifiers:4}
 }
 function regionalPlayoffPhase(phase:string){return phase==='Stage 1'||phase==='Stage 2'}
 export function competitionRecord(state:GameState,teamId:string,phase:string){
@@ -368,8 +372,8 @@ function playRegionalLabel(state:GameState,phase:'Stage 1'|'Stage 2',week:number
 function scheduleRegionalPlayoffWeek(state:GameState,phase:'Stage 1'|'Stage 2',week:number){
   const config=regionalPlayoffConfig(phase)
   regions.forEach(region=>{
-    const ids=rankedTeams(state,Object.values(state.teams).filter(team=>team.region===region).map(team=>team.id),phase).slice(0,6)
-    if(ids.length<6)return
+    const ids=rankedTeams(state,Object.values(state.teams).filter(team=>team.region===region).map(team=>team.id),phase).slice(0,config.playoffTeams)
+    if(ids.length<config.playoffTeams)return
     if(week===config.playoffStart){
       addRegionalFixtures(state,phase,region,week,'Upper Quarterfinal',[[ids[2],ids[5]],[ids[3],ids[4]]],{bracket:'Upper',round:1})
     }
@@ -377,7 +381,7 @@ function scheduleRegionalPlayoffWeek(state:GameState,phase:'Stage 1'|'Stage 2',w
       const qf=regionalFixtures(state,phase,region,'Upper Quarterfinal').sort((left,right)=>left.id.localeCompare(right.id))
       if(qf.length===2&&qf.every(fixture=>fixture.status==='completed')&&!regionalFixtures(state,phase,region,'Upper Semifinal').length){
         addRegionalFixtures(state,phase,region,week,'Upper Semifinal',[[ids[0],resultWinner(qf[1])!],[ids[1],resultWinner(qf[0])!]],{bracket:'Upper',round:2})
-        addRegionalFixtures(state,phase,region,week,'Lower Round 1',[[resultLoser(qf[0])!,resultLoser(qf[1])!]],{bracket:'Lower',round:2})
+        addRegionalFixtures(state,phase,region,week,'Lower Round 1',[[ids[7],resultLoser(qf[0])!],[ids[6],resultLoser(qf[1])!]],{bracket:'Lower',round:2})
       }
     }
     if(week===config.playoffStart+2){
@@ -398,15 +402,14 @@ function finishRegionalWeek(state:GameState,phase:'Stage 1'|'Stage 2',week:numbe
   if(week===config.playoffStart+1){
     regions.forEach(region=>{
       const semis=regionalFixtures(state,phase,region,'Upper Semifinal').sort((left,right)=>left.id.localeCompare(right.id))
-      const lowerOne=regionalFixtures(state,phase,region,'Lower Round 1')[0]
-      if(semis.length===2&&semis.every(fixture=>fixture.status==='completed')&&lowerOne?.status==='completed'&&!regionalFixtures(state,phase,region,'Upper Final').length){
+      const lowerOne=regionalFixtures(state,phase,region,'Lower Round 1').sort((left,right)=>left.id.localeCompare(right.id))
+      if(semis.length===2&&semis.every(fixture=>fixture.status==='completed')&&lowerOne.length===2&&lowerOne.every(fixture=>fixture.status==='completed')&&!regionalFixtures(state,phase,region,'Upper Final').length){
         addRegionalFixtures(state,phase,region,week,'Upper Final',[[resultWinner(semis[0])!,resultWinner(semis[1])!]],{bracket:'Upper',round:3})
         remember(playRegionalLabel(state,phase,week,region,'Upper Final',attackStyle,defenseStyle))
-        addRegionalFixtures(state,phase,region,week,'Lower Round 2',[[resultLoser(semis[0])!,resultWinner(lowerOne)!]],{bracket:'Lower',round:3})
-        remember(playRegionalLabel(state,phase,week,region,'Lower Round 2',attackStyle,defenseStyle))
-        const lowerTwo=regionalFixtures(state,phase,region,'Lower Round 2')[0]
-        addRegionalFixtures(state,phase,region,week,'Lower Round 3',[[resultLoser(semis[1])!,resultWinner(lowerTwo)!]],{bracket:'Lower',round:4})
-        remember(playRegionalLabel(state,phase,week,region,'Lower Round 3',attackStyle,defenseStyle))
+        addRegionalFixtures(state,phase,region,week,"Lower Round 2",[[resultLoser(semis[0])!,resultWinner(lowerOne[0])!],[resultLoser(semis[1])!,resultWinner(lowerOne[1])!]],{bracket:"Lower",round:3})
+        const lowerTwo=regionalFixtures(state,phase,region,"Lower Round 2").sort((left,right)=>left.id.localeCompare(right.id));lowerTwo.forEach(fixture=>remember(playFixture(state,fixture,attackStyle,defenseStyle)))
+        addRegionalFixtures(state,phase,region,week,"Lower Round 3",[[resultWinner(lowerTwo[0])!,resultWinner(lowerTwo[1])!]],{bracket:"Lower",round:4})
+        remember(playRegionalLabel(state,phase,week,region,"Lower Round 3",attackStyle,defenseStyle))
       }
     })
   }
@@ -446,7 +449,7 @@ export function ensureWeekScheduled(state:GameState,week=state.week){
       const pairings:Array<[string,string|null,string]>=round===1?pairByRecord(state,active.filter(id=>!state.kickoff[id].openingBye),phase).map(([aId,bId])=>[aId,bId,'Upper Round 1'] as [string,string|null,string]):round===2?kickoffSecondRoundPairs(state,region):pairByRecord(state,active,phase).map(([aId,bId])=>[aId,bId,'Round '+round] as [string,string|null,string]); pairings.forEach(([aId,bId,label],index)=>{
         state.fixtures.push({
           id:`${state.season}-${fixtureId(phase,week,region,index)}`,season:state.season,week,phase,scope:'regional',region,round,
-          label:bId?label:label+' bye',aId,bId,bestOf:3,
+          label:bId?label:label+' bye',aId,bId,bestOf:bId&&round>=6?5:3,
           status:bId?'scheduled':'completed',winnerId:bId?undefined:aId,
         })
       })
@@ -703,7 +706,7 @@ function finishKickoffRegion(state:GameState,region:Region,attackStyle:string,de
     const aId=ordered[0],bId=ordered[1]
     const fixture:Fixture={
       id:`${state.season}-${fixtureId('Kickoff',6,region,decider,'-decider')}`,season:state.season,week:6,phase:'Kickoff',scope:'regional',region,
-      round:7,label:'Qualification decider',aId,bId,bestOf:3,status:'scheduled',
+      round:7,label:'Qualification decider',aId,bId,bestOf:5,status:'scheduled',
     }
     state.fixtures.push(fixture);playFixture(state,fixture,attackStyle,defenseStyle)
     active=Object.values(state.teams).filter(team=>team.region===region&&state.kickoff[team.id].status==='active').map(team=>team.id)
