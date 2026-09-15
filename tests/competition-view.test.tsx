@@ -27,6 +27,7 @@ describe('competition center', () => {
     expect((html.match(/class="kickoff-round-track"/g) ?? []).length).toBe(15)
     expect((html.match(/class="kickoff-merge-connector"/g) ?? []).length).toBeGreaterThan(0)
     expect((html.match(/placeholder-node/g) ?? []).length).toBeGreaterThan(1)
+    expect(html).toContain('matchup-teams')
     expect(html).toContain('kickoff-bracket-rounds slots-4')
     expect(html).toContain('kickoff-bracket-rounds slots-2')
   })
