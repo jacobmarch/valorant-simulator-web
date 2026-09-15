@@ -56,7 +56,11 @@ MVP local storage stores one versioned serialized save under a namespaced key, i
 
 Future Supabase work should introduce authenticated users, save-slot rows, serialized state or normalized tables, optimistic version checks, and server-side validation for cloud saves. The MVP must not depend on Supabase being configured.
 
-## 7. Testing requirements
+## 7. Code quality gates
+
+Biome is the single formatting and linting tool and is pinned in devDependencies. All implementation work must pass the Bun lint and format-check scripts. Apply mechanical corrections with the lint-fix or format script. The production and test gates remain the build and test scripts.
+
+## 8. Testing requirements
 
 - Unit tests for every pure rule and formula.
 - Fixture tests for every competition stage and roster window.
@@ -65,6 +69,6 @@ Future Supabase work should introduce authenticated users, save-slot rows, seria
 - Browser tests for start game, advance week, roster change, match preparation, match review, save/resume, New Game, and Reset Save.
 - A migration test for every save schema change.
 
-## 8. Error handling
+## 9. Error handling
 
 User errors are recoverable validation messages. Simulation errors must not leave a partially advanced game. Log a user-readable event plus a developer diagnostic identifier. Unknown configuration versions and corrupt saves must offer recovery or reset, never silently overwrite the save.

@@ -1,10 +1,10 @@
 /* Keep the competition metadata card in the event grid instead of the shell navigation layer. */
-.competition-hub .event-hero>aside{
-  position:static;
-  left:auto;
-  top:auto;
-  right:auto;
-  bottom:auto;
-  width:auto;
-  min-height:0;
+.competition-hub .event-hero > aside {
+  position: static;
+  left: auto;
+  top: auto;
+  right: auto;
+  bottom: auto;
+  width: auto;
+  min-height: 0;
 }

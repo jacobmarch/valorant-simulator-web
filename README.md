@@ -22,4 +22,8 @@ bun dev
 
 Build for deployment with `bun run build` and serve the generated `dist/` directory. Use `bun run preview` to serve the production bundle locally.
 
+## Code quality
+
+Biome provides repository-wide TypeScript and TSX linting and formatting through Bun. Available scripts are: lint, lint:fix, format, and format:check. Run lint, test, and build before handing a change to another agent.
+
 The implementation contract is maintained in [`docs/`](./docs/), with atomic feature specifications in [`specs/`](./specs/).

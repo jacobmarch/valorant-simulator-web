@@ -20,15 +20,16 @@ Every scheduled match is stored as a Fixture with season, week, competition phas
 Each territory begins with 12 teams and three lives. The four teams that reached the prior season's Champions receive an opening-round bye. The initial 2026 season uses the seeded prior-Champions list in seed.ts; later seasons carry forward the four Stage 2 Champions qualifiers from the completed prior season.
 
 1. Week 1 schedules four matches between the other eight teams. The four returning Champions teams are not assigned a fixture.
-2. Week 2 schedules four Upper Round 2 matches pairing each bye team with a week-one winner, plus two Middle Round 1 matches for the week-one losers.
-3. Week 3 schedules Upper Round 3 from the Upper Round 2 winners, Middle Round 2 from the Middle Round 1 winners plus Upper Round 2 losers, and Lower Round 1 from the Middle Round 1 losers.
-4. Week 4 schedules the Upper Final, Middle Round 3, and Lower Round 2 from those completed results. The Upper Final winner is the first qualifier.
-5. Week 5 schedules Middle Round 4 and Lower Round 3 from their fixed predecessor slots.
-6. Week 6 schedules the Middle Final as a BO5 and Lower Round 4 as a BO3. The Middle Final winner is the second qualifier.
-7. Lower Round 5 is a BO3 when needed to reduce the remaining lower path to two teams. The Lower Final is then a BO5, and its winner is the third qualifier.
+2. Week 2 schedules four Upper Round 2 matches, pairing each bye team with exactly one Upper Round 1 winner. No middle- or lower-path match is scheduled yet.
+3. Week 3 schedules two Upper Round 3 matches from the Upper Round 2 winners and four Middle Round 1 matches. Each Middle Round 1 match pairs one Upper Round 1 loser with one Upper Round 2 loser.
+4. Week 4 schedules the Upper Final, two Middle Round 2 matches from the Middle Round 1 winners, and two Lower Round 1 matches from the Middle Round 1 losers. The Upper Final winner is the first qualifier.
+5. Week 5 schedules two Middle Round 3 matches, pairing the Upper Round 3 losers with the Middle Round 2 winners, and two Lower Round 2 matches, pairing the Middle Round 2 losers with the Lower Round 1 winners.
+6. Week 6 begins with Middle Round 4 and two Lower Round 3 matches. The remaining closing rounds resolve in dependency order: Lower Round 4; Middle Final and Lower Round 5; then Lower Final.
+7. The Middle Final pairs the Upper Final loser with the Middle Round 4 winner. Lower Round 5 pairs the Middle Round 4 loser with the Lower Round 4 winner. The Lower Final pairs the Middle Final loser with the Lower Round 5 winner.
 8. Only the Upper Final, Middle Final, and Lower Final are best-of-five. Every other Kickoff fixture is best-of-three, including Lower Rounds 4 and 5.
 9. A series loss removes one life, and the third loss immediately eliminates the team. Teams stop receiving fixtures once eliminated; no round uses record-based or Swiss pairing.
 10. The three path winners are marked qualified for Masters 1. Every other team must have three losses and be eliminated.
+11. The only byes are the four opening byes. Every generated fixture has two real participants, and a team that has entered the bracket never skips a later round.
 
 The competition screen must show regional Kickoff standings; wins, losses, and three visible life indicators; active, eliminated, or qualified state; all fixtures grouped by round; and the selected week's matchup list.
 
@@ -55,5 +56,6 @@ Regular series are best-of-three. Regional Lower Final and Grand Final fixtures 
 - Each region creates 12 Stage 2 playoff fixtures, all completed by week 35, and exactly four Stage 2 qualifiers.
 - Masters 2 contains only the Stage 1 playoff qualifiers, and Champions contains only the Stage 2 playoff qualifiers.
 - Every eliminated Kickoff team has three losses.
+- Every region creates exactly 30 Kickoff fixtures: 11 upper, 10 middle, and 9 lower. None is a bye fixture.
 - International fixtures never pair two teams from the same territory.
 - Advancing into a second season creates a new Kickoff schedule without deleting match history.

@@ -1,29 +1,1254 @@
-import { useMemo, useState, type ReactNode } from 'react'
-import { acceptJob, activePhaseForWeek, advanceWeek, buyout, createGame, currentTeam, dateForWeek, isInternationalPhase, loadGame, phaseForWeek, resetGame, saveGame, teamPlayers, type DelegationMode, type GameState, type MatchResult, type Player, type PlayerStat, type Skill } from './game'
+import { useState, type ReactNode } from 'react'
+import {
+  acceptJob,
+  activePhaseForWeek,
+  advanceWeek,
+  buyout,
+  createGame,
+  currentTeam,
+  dateForWeek,
+  isInternationalPhase,
+  loadGame,
+  phaseForWeek,
+  resetGame,
+  saveGame,
+  simulateNextTournamentMatch,
+  simulateTournamentRound,
+  teamPlayers,
+  type CompetitionPhase,
+  type DelegationMode,
+  type GameState,
+  type MatchResult,
+  type Player,
+  type PlayerStat,
+  type Skill,
+} from './game'
 import { DashboardV2, MatchesV2, TacticsV2 } from './game-views'
 import { CompetitionV2 } from './competition-view'
 import { maps, roles, seedTeams, skills, type Region, type Role } from './seed'
 
-type View='dashboard'|'roster'|'training'|'scouting'|'tactics'|'matches'|'competition'|'finances'|'settings'
-const labels:Record<View,string>={dashboard:'Dashboard',roster:'Roster',training:'Training',scouting:'Scouting',tactics:'Tactics',matches:'Match Center',competition:'Competition',finances:'Finances',settings:'Settings'}
-const money=(n:number)=>`$${Math.max(0,Math.round(n)).toLocaleString()}`
-const phase=(w:number)=>phaseForWeek(w)==='Break'?`Break before ${activePhaseForWeek(w)}`:phaseForWeek(w)
-const colors:Record<Region,string>={Americas:'#62a0ff',EMEA:'#ff9b62',Pacific:'#7fe1c6',China:'#f1c75b'}
-const Stat=({label,value,detail,accent=false}:{label:string,value:string,detail:string,accent?:boolean})=><div className={`stat ${accent?'accent':''}`}><small>{label}</small><strong>{value}</strong><span>{detail}</span></div>
-const Badge=({children,color}:{children:ReactNode,color?:string})=><span className="badge" style={color?{color,borderColor:`${color}55`}:undefined}>{children}</span>
-const Empty=({title,body}:{title:string,body:string})=><div className="panel empty"><span>◌</span><h2>{title}</h2><p>{body}</p></div>
-function Start({start}:{start:(name:string,team:string)=>void}){const[name,setName]=useState('Alex Mercer');const[region,setRegion]=useState<Region|'All'>('All');const teams=seedTeams.filter(t=>region==='All'||t.region===region);return <main className="start"><div className="hero"><div className="eyebrow lime">VCT MANAGER // 2026 SEASON</div><h1>Build the next<br/><em>world champion.</em></h1><p>Run a real VCT organization through the 2026 season. Shape the roster, set the plan, and turn weekly decisions into international trophies.</p><div className="hero-meta"><span>48 organizations</span><span>4 territories</span><span>Masters × 2</span><span>Champions</span></div></div><section className="panel picker"><div className="picker-head"><div><div className="eyebrow">NEW CAREER</div><h2>Choose your organization</h2></div><label>Manager name<input value={name} onChange={e=>setName(e.target.value)}/></label></div><div className="tabs">{(['All','Americas','EMEA','Pacific','China'] as const).map(r=><button className={region===r?'active':''} onClick={()=>setRegion(r)} key={r}>{r}</button>)}</div><div className="team-grid">{teams.map(t=><button className="team-card" onClick={()=>start(name,t.id)} key={t.id}><b style={{background:t.color}}>{t.short.slice(0,3)}</b><span><strong>{t.name}</strong><small>{t.region}</small></span><i>→</i></button>)}</div></section></main>}
-function PanelTitle({eyebrow,title,right}:{eyebrow:string,title:string,right?:ReactNode}){return <div className="panel-title"><div><div className="eyebrow">{eyebrow}</div><h2>{title}</h2></div>{right}</div>}
-function Page({eyebrow,title,subtitle,children}:{eyebrow:string,title:string,subtitle:string,children:ReactNode}){return <div className="page"><div className="page-head"><div><div className="eyebrow">{eyebrow}</div><h1>{title}</h1><p>{subtitle}</p></div><div className="season"><small>SEASON 2026</small><strong>{phase(1)}</strong></div></div>{children}</div>}
-function MiniStandings({s,onView}:{s:GameState,onView:(v:View)=>void}){const t=currentTeam(s);const international=isInternationalPhase(phaseForWeek(s.week));const rows=Object.values(s.teams).filter(x=>international||x.region===t.region).sort((a,b)=>b.wins-a.wins||b.championshipPoints-a.championshipPoints).slice(0,5);return <section className="panel mini-standings"><PanelTitle eyebrow={international?'INTERNATIONAL PULSE':`${t.region.toUpperCase()} STANDINGS`} title={international?'Tournament field':'Your region'} right={<button className="link" onClick={()=>onView('competition')}>Open competition →</button>}/>{rows.map((team,i)=><div className="mini-row" key={team.id}><b>{String(i+1).padStart(2,'0')}</b><span className="mini" style={{background:team.color}}>{team.short.slice(0,2)}</span><strong>{team.name}</strong><span>{team.wins}–{team.losses}</span><small>{team.championshipPoints} CP</small></div>)}</section>}
-function Dashboard({s,setView}:{s:GameState,setView:(v:View)=>void}){const t=currentTeam(s);const last=s.matches[0];const job=s.jobs.find(j=>j.status==='pending'&&j.expiresWeek>=s.week);return <Page eyebrow={`MANAGER DESK / WEEK ${s.week}`} title={`${s.managerName}, your next move matters.`} subtitle={s.week<=6?'Kickoff is here. Every map is a chance to establish your season.':phaseForWeek(s.week)==='Break'?'The calendar has a clear transition week. Review the table and prepare for the next stage.':'The VCT calendar is moving. Keep the organization ahead of the next pressure point.'}><div className="stats"><Stat label="Organization" value={t.short} detail={t.name} accent/><Stat label="Record" value={`${t.wins}–${t.losses}`} detail={`${t.mapWins}–${t.mapLosses} maps`}/><Stat label="Cash balance" value={money(t.cash)} detail={`${money(t.salaryBudget)} salary budget`}/><Stat label="Championship points" value={String(t.championshipPoints)} detail="performance points"/></div><div className="dashboard-grid"><section className="panel spotlight"><PanelTitle eyebrow="NEXT EVENT" title={phase(s.week)} right={<Badge color={colors[t.region]}>{isInternationalPhase(phaseForWeek(s.week))?'INTERNATIONAL':t.region}</Badge>}/><div className="versus"><div><b className="mark big" style={{background:t.color}}>{t.short.slice(0,3)}</b><strong>{t.name}</strong><small>YOUR ORGANIZATION</small></div><em>{phaseForWeek(s.week)==='Break'?'—':'VS'}</em><div><b className="mark big opponent">{isInternationalPhase(phaseForWeek(s.week))?'GLB':'VCT'}</b><strong>{phaseForWeek(s.week)==='Break'?'Calendar transition':'Current matchup'}</strong><small>{dateForWeek(s.week)}</small></div></div><button className="primary full" onClick={()=>setView(phaseForWeek(s.week)==='Break'?'competition':'tactics')}>{phaseForWeek(s.week)==='Break'?'Review competition':'Prepare match'} <b>→</b></button></section><section className="panel"><PanelTitle eyebrow="INBOX" title="Latest signals" right={<button className="link" onClick={()=>setView('settings')}>Settings</button>}/>{s.inbox.slice(0,5).map((x,i)=><div className="inbox" key={`${x}-${i}`}><i/> {x}<small>W{Math.max(1,s.week-i)}</small></div>)}</section></div><MiniStandings s={s} onView={setView}/>{job&&<section className="panel offer"><PanelTitle eyebrow="CAREER MARKET" title="Offer on the table" right={<Badge color="#d7ff56">NEW</Badge>}/><div><span><strong>{s.teams[job.teamId].name}</strong><small>{job.reason}</small></span><span className="offer-action">{money(job.salary)} / year<button className="primary compact" onClick={()=>setView('settings')}>Review in Settings</button></span></div></section>}<section className="panel"><PanelTitle eyebrow="CONTROL ROOM" title="What needs your attention?"/><div className="actions">{[['roster','01','Shape the roster','Starters, substitutes, and available talent.'],['training','02','Set player training','Protect ratings with the 40-hour weekly plan.'],['scouting','03','Scout the market','Turn unknown prospects into an actionable list.'],['tactics','04','Set the game plan','Pick your maps and dictate the style.']].map(([v,n,h,d])=><button onClick={()=>setView(v as View)} key={v}><b>{n}</b><strong>{h}</strong><small>{d}</small></button>)}</div></section>{last&&<section className="panel result"><PanelTitle eyebrow={`LAST RESULT / ${last.phase}`} title={last.winnerId===s.currentTeamId?'Series win':'Series loss'} right={<button className="link" onClick={()=>setView('matches')}>Open match center →</button>}/><div><strong>{s.teams[last.aId].short}</strong><b className={last.winnerId===last.aId?'win':''}>{last.aScore}</b><span>–</span><b className={last.winnerId===last.bId?'win':''}>{last.bScore}</b><strong>{s.teams[last.bId].short}</strong><small>BO{last.bestOf}</small></div></section>}</Page>}
-function Roster({s,setState}:{s:GameState,setState:(s:GameState)=>void}){const t=currentTeam(s);const ps=teamPlayers(s);const free=Object.values(s.players).filter(p=>p.status==='free-agent');const update=(id:string,changes:Partial<Player>)=>{const n=structuredClone(s);n.players[id]={...n.players[id],...changes};if(changes.status){const starters=n.teams[t.id].playerIds.filter(x=>n.players[x].status==='starter');n.teams[t.id].lineup=(starters.length>=5?starters:n.teams[t.id].playerIds.filter(x=>n.players[x].status!=='inactive')).slice(0,5)}saveGame(n);setState(n)};const release=(p:Player)=>{if(t.playerIds.length<=5)return;const n=structuredClone(s);n.teams[t.id].playerIds=t.playerIds.filter(id=>id!==p.id);n.teams[t.id].lineup=t.lineup.filter(id=>id!==p.id);n.players[p.id].teamId=null;n.players[p.id].status='free-agent';const fill=n.teams[t.id].playerIds.find(id=>!n.teams[t.id].lineup.includes(id)&&n.players[id].status!=='inactive');if(fill)n.teams[t.id].lineup.push(fill);saveGame(n);setState(n)};const sign=(p:Player)=>{if(t.playerIds.length>=7||t.cash<buyout(p))return;const n=structuredClone(s);n.teams[t.id].playerIds.push(p.id);n.players[p.id].teamId=t.id;n.players[p.id].region=t.region;n.players[p.id].status='substitute';n.teams[t.id].cash-=buyout(p);n.inbox.unshift(`Signed ${p.name} from the free-agent market.`);saveGame(n);setState(n)};return <Page eyebrow={`ROSTER ROOM / ${t.short}`} title="Make the hard calls." subtitle={`${ps.length} players on contract · ${t.lineup.length}/5 starters assigned`}><div className="columns"><section className="panel"><PanelTitle eyebrow="CURRENT ROSTER" title="Depth chart" right={<span className="muted">{ps.length} / 7</span>}/>{ps.map(p=><div className="player-row" key={p.id}><b className="avatar" style={{color:t.color,background:`${t.color}22`}}>{p.name.slice(0,2).toUpperCase()}</b><div className="player-name"><strong>{p.name}</strong><span><Badge color={p.status==='starter'?'#d7ff56':'#94a3b8'}>{p.status}</Badge><Badge>{p.primaryRole}</Badge></span></div><b className="ovr">{Math.round(Object.values(p.ratings).reduce((a,b)=>a+b,0)/6)}<small>OVR</small></b><select value={p.status} onChange={e=>update(p.id,{status:e.target.value as Player['status']})}><option value="starter">Starter</option><option value="substitute">Substitute</option><option value="inactive">Inactive</option></select><button className="x" onClick={()=>release(p)}>×</button></div>)}</section><section className="panel"><PanelTitle eyebrow="MARKET" title="Available talent" right={<span className="muted">Tier 2 / free agents</span>}/>{free.map(p=><div className="market-row" key={p.id}><span><strong>{p.name}</strong><small>{p.primaryRole} · {money(p.salary)} / yr</small></span><button className="secondary compact" disabled={t.playerIds.length>=7||t.cash<buyout(p)} onClick={()=>sign(p)}>Sign</button></div>)}<div className="callout"><strong>Buyout rule</strong><span>Contracted players cost annual salary × remaining years. The buyer pays immediately.</span></div></section></div></Page>}
-function Training({s,setState}:{s:GameState,setState:(s:GameState)=>void}){const ps=teamPlayers(s);const setH=(id:string,skill:Skill,value:number)=>{const n=structuredClone(s);const a=n.training[id]??{};const used=skills.filter(x=>x!==skill).reduce((sum,x)=>sum+(a[x]??0),0);a[skill]=Math.max(0,Math.min(40-used,value));n.training[id]=a;saveGame(n);setState(n)};return <Page eyebrow="PLAYER DEVELOPMENT / 40 HOURS" title="Build the weekly edge." subtitle="Five hours maintains a skill. Everything above that creates a chance to grow."><section className="panel training"><PanelTitle eyebrow={`WEEK ${s.week}`} title="Training allocations" right={<Badge color="#7fe1c6">INDIVIDUAL ONLY</Badge>}/>{ps.map(p=>{const a=s.training[p.id]??{};const total=skills.reduce((sum,x)=>sum+(a[x]??0),0);return <div className="training-row" key={p.id}><div className="player-name"><strong>{p.name}</strong><span>{p.primaryRole} · rating {Math.round(Object.values(p.ratings).reduce((x,y)=>x+y,0)/6)}</span></div><div className="hours"><b>{total}<small>/40h</small></b><div className="bar"><i style={{width:`${total/40*100}%`}}/></div></div><div className="skills">{skills.map(skill=><label key={skill}><span>{skill}</span><input type="number" min="0" max="40" value={a[skill]??0} onChange={e=>setH(p.id,skill,Number(e.target.value))}/><small>{(a[skill]??0)>=5?'maintained':'at risk'}</small></label>)}</div></div>})}</section></Page>}
-function Scouting({s,setState}:{s:GameState,setState:(s:GameState)=>void}){const t=currentTeam(s);const targets=Object.values(s.players).filter(p=>p.teamId!==t.id).slice(0,36);const setH=(id:string,v:number)=>{const n=structuredClone(s);const used=Object.entries(n.scoutingHours).filter(([key])=>key!==id).reduce((sum,[,x])=>sum+x,0);n.scoutingHours[id]=Math.max(0,Math.min(40-used,v));saveGame(n);setState(n)};return <Page eyebrow={`SCOUTING NETWORK / WEEK ${s.week}`} title="Find the next piece." subtitle="Spend the weekly 40-hour scouting pool to turn uncertainty into a recruiting decision."><section className="panel"><PanelTitle eyebrow="PLAYER DATABASE" title="Targets & intelligence" right={<Badge color="#f1c75b">40 HOURS AVAILABLE</Badge>}/>{targets.map(p=>{const overall=Math.round(Object.values(p.ratings).reduce((a,b)=>a+b,0)/6);return <div className="scout-row" key={p.id}><div className="player-name"><strong>{p.name}</strong><span>{p.teamId?s.teams[p.teamId]?.name??'Tier 2':'Free agent'} · {p.primaryRole}</span></div><div className="reveal"><strong>{p.scoutProgress>=60?`${overall} OVR`:'Unknown rating'}</strong><div className="bar"><i style={{width:`${p.scoutProgress}%`}}/></div><small>{Math.round(p.scoutProgress)}% scouted</small></div><input type="number" min="0" max="40" value={s.scoutingHours[p.id]??0} onChange={e=>setH(p.id,Number(e.target.value))}/></div>})}</section></Page>}
-function Tactics({s,setState,attack,setAttack,defense,setDefense}:{s:GameState,setState:(s:GameState)=>void,attack:string,setAttack:(v:string)=>void,defense:string,setDefense:(v:string)=>void}){const t=currentTeam(s);const ps=t.lineup.map(id=>s.players[id]).filter(Boolean);const setRole=(p:Player,r:Role)=>{const n=structuredClone(s);n.teams[t.id].roleAssignments[p.id]=r;saveGame(n);setState(n)};return <Page eyebrow={`MATCH PREPARATION / ${phase(s.week)}`} title="Make your plan legible." subtitle="Set the five, choose role assignments, and make the broad call on both sides."><div className="columns"><section className="panel"><PanelTitle eyebrow="STARTING LINEUP" title="Five for the series" right={<span className="muted">Role fit matters</span>}/>{ps.map((p,i)=><div className="lineup" key={p.id}><b>0{i+1}</b><span><strong>{p.name}</strong><small>Primary {p.primaryRole} · {p.secondaryRoles.join(', ')||'no secondary'}</small></span><select value={t.roleAssignments[p.id]??p.primaryRole} onChange={e=>setRole(p,e.target.value as Role)}>{roles.map(r=><option key={r}>{r}</option>)}</select></div>)}</section><section className="panel"><PanelTitle eyebrow="SERIES PLAN" title="Broad tactical identity"/><label className="field">Attack style<select value={attack} onChange={e=>setAttack(e.target.value)}><option>Measured defaults</option><option>Fast and explosive</option><option>Slow information play</option></select></label><label className="field">Defense style<select value={defense} onChange={e=>setDefense(e.target.value)}><option>Disciplined retakes</option><option>Proactive contesting</option><option>Deep site anchors</option></select></label><div className="maps"><div className="eyebrow">MAP VETO / MVP ORDER</div>{maps.map((m,i)=><div className={i<3?'map selected':'map'} key={m}><b>{i+1}</b>{m}<small>{i<3?'selected':'ban'}</small></div>)}</div><div className="callout"><strong>Later phase</strong><span>Agent compositions, pistol plans, timeout calls, and between-map adjustments come next.</span></div></section></div></Page>}
-function aggregateStats(mapsToRead:MatchResult['maps']):Record<string,PlayerStat>{return mapsToRead.reduce((out,map)=>{Object.entries(map.stats).forEach(([id,stat])=>{if(!out[id])out[id]={...stat};else{const x=out[id];x.kills+=stat.kills;x.deaths+=stat.deaths;x.assists+=stat.assists;x.acs=Math.round((x.acs+stat.acs)/2);x.adr=Math.round((x.adr+stat.adr)/2);x.kast=Math.round((x.kast+stat.kast)/2);x.firstKills+=stat.firstKills;x.firstDeaths+=stat.firstDeaths;x.clutches+=stat.clutches;x.plants+=stat.plants;x.defuses+=stat.defuses;x.headshots+=stat.headshots}});return out},{ } as Record<string,PlayerStat>)}
-function Matches({s}:{s:GameState}){const m=s.matches[0];const[tab,setTab]=useState<'series'|number>('series');if(!m)return <Page eyebrow="BROADCAST CENTER / RESULTS" title="Every round tells a story." subtitle="Advance the week to play your first series."><Empty title="No matches played yet" body="Your first result will appear here."/></Page>;const read=tab==='series'?m.maps:[m.maps[tab]];const stats=aggregateStats(read);return <Page eyebrow="BROADCAST CENTER / RESULTS" title="Every round tells a story." subtitle="Switch between a series view and each individual map without losing the full box score."><section className="broadcast"><div><span>{m.phase}</span><span>WEEK {m.week} · BO{m.bestOf}</span></div><strong>{s.teams[m.aId].short}<b className={m.winnerId===m.aId?'win':''}>{m.aScore}</b> : <b className={m.winnerId===m.bId?'win':''}>{m.bScore}</b>{s.teams[m.bId].short}</strong><div className="map-results">{m.maps.map((x,i)=><button className={tab===i?'active':''} onClick={()=>setTab(i)} key={x.map}><small>{x.map}</small><b>{x.aScore} — {x.bScore}</b><em>{s.teams[x.winnerId].short} takes map</em></button>)}</div></section><section className="panel"><div className="view-tabs"><button className={tab==='series'?'active':''} onClick={()=>setTab('series')}>Entire series</button>{m.maps.map((x,i)=><button className={tab===i?'active':''} onClick={()=>setTab(i)} key={x.map}>{x.map}</button>)}</div><PanelTitle eyebrow={tab==='series'?'SERIES BOX SCORE':`MAP BOX SCORE / ${m.maps[tab as number]?.map}`} title={tab==='series'?'Series statistics':`${m.maps[tab as number]?.map} statistics`} right={<span className="muted">ACS · ADR · KAST · impact</span>}/><div className="table-wrap"><table><thead><tr><th>Player</th><th>ACS</th><th>ADR</th><th>K/D</th><th>KAST</th><th>FK/FD</th><th>Clutches</th><th>HS</th></tr></thead><tbody>{Object.entries(stats).map(([id,x])=><tr key={id}><td><strong>{s.players[id]?.name}</strong><small>{s.players[id]?.primaryRole}</small></td><td>{x.acs}</td><td>{x.adr}</td><td>{x.kills}/{x.deaths}</td><td>{x.kast}%</td><td>{x.firstKills}/{x.firstDeaths}</td><td>{x.clutches}</td><td>{x.headshots}</td></tr>)}</tbody></table></div></section><section className="panel"><PanelTitle eyebrow="KEY MOMENTS" title="Match highlights"/>{m.highlights.map(h=><div className="highlight" key={h}>✦ {h}</div>)}</section></Page>}
-function Competition({s}:{s:GameState}){const t=currentTeam(s);const[scope,setScope]=useState<Region|'International'>(isInternationalPhase(phaseForWeek(s.week))?'International':t.region);const[week,setWeek]=useState(Math.max(1,s.week-1));const teams=Object.values(s.teams).filter(x=>scope==='International'||x.region===scope).sort((a,b)=>b.wins-a.wins||b.championshipPoints-a.championshipPoints);const matchups=s.matches.filter(m=>m.week===week&& (scope==='International'||(s.teams[m.aId]?.region===scope&&s.teams[m.bId]?.region===scope)));const tournament=matchups.filter(m=>isInternationalPhase(m.phase));return <Page eyebrow={`COMPETITION HUB / WEEK ${s.week}`} title="See the whole field." subtitle="Move between regional tables, weekly matchups, and the current international bracket without losing the season context."><section className="panel competition-controls"><div className="tabs">{(['Americas','EMEA','Pacific','China','International'] as const).map(x=><button className={scope===x?'active':''} onClick={()=>setScope(x)} key={x}>{x}</button>)}</div><div className="week-control"><button onClick={()=>setWeek(Math.max(1,week-1))}>←</button><strong>WEEK {week}</strong><span>{dateForWeek(week)}</span><button onClick={()=>setWeek(Math.min(52,week+1))}>→</button></div></section><div className="competition-grid"><section className="panel"><PanelTitle eyebrow={`${scope==='International'?'INTERNATIONAL':scope.toUpperCase()} TABLE`} title={scope==='International'?'Tournament field':'Regional standings'} right={<Badge color={scope==='International'?'#d7ff56':colors[scope as Region]}>{scope==='International'?'GLOBAL':scope}</Badge>}/><div className="table-wrap"><table><thead><tr><th>#</th><th>Organization</th><th>W</th><th>L</th><th>Maps</th><th>CP</th></tr></thead><tbody>{teams.map((x,i)=><tr className={x.id===s.currentTeamId?'current':''} key={x.id}><td>{String(i+1).padStart(2,'0')}</td><td><strong><span className="mini" style={{background:x.color}}>{x.short.slice(0,2)}</span>{x.name}</strong></td><td>{x.wins}</td><td>{x.losses}</td><td>{x.mapWins}–{x.mapLosses}</td><td><strong>{x.championshipPoints}</strong></td></tr>)}</tbody></table></div></section><section className="panel"><PanelTitle eyebrow={scope==='International'?'CURRENT BRACKET':'WEEKLY MATCHUPS'} title={scope==='International'?'Tournament board':`Week ${week} results`} right={<Badge>{matchups.length} matches</Badge>}/>{matchups.length?matchups.map(m=><div className="fixture" key={m.id}><span>{s.teams[m.aId].short}<b className={m.winnerId===m.aId?'win':''}>{m.aScore}</b></span><em>vs</em><span><b className={m.winnerId===m.bId?'win':''}>{m.bScore}</b>{s.teams[m.bId].short}</span><small>{m.phase} · BO{m.bestOf}</small></div>):<Empty title="No results in this week" body="Advance the week to populate the matchup board."/>}{scope==='International'&&tournament.length===0&&<div className="callout"><strong>International field</strong><span>When the next global event is active, its completed series will appear here as the bracket board.</span></div>}</section></div></Page>}
-function Finances({s}:{s:GameState}){const t=currentTeam(s);const payroll=t.playerIds.reduce((sum,id)=>sum+s.players[id].salary,0);return <Page eyebrow="ORGANIZATION / FINANCES" title="Win without going broke." subtitle="A simplified financial layer for the MVP. Deeper sponsorships and operating costs come later."><div className="stats"><Stat label="Cash balance" value={money(t.cash)} detail="available for buyouts" accent/><Stat label="Annual payroll" value={money(payroll)} detail="current roster commitments"/><Stat label="Weekly burn" value={money(payroll/52)} detail="salary deduction"/><Stat label="Salary headroom" value={money(t.salaryBudget-payroll)} detail="against budget"/></div><section className="panel ledger"><PanelTitle eyebrow="CASHFLOW GUIDE" title="What moves the number?"/><div className="ledger-grid"><span>Salary<strong className="negative">− {money(payroll/52)} / week</strong></span><span>Match win<strong className="positive">+ $25,000</strong></span><span>Appearance<strong className="positive">+ $5,000</strong></span><span>Prize money<strong className="positive">Event configured</strong></span></div><div className="callout"><strong>Transparent contract math</strong><span>Buyouts equal annual salary × remaining years.</span></div></section></Page>}
-function Settings({s,setState,onNew,onReset}:{s:GameState,setState:(s:GameState)=>void,onNew:()=>void,onReset:()=>void}){const change=(key:string,value:DelegationMode|boolean)=>{const n=structuredClone(s);n.settings[key]=value;saveGame(n);setState(n)};return <Page eyebrow="SYSTEM / MANAGER PREFERENCES" title="Choose your workload." subtitle="Delegate immersion systems. The competitive core always stays active."><section className="panel settings"><PanelTitle eyebrow="DELEGATION" title="Management modes"/>{[['roster','Roster & contracts'],['training','Player training'],['scouting','Scouting'],['finances','Finances']].map(([key,label])=><div className="setting" key={key}><span><strong>{label}</strong><small>Choose how much of this area you own.</small></span><select value={String(s.settings[key])} onChange={e=>change(key,e.target.value as DelegationMode)}><option value="hands-on">Hands-on</option><option value="balanced">Balanced</option><option value="hands-off">Hands-off</option></select></div>)}<div className="setting"><span><strong>Optional immersion systems</strong><small>Keep personality and sponsorship placeholders disabled.</small></span><button className={`toggle ${s.settings.sponsorships?'on':''}`} onClick={()=>change('sponsorships',!s.settings.sponsorships)}><i/></button></div></section><section className="panel save"><div><div className="eyebrow">SAVE MANAGEMENT</div><h2>One automatic browser save</h2><p>Last saved {new Date(s.saveTimestamp).toLocaleString()}</p></div><div><button className="secondary" onClick={onNew}>New Game</button><button className="danger" onClick={onReset}>Reset Save</button></div></section>{s.jobs.filter(j=>j.status==='pending').map(j=><section className="panel offer" key={j.id}><PanelTitle eyebrow="CAREER MARKET" title={s.teams[j.teamId].name}/><p>{j.reason}</p><button className="primary" onClick={()=>setState(acceptJob(s,j.id))}>Accept role · {money(j.salary)} / year</button></section>)}</Page>}
-export default function App(){const[s,setS]=useState<GameState|null>(()=>loadGame());const[view,setView]=useState<View>('dashboard');const[matchId,setMatchId]=useState<string>();const[attack,setAttack]=useState('Measured defaults');const[defense,setDefense]=useState('Disciplined retakes');const start=(name:string,team:string)=>{const n=createGame(name,team);saveGame(n);setS(n)};const newGame=()=>{if(confirm('Start a new career? Your current local save will be replaced.')){resetGame();setS(null)}};const reset=()=>{if(confirm('Reset the local save? This cannot be undone.')){resetGame();setS(null)}};if(!s)return <Start start={start}/>;const t=currentTeam(s);const advance=()=>{setS(advanceWeek(s,attack,defense))};const content=view==='dashboard'?<DashboardV2 s={s} setView={setView} setMatchId={setMatchId}/>:view==='roster'?<Roster s={s} setState={setS}/>:view==='training'?<Training s={s} setState={setS}/>:view==='scouting'?<Scouting s={s} setState={setS}/>:view==='tactics'?<TacticsV2 s={s} setState={setS} attack={attack} setAttack={setAttack} defense={defense} setDefense={setDefense}/>:view==='matches'?<MatchesV2 s={s} initialMatchId={matchId}/>:view==='competition'?<CompetitionV2 s={s} onOpenMatch={id=>{setMatchId(id);setView('matches')}}/>:view==='finances'?<Finances s={s}/>:<Settings s={s} setState={setS} onNew={newGame} onReset={reset}/>;return <div className="shell"><aside><div className="brand"><b>V</b><span><strong>VCT</strong><small>MANAGER</small></span></div><div className="season-chip">● 2026 SEASON <small>{phase(s.week)}</small></div><nav>{(Object.keys(labels) as View[]).map((v,i)=><button className={view===v?'active':''} onClick={()=>setView(v)} key={v}><small>{String(i+1).padStart(2,'0')}</small>{labels[v]}</button>)}</nav><div className="manager"><b className="avatar">{s.managerName.slice(0,2).toUpperCase()}</b><span><strong>{s.managerName}</strong><small>{t.short} · Manager</small></span></div></aside><main><header><span className="context"><i style={{background:t.color}}/> {t.name} <em>/</em> {phase(s.week)}</span><span className="cash">{money(t.cash)}</span><button className="advance" onClick={advance}>Advance week <b>→</b></button></header>{content}</main></div>}
+type View =
+  | 'dashboard'
+  | 'roster'
+  | 'training'
+  | 'scouting'
+  | 'tactics'
+  | 'matches'
+  | 'competition'
+  | 'finances'
+  | 'settings'
+const labels: Record<View, string> = {
+  dashboard: 'Dashboard',
+  roster: 'Roster',
+  training: 'Training',
+  scouting: 'Scouting',
+  tactics: 'Tactics',
+  matches: 'Match Center',
+  competition: 'Competition',
+  finances: 'Finances',
+  settings: 'Settings',
+}
+const money = (n: number) => `$${Math.max(0, Math.round(n)).toLocaleString()}`
+const phase = (w: number) =>
+  phaseForWeek(w) === 'Break' ? `Break before ${activePhaseForWeek(w)}` : phaseForWeek(w)
+const colors: Record<Region, string> = {
+  Americas: '#62a0ff',
+  EMEA: '#ff9b62',
+  Pacific: '#7fe1c6',
+  China: '#f1c75b',
+}
+const Stat = ({
+  label,
+  value,
+  detail,
+  accent = false,
+}: {
+  label: string
+  value: string
+  detail: string
+  accent?: boolean
+}) => (
+  <div className={`stat ${accent ? 'accent' : ''}`}>
+    <small>{label}</small>
+    <strong>{value}</strong>
+    <span>{detail}</span>
+  </div>
+)
+const Badge = ({ children, color }: { children: ReactNode; color?: string }) => (
+  <span className="badge" style={color ? { color, borderColor: `${color}55` } : undefined}>
+    {children}
+  </span>
+)
+const Empty = ({ title, body }: { title: string; body: string }) => (
+  <div className="panel empty">
+    <span>◌</span>
+    <h2>{title}</h2>
+    <p>{body}</p>
+  </div>
+)
+function Start({ start }: { start: (name: string, team: string) => void }) {
+  const [name, setName] = useState('Alex Mercer')
+  const [region, setRegion] = useState<Region | 'All'>('All')
+  const teams = seedTeams.filter((t) => region === 'All' || t.region === region)
+  return (
+    <main className="start">
+      <div className="hero">
+        <div className="eyebrow lime">VCT MANAGER // 2026 SEASON</div>
+        <h1>
+          Build the next
+          <br />
+          <em>world champion.</em>
+        </h1>
+        <p>
+          Run a real VCT organization through the 2026 season. Shape the roster, set the plan, and
+          turn weekly decisions into international trophies.
+        </p>
+        <div className="hero-meta">
+          <span>48 organizations</span>
+          <span>4 territories</span>
+          <span>Masters × 2</span>
+          <span>Champions</span>
+        </div>
+      </div>
+      <section className="panel picker">
+        <div className="picker-head">
+          <div>
+            <div className="eyebrow">NEW CAREER</div>
+            <h2>Choose your organization</h2>
+          </div>
+          <label>
+            Manager name
+            <input value={name} onChange={(e) => setName(e.target.value)} />
+          </label>
+        </div>
+        <div className="tabs">
+          {(['All', 'Americas', 'EMEA', 'Pacific', 'China'] as const).map((r) => (
+            <button className={region === r ? 'active' : ''} onClick={() => setRegion(r)} key={r}>
+              {r}
+            </button>
+          ))}
+        </div>
+        <div className="team-grid">
+          {teams.map((t) => (
+            <button className="team-card" onClick={() => start(name, t.id)} key={t.id}>
+              <b style={{ background: t.color }}>{t.short.slice(0, 3)}</b>
+              <span>
+                <strong>{t.name}</strong>
+                <small>{t.region}</small>
+              </span>
+              <i>→</i>
+            </button>
+          ))}
+        </div>
+      </section>
+    </main>
+  )
+}
+function PanelTitle({
+  eyebrow,
+  title,
+  right,
+}: {
+  eyebrow: string
+  title: string
+  right?: ReactNode
+}) {
+  return (
+    <div className="panel-title">
+      <div>
+        <div className="eyebrow">{eyebrow}</div>
+        <h2>{title}</h2>
+      </div>
+      {right}
+    </div>
+  )
+}
+function Page({
+  eyebrow,
+  title,
+  subtitle,
+  children,
+}: {
+  eyebrow: string
+  title: string
+  subtitle: string
+  children: ReactNode
+}) {
+  return (
+    <div className="page">
+      <div className="page-head">
+        <div>
+          <div className="eyebrow">{eyebrow}</div>
+          <h1>{title}</h1>
+          <p>{subtitle}</p>
+        </div>
+        <div className="season">
+          <small>SEASON 2026</small>
+          <strong>{phase(1)}</strong>
+        </div>
+      </div>
+      {children}
+    </div>
+  )
+}
+function MiniStandings({ s, onView }: { s: GameState; onView: (v: View) => void }) {
+  const t = currentTeam(s)
+  const international = isInternationalPhase(phaseForWeek(s.week))
+  const rows = Object.values(s.teams)
+    .filter((x) => international || x.region === t.region)
+    .sort((a, b) => b.wins - a.wins || b.championshipPoints - a.championshipPoints)
+    .slice(0, 5)
+  return (
+    <section className="panel mini-standings">
+      <PanelTitle
+        eyebrow={international ? 'INTERNATIONAL PULSE' : `${t.region.toUpperCase()} STANDINGS`}
+        title={international ? 'Tournament field' : 'Your region'}
+        right={
+          <button className="link" onClick={() => onView('competition')}>
+            Open competition →
+          </button>
+        }
+      />
+      {rows.map((team, i) => (
+        <div className="mini-row" key={team.id}>
+          <b>{String(i + 1).padStart(2, '0')}</b>
+          <span className="mini" style={{ background: team.color }}>
+            {team.short.slice(0, 2)}
+          </span>
+          <strong>{team.name}</strong>
+          <span>
+            {team.wins}–{team.losses}
+          </span>
+          <small>{team.championshipPoints} CP</small>
+        </div>
+      ))}
+    </section>
+  )
+}
+function _Dashboard({ s, setView }: { s: GameState; setView: (v: View) => void }) {
+  const t = currentTeam(s)
+  const last = s.matches[0]
+  const job = s.jobs.find((j) => j.status === 'pending' && j.expiresWeek >= s.week)
+  return (
+    <Page
+      eyebrow={`MANAGER DESK / WEEK ${s.week}`}
+      title={`${s.managerName}, your next move matters.`}
+      subtitle={
+        s.week <= 6
+          ? 'Kickoff is here. Every map is a chance to establish your season.'
+          : phaseForWeek(s.week) === 'Break'
+            ? 'The calendar has a clear transition week. Review the table and prepare for the next stage.'
+            : 'The VCT calendar is moving. Keep the organization ahead of the next pressure point.'
+      }
+    >
+      <div className="stats">
+        <Stat label="Organization" value={t.short} detail={t.name} accent />
+        <Stat
+          label="Record"
+          value={`${t.wins}–${t.losses}`}
+          detail={`${t.mapWins}–${t.mapLosses} maps`}
+        />
+        <Stat
+          label="Cash balance"
+          value={money(t.cash)}
+          detail={`${money(t.salaryBudget)} salary budget`}
+        />
+        <Stat
+          label="Championship points"
+          value={String(t.championshipPoints)}
+          detail="performance points"
+        />
+      </div>
+      <div className="dashboard-grid">
+        <section className="panel spotlight">
+          <PanelTitle
+            eyebrow="NEXT EVENT"
+            title={phase(s.week)}
+            right={
+              <Badge color={colors[t.region]}>
+                {isInternationalPhase(phaseForWeek(s.week)) ? 'INTERNATIONAL' : t.region}
+              </Badge>
+            }
+          />
+          <div className="versus">
+            <div>
+              <b className="mark big" style={{ background: t.color }}>
+                {t.short.slice(0, 3)}
+              </b>
+              <strong>{t.name}</strong>
+              <small>YOUR ORGANIZATION</small>
+            </div>
+            <em>{phaseForWeek(s.week) === 'Break' ? '—' : 'VS'}</em>
+            <div>
+              <b className="mark big opponent">
+                {isInternationalPhase(phaseForWeek(s.week)) ? 'GLB' : 'VCT'}
+              </b>
+              <strong>
+                {phaseForWeek(s.week) === 'Break' ? 'Calendar transition' : 'Current matchup'}
+              </strong>
+              <small>{dateForWeek(s.week)}</small>
+            </div>
+          </div>
+          <button
+            className="primary full"
+            onClick={() => setView(phaseForWeek(s.week) === 'Break' ? 'competition' : 'tactics')}
+          >
+            {phaseForWeek(s.week) === 'Break' ? 'Review competition' : 'Prepare match'} <b>→</b>
+          </button>
+        </section>
+        <section className="panel">
+          <PanelTitle
+            eyebrow="INBOX"
+            title="Latest signals"
+            right={
+              <button className="link" onClick={() => setView('settings')}>
+                Settings
+              </button>
+            }
+          />
+          {s.inbox.slice(0, 5).map((x, i) => (
+            <div className="inbox" key={`${x}-${i}`}>
+              <i /> {x}
+              <small>W{Math.max(1, s.week - i)}</small>
+            </div>
+          ))}
+        </section>
+      </div>
+      <MiniStandings s={s} onView={setView} />
+      {job && (
+        <section className="panel offer">
+          <PanelTitle
+            eyebrow="CAREER MARKET"
+            title="Offer on the table"
+            right={<Badge color="#d7ff56">NEW</Badge>}
+          />
+          <div>
+            <span>
+              <strong>{s.teams[job.teamId].name}</strong>
+              <small>{job.reason}</small>
+            </span>
+            <span className="offer-action">
+              {money(job.salary)} / year
+              <button className="primary compact" onClick={() => setView('settings')}>
+                Review in Settings
+              </button>
+            </span>
+          </div>
+        </section>
+      )}
+      <section className="panel">
+        <PanelTitle eyebrow="CONTROL ROOM" title="What needs your attention?" />
+        <div className="actions">
+          {[
+            ['roster', '01', 'Shape the roster', 'Starters, substitutes, and available talent.'],
+            [
+              'training',
+              '02',
+              'Set player training',
+              'Protect ratings with the 40-hour weekly plan.',
+            ],
+            [
+              'scouting',
+              '03',
+              'Scout the market',
+              'Turn unknown prospects into an actionable list.',
+            ],
+            ['tactics', '04', 'Set the game plan', 'Pick your maps and dictate the style.'],
+          ].map(([v, n, h, d]) => (
+            <button onClick={() => setView(v as View)} key={v}>
+              <b>{n}</b>
+              <strong>{h}</strong>
+              <small>{d}</small>
+            </button>
+          ))}
+        </div>
+      </section>
+      {last && (
+        <section className="panel result">
+          <PanelTitle
+            eyebrow={`LAST RESULT / ${last.phase}`}
+            title={last.winnerId === s.currentTeamId ? 'Series win' : 'Series loss'}
+            right={
+              <button className="link" onClick={() => setView('matches')}>
+                Open match center →
+              </button>
+            }
+          />
+          <div>
+            <strong>{s.teams[last.aId].short}</strong>
+            <b className={last.winnerId === last.aId ? 'win' : ''}>{last.aScore}</b>
+            <span>–</span>
+            <b className={last.winnerId === last.bId ? 'win' : ''}>{last.bScore}</b>
+            <strong>{s.teams[last.bId].short}</strong>
+            <small>BO{last.bestOf}</small>
+          </div>
+        </section>
+      )}
+    </Page>
+  )
+}
+function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => void }) {
+  const t = currentTeam(s)
+  const ps = teamPlayers(s)
+  const free = Object.values(s.players).filter((p) => p.status === 'free-agent')
+  const update = (id: string, changes: Partial<Player>) => {
+    const n = structuredClone(s)
+    n.players[id] = { ...n.players[id], ...changes }
+    if (changes.status) {
+      const starters = n.teams[t.id].playerIds.filter((x) => n.players[x].status === 'starter')
+      n.teams[t.id].lineup = (
+        starters.length >= 5
+          ? starters
+          : n.teams[t.id].playerIds.filter((x) => n.players[x].status !== 'inactive')
+      ).slice(0, 5)
+    }
+    saveGame(n)
+    setState(n)
+  }
+  const release = (p: Player) => {
+    if (t.playerIds.length <= 5) return
+    const n = structuredClone(s)
+    n.teams[t.id].playerIds = t.playerIds.filter((id) => id !== p.id)
+    n.teams[t.id].lineup = t.lineup.filter((id) => id !== p.id)
+    n.players[p.id].teamId = null
+    n.players[p.id].status = 'free-agent'
+    const fill = n.teams[t.id].playerIds.find(
+      (id) => !n.teams[t.id].lineup.includes(id) && n.players[id].status !== 'inactive',
+    )
+    if (fill) n.teams[t.id].lineup.push(fill)
+    saveGame(n)
+    setState(n)
+  }
+  const sign = (p: Player) => {
+    if (t.playerIds.length >= 7 || t.cash < buyout(p)) return
+    const n = structuredClone(s)
+    n.teams[t.id].playerIds.push(p.id)
+    n.players[p.id].teamId = t.id
+    n.players[p.id].region = t.region
+    n.players[p.id].status = 'substitute'
+    n.teams[t.id].cash -= buyout(p)
+    n.inbox.unshift(`Signed ${p.name} from the free-agent market.`)
+    saveGame(n)
+    setState(n)
+  }
+  return (
+    <Page
+      eyebrow={`ROSTER ROOM / ${t.short}`}
+      title="Make the hard calls."
+      subtitle={`${ps.length} players on contract · ${t.lineup.length}/5 starters assigned`}
+    >
+      <div className="columns">
+        <section className="panel">
+          <PanelTitle
+            eyebrow="CURRENT ROSTER"
+            title="Depth chart"
+            right={<span className="muted">{ps.length} / 7</span>}
+          />
+          {ps.map((p) => (
+            <div className="player-row" key={p.id}>
+              <b className="avatar" style={{ color: t.color, background: `${t.color}22` }}>
+                {p.name.slice(0, 2).toUpperCase()}
+              </b>
+              <div className="player-name">
+                <strong>{p.name}</strong>
+                <span>
+                  <Badge color={p.status === 'starter' ? '#d7ff56' : '#94a3b8'}>{p.status}</Badge>
+                  <Badge>{p.primaryRole}</Badge>
+                </span>
+              </div>
+              <b className="ovr">
+                {Math.round(Object.values(p.ratings).reduce((a, b) => a + b, 0) / 6)}
+                <small>OVR</small>
+              </b>
+              <select
+                value={p.status}
+                onChange={(e) => update(p.id, { status: e.target.value as Player['status'] })}
+              >
+                <option value="starter">Starter</option>
+                <option value="substitute">Substitute</option>
+                <option value="inactive">Inactive</option>
+              </select>
+              <button className="x" onClick={() => release(p)}>
+                ×
+              </button>
+            </div>
+          ))}
+        </section>
+        <section className="panel">
+          <PanelTitle
+            eyebrow="MARKET"
+            title="Available talent"
+            right={<span className="muted">Tier 2 / free agents</span>}
+          />
+          {free.map((p) => (
+            <div className="market-row" key={p.id}>
+              <span>
+                <strong>{p.name}</strong>
+                <small>
+                  {p.primaryRole} · {money(p.salary)} / yr
+                </small>
+              </span>
+              <button
+                className="secondary compact"
+                disabled={t.playerIds.length >= 7 || t.cash < buyout(p)}
+                onClick={() => sign(p)}
+              >
+                Sign
+              </button>
+            </div>
+          ))}
+          <div className="callout">
+            <strong>Buyout rule</strong>
+            <span>
+              Contracted players cost annual salary × remaining years. The buyer pays immediately.
+            </span>
+          </div>
+        </section>
+      </div>
+    </Page>
+  )
+}
+function Training({ s, setState }: { s: GameState; setState: (s: GameState) => void }) {
+  const ps = teamPlayers(s)
+  const setH = (id: string, skill: Skill, value: number) => {
+    const n = structuredClone(s)
+    const a = n.training[id] ?? {}
+    const used = skills.filter((x) => x !== skill).reduce((sum, x) => sum + (a[x] ?? 0), 0)
+    a[skill] = Math.max(0, Math.min(40 - used, value))
+    n.training[id] = a
+    saveGame(n)
+    setState(n)
+  }
+  return (
+    <Page
+      eyebrow="PLAYER DEVELOPMENT / 40 HOURS"
+      title="Build the weekly edge."
+      subtitle="Five hours maintains a skill. Everything above that creates a chance to grow."
+    >
+      <section className="panel training">
+        <PanelTitle
+          eyebrow={`WEEK ${s.week}`}
+          title="Training allocations"
+          right={<Badge color="#7fe1c6">INDIVIDUAL ONLY</Badge>}
+        />
+        {ps.map((p) => {
+          const a = s.training[p.id] ?? {}
+          const total = skills.reduce((sum, x) => sum + (a[x] ?? 0), 0)
+          return (
+            <div className="training-row" key={p.id}>
+              <div className="player-name">
+                <strong>{p.name}</strong>
+                <span>
+                  {p.primaryRole} · rating{' '}
+                  {Math.round(Object.values(p.ratings).reduce((x, y) => x + y, 0) / 6)}
+                </span>
+              </div>
+              <div className="hours">
+                <b>
+                  {total}
+                  <small>/40h</small>
+                </b>
+                <div className="bar">
+                  <i style={{ width: `${(total / 40) * 100}%` }} />
+                </div>
+              </div>
+              <div className="skills">
+                {skills.map((skill) => (
+                  <label key={skill}>
+                    <span>{skill}</span>
+                    <input
+                      type="number"
+                      min="0"
+                      max="40"
+                      value={a[skill] ?? 0}
+                      onChange={(e) => setH(p.id, skill, Number(e.target.value))}
+                    />
+                    <small>{(a[skill] ?? 0) >= 5 ? 'maintained' : 'at risk'}</small>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )
+        })}
+      </section>
+    </Page>
+  )
+}
+function Scouting({ s, setState }: { s: GameState; setState: (s: GameState) => void }) {
+  const t = currentTeam(s)
+  const targets = Object.values(s.players)
+    .filter((p) => p.teamId !== t.id)
+    .slice(0, 36)
+  const setH = (id: string, v: number) => {
+    const n = structuredClone(s)
+    const used = Object.entries(n.scoutingHours)
+      .filter(([key]) => key !== id)
+      .reduce((sum, [, x]) => sum + x, 0)
+    n.scoutingHours[id] = Math.max(0, Math.min(40 - used, v))
+    saveGame(n)
+    setState(n)
+  }
+  return (
+    <Page
+      eyebrow={`SCOUTING NETWORK / WEEK ${s.week}`}
+      title="Find the next piece."
+      subtitle="Spend the weekly 40-hour scouting pool to turn uncertainty into a recruiting decision."
+    >
+      <section className="panel">
+        <PanelTitle
+          eyebrow="PLAYER DATABASE"
+          title="Targets & intelligence"
+          right={<Badge color="#f1c75b">40 HOURS AVAILABLE</Badge>}
+        />
+        {targets.map((p) => {
+          const overall = Math.round(Object.values(p.ratings).reduce((a, b) => a + b, 0) / 6)
+          return (
+            <div className="scout-row" key={p.id}>
+              <div className="player-name">
+                <strong>{p.name}</strong>
+                <span>
+                  {p.teamId ? (s.teams[p.teamId]?.name ?? 'Tier 2') : 'Free agent'} ·{' '}
+                  {p.primaryRole}
+                </span>
+              </div>
+              <div className="reveal">
+                <strong>{p.scoutProgress >= 60 ? `${overall} OVR` : 'Unknown rating'}</strong>
+                <div className="bar">
+                  <i style={{ width: `${p.scoutProgress}%` }} />
+                </div>
+                <small>{Math.round(p.scoutProgress)}% scouted</small>
+              </div>
+              <input
+                type="number"
+                min="0"
+                max="40"
+                value={s.scoutingHours[p.id] ?? 0}
+                onChange={(e) => setH(p.id, Number(e.target.value))}
+              />
+            </div>
+          )
+        })}
+      </section>
+    </Page>
+  )
+}
+function _Tactics({
+  s,
+  setState,
+  attack,
+  setAttack,
+  defense,
+  setDefense,
+}: {
+  s: GameState
+  setState: (s: GameState) => void
+  attack: string
+  setAttack: (v: string) => void
+  defense: string
+  setDefense: (v: string) => void
+}) {
+  const t = currentTeam(s)
+  const ps = t.lineup.map((id) => s.players[id]).filter(Boolean)
+  const setRole = (p: Player, r: Role) => {
+    const n = structuredClone(s)
+    n.teams[t.id].roleAssignments[p.id] = r
+    saveGame(n)
+    setState(n)
+  }
+  return (
+    <Page
+      eyebrow={`MATCH PREPARATION / ${phase(s.week)}`}
+      title="Make your plan legible."
+      subtitle="Set the five, choose role assignments, and make the broad call on both sides."
+    >
+      <div className="columns">
+        <section className="panel">
+          <PanelTitle
+            eyebrow="STARTING LINEUP"
+            title="Five for the series"
+            right={<span className="muted">Role fit matters</span>}
+          />
+          {ps.map((p, i) => (
+            <div className="lineup" key={p.id}>
+              <b>0{i + 1}</b>
+              <span>
+                <strong>{p.name}</strong>
+                <small>
+                  Primary {p.primaryRole} · {p.secondaryRoles.join(', ') || 'no secondary'}
+                </small>
+              </span>
+              <select
+                value={t.roleAssignments[p.id] ?? p.primaryRole}
+                onChange={(e) => setRole(p, e.target.value as Role)}
+              >
+                {roles.map((r) => (
+                  <option key={r}>{r}</option>
+                ))}
+              </select>
+            </div>
+          ))}
+        </section>
+        <section className="panel">
+          <PanelTitle eyebrow="SERIES PLAN" title="Broad tactical identity" />
+          <label className="field">
+            Attack style
+            <select value={attack} onChange={(e) => setAttack(e.target.value)}>
+              <option>Measured defaults</option>
+              <option>Fast and explosive</option>
+              <option>Slow information play</option>
+            </select>
+          </label>
+          <label className="field">
+            Defense style
+            <select value={defense} onChange={(e) => setDefense(e.target.value)}>
+              <option>Disciplined retakes</option>
+              <option>Proactive contesting</option>
+              <option>Deep site anchors</option>
+            </select>
+          </label>
+          <div className="maps">
+            <div className="eyebrow">MAP VETO / MVP ORDER</div>
+            {maps.map((m, i) => (
+              <div className={i < 3 ? 'map selected' : 'map'} key={m}>
+                <b>{i + 1}</b>
+                {m}
+                <small>{i < 3 ? 'selected' : 'ban'}</small>
+              </div>
+            ))}
+          </div>
+          <div className="callout">
+            <strong>Later phase</strong>
+            <span>
+              Agent compositions, pistol plans, timeout calls, and between-map adjustments come
+              next.
+            </span>
+          </div>
+        </section>
+      </div>
+    </Page>
+  )
+}
+function aggregateStats(mapsToRead: MatchResult['maps']): Record<string, PlayerStat> {
+  return mapsToRead.reduce(
+    (out, map) => {
+      Object.entries(map.stats).forEach(([id, stat]) => {
+        if (!out[id]) out[id] = { ...stat }
+        else {
+          const x = out[id]
+          x.kills += stat.kills
+          x.deaths += stat.deaths
+          x.assists += stat.assists
+          x.acs = Math.round((x.acs + stat.acs) / 2)
+          x.adr = Math.round((x.adr + stat.adr) / 2)
+          x.kast = Math.round((x.kast + stat.kast) / 2)
+          x.firstKills += stat.firstKills
+          x.firstDeaths += stat.firstDeaths
+          x.clutches += stat.clutches
+          x.plants += stat.plants
+          x.defuses += stat.defuses
+          x.headshots += stat.headshots
+        }
+      })
+      return out
+    },
+    {} as Record<string, PlayerStat>,
+  )
+}
+function _Matches({ s }: { s: GameState }) {
+  const m = s.matches[0]
+  const [tab, setTab] = useState<'series' | number>('series')
+  if (!m)
+    return (
+      <Page
+        eyebrow="BROADCAST CENTER / RESULTS"
+        title="Every round tells a story."
+        subtitle="Advance the week to play your first series."
+      >
+        <Empty title="No matches played yet" body="Your first result will appear here." />
+      </Page>
+    )
+  const read = tab === 'series' ? m.maps : [m.maps[tab]]
+  const stats = aggregateStats(read)
+  return (
+    <Page
+      eyebrow="BROADCAST CENTER / RESULTS"
+      title="Every round tells a story."
+      subtitle="Switch between a series view and each individual map without losing the full box score."
+    >
+      <section className="broadcast">
+        <div>
+          <span>{m.phase}</span>
+          <span>
+            WEEK {m.week} · BO{m.bestOf}
+          </span>
+        </div>
+        <strong>
+          {s.teams[m.aId].short}
+          <b className={m.winnerId === m.aId ? 'win' : ''}>{m.aScore}</b> :{' '}
+          <b className={m.winnerId === m.bId ? 'win' : ''}>{m.bScore}</b>
+          {s.teams[m.bId].short}
+        </strong>
+        <div className="map-results">
+          {m.maps.map((x, i) => (
+            <button className={tab === i ? 'active' : ''} onClick={() => setTab(i)} key={x.map}>
+              <small>{x.map}</small>
+              <b>
+                {x.aScore} — {x.bScore}
+              </b>
+              <em>{s.teams[x.winnerId].short} takes map</em>
+            </button>
+          ))}
+        </div>
+      </section>
+      <section className="panel">
+        <div className="view-tabs">
+          <button className={tab === 'series' ? 'active' : ''} onClick={() => setTab('series')}>
+            Entire series
+          </button>
+          {m.maps.map((x, i) => (
+            <button className={tab === i ? 'active' : ''} onClick={() => setTab(i)} key={x.map}>
+              {x.map}
+            </button>
+          ))}
+        </div>
+        <PanelTitle
+          eyebrow={
+            tab === 'series' ? 'SERIES BOX SCORE' : `MAP BOX SCORE / ${m.maps[tab as number]?.map}`
+          }
+          title={
+            tab === 'series' ? 'Series statistics' : `${m.maps[tab as number]?.map} statistics`
+          }
+          right={<span className="muted">ACS · ADR · KAST · impact</span>}
+        />
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Player</th>
+                <th>ACS</th>
+                <th>ADR</th>
+                <th>K/D</th>
+                <th>KAST</th>
+                <th>FK/FD</th>
+                <th>Clutches</th>
+                <th>HS</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.entries(stats).map(([id, x]) => (
+                <tr key={id}>
+                  <td>
+                    <strong>{s.players[id]?.name}</strong>
+                    <small>{s.players[id]?.primaryRole}</small>
+                  </td>
+                  <td>{x.acs}</td>
+                  <td>{x.adr}</td>
+                  <td>
+                    {x.kills}/{x.deaths}
+                  </td>
+                  <td>{x.kast}%</td>
+                  <td>
+                    {x.firstKills}/{x.firstDeaths}
+                  </td>
+                  <td>{x.clutches}</td>
+                  <td>{x.headshots}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section className="panel">
+        <PanelTitle eyebrow="KEY MOMENTS" title="Match highlights" />
+        {m.highlights.map((h) => (
+          <div className="highlight" key={h}>
+            ✦ {h}
+          </div>
+        ))}
+      </section>
+    </Page>
+  )
+}
+function _Competition({ s }: { s: GameState }) {
+  const t = currentTeam(s)
+  const [scope, setScope] = useState<Region | 'International'>(
+    isInternationalPhase(phaseForWeek(s.week)) ? 'International' : t.region,
+  )
+  const [week, setWeek] = useState(Math.max(1, s.week - 1))
+  const teams = Object.values(s.teams)
+    .filter((x) => scope === 'International' || x.region === scope)
+    .sort((a, b) => b.wins - a.wins || b.championshipPoints - a.championshipPoints)
+  const matchups = s.matches.filter(
+    (m) =>
+      m.week === week &&
+      (scope === 'International' ||
+        (s.teams[m.aId]?.region === scope && s.teams[m.bId]?.region === scope)),
+  )
+  const tournament = matchups.filter((m) => isInternationalPhase(m.phase))
+  return (
+    <Page
+      eyebrow={`COMPETITION HUB / WEEK ${s.week}`}
+      title="See the whole field."
+      subtitle="Move between regional tables, weekly matchups, and the current international bracket without losing the season context."
+    >
+      <section className="panel competition-controls">
+        <div className="tabs">
+          {(['Americas', 'EMEA', 'Pacific', 'China', 'International'] as const).map((x) => (
+            <button className={scope === x ? 'active' : ''} onClick={() => setScope(x)} key={x}>
+              {x}
+            </button>
+          ))}
+        </div>
+        <div className="week-control">
+          <button onClick={() => setWeek(Math.max(1, week - 1))}>←</button>
+          <strong>WEEK {week}</strong>
+          <span>{dateForWeek(week)}</span>
+          <button onClick={() => setWeek(Math.min(52, week + 1))}>→</button>
+        </div>
+      </section>
+      <div className="competition-grid">
+        <section className="panel">
+          <PanelTitle
+            eyebrow={`${scope === 'International' ? 'INTERNATIONAL' : scope.toUpperCase()} TABLE`}
+            title={scope === 'International' ? 'Tournament field' : 'Regional standings'}
+            right={
+              <Badge color={scope === 'International' ? '#d7ff56' : colors[scope as Region]}>
+                {scope === 'International' ? 'GLOBAL' : scope}
+              </Badge>
+            }
+          />
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Organization</th>
+                  <th>W</th>
+                  <th>L</th>
+                  <th>Maps</th>
+                  <th>CP</th>
+                </tr>
+              </thead>
+              <tbody>
+                {teams.map((x, i) => (
+                  <tr className={x.id === s.currentTeamId ? 'current' : ''} key={x.id}>
+                    <td>{String(i + 1).padStart(2, '0')}</td>
+                    <td>
+                      <strong>
+                        <span className="mini" style={{ background: x.color }}>
+                          {x.short.slice(0, 2)}
+                        </span>
+                        {x.name}
+                      </strong>
+                    </td>
+                    <td>{x.wins}</td>
+                    <td>{x.losses}</td>
+                    <td>
+                      {x.mapWins}–{x.mapLosses}
+                    </td>
+                    <td>
+                      <strong>{x.championshipPoints}</strong>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+        <section className="panel">
+          <PanelTitle
+            eyebrow={scope === 'International' ? 'CURRENT BRACKET' : 'WEEKLY MATCHUPS'}
+            title={scope === 'International' ? 'Tournament board' : `Week ${week} results`}
+            right={<Badge>{matchups.length} matches</Badge>}
+          />
+          {matchups.length ? (
+            matchups.map((m) => (
+              <div className="fixture" key={m.id}>
+                <span>
+                  {s.teams[m.aId].short}
+                  <b className={m.winnerId === m.aId ? 'win' : ''}>{m.aScore}</b>
+                </span>
+                <em>vs</em>
+                <span>
+                  <b className={m.winnerId === m.bId ? 'win' : ''}>{m.bScore}</b>
+                  {s.teams[m.bId].short}
+                </span>
+                <small>
+                  {m.phase} · BO{m.bestOf}
+                </small>
+              </div>
+            ))
+          ) : (
+            <Empty
+              title="No results in this week"
+              body="Advance the week to populate the matchup board."
+            />
+          )}
+          {scope === 'International' && tournament.length === 0 && (
+            <div className="callout">
+              <strong>International field</strong>
+              <span>
+                When the next global event is active, its completed series will appear here as the
+                bracket board.
+              </span>
+            </div>
+          )}
+        </section>
+      </div>
+    </Page>
+  )
+}
+function Finances({ s }: { s: GameState }) {
+  const t = currentTeam(s)
+  const payroll = t.playerIds.reduce((sum, id) => sum + s.players[id].salary, 0)
+  return (
+    <Page
+      eyebrow="ORGANIZATION / FINANCES"
+      title="Win without going broke."
+      subtitle="A simplified financial layer for the MVP. Deeper sponsorships and operating costs come later."
+    >
+      <div className="stats">
+        <Stat label="Cash balance" value={money(t.cash)} detail="available for buyouts" accent />
+        <Stat label="Annual payroll" value={money(payroll)} detail="current roster commitments" />
+        <Stat label="Weekly burn" value={money(payroll / 52)} detail="salary deduction" />
+        <Stat
+          label="Salary headroom"
+          value={money(t.salaryBudget - payroll)}
+          detail="against budget"
+        />
+      </div>
+      <section className="panel ledger">
+        <PanelTitle eyebrow="CASHFLOW GUIDE" title="What moves the number?" />
+        <div className="ledger-grid">
+          <span>
+            Salary<strong className="negative">− {money(payroll / 52)} / week</strong>
+          </span>
+          <span>
+            Match win<strong className="positive">+ $25,000</strong>
+          </span>
+          <span>
+            Appearance<strong className="positive">+ $5,000</strong>
+          </span>
+          <span>
+            Prize money<strong className="positive">Event configured</strong>
+          </span>
+        </div>
+        <div className="callout">
+          <strong>Transparent contract math</strong>
+          <span>Buyouts equal annual salary × remaining years.</span>
+        </div>
+      </section>
+    </Page>
+  )
+}
+function Settings({
+  s,
+  setState,
+  onNew,
+  onReset,
+}: {
+  s: GameState
+  setState: (s: GameState) => void
+  onNew: () => void
+  onReset: () => void
+}) {
+  const change = (key: string, value: DelegationMode | boolean) => {
+    const n = structuredClone(s)
+    n.settings[key] = value
+    saveGame(n)
+    setState(n)
+  }
+  return (
+    <Page
+      eyebrow="SYSTEM / MANAGER PREFERENCES"
+      title="Choose your workload."
+      subtitle="Delegate immersion systems. The competitive core always stays active."
+    >
+      <section className="panel settings">
+        <PanelTitle eyebrow="DELEGATION" title="Management modes" />
+        {[
+          ['roster', 'Roster & contracts'],
+          ['training', 'Player training'],
+          ['scouting', 'Scouting'],
+          ['finances', 'Finances'],
+        ].map(([key, label]) => (
+          <div className="setting" key={key}>
+            <span>
+              <strong>{label}</strong>
+              <small>Choose how much of this area you own.</small>
+            </span>
+            <select
+              value={String(s.settings[key])}
+              onChange={(e) => change(key, e.target.value as DelegationMode)}
+            >
+              <option value="hands-on">Hands-on</option>
+              <option value="balanced">Balanced</option>
+              <option value="hands-off">Hands-off</option>
+            </select>
+          </div>
+        ))}
+        <div className="setting">
+          <span>
+            <strong>Optional immersion systems</strong>
+            <small>Keep personality and sponsorship placeholders disabled.</small>
+          </span>
+          <button
+            className={`toggle ${s.settings.sponsorships ? 'on' : ''}`}
+            onClick={() => change('sponsorships', !s.settings.sponsorships)}
+          >
+            <i />
+          </button>
+        </div>
+      </section>
+      <section className="panel save">
+        <div>
+          <div className="eyebrow">SAVE MANAGEMENT</div>
+          <h2>One automatic browser save</h2>
+          <p>Last saved {new Date(s.saveTimestamp).toLocaleString()}</p>
+        </div>
+        <div>
+          <button className="secondary" onClick={onNew}>
+            New Game
+          </button>
+          <button className="danger" onClick={onReset}>
+            Reset Save
+          </button>
+        </div>
+      </section>
+      {s.jobs
+        .filter((j) => j.status === 'pending')
+        .map((j) => (
+          <section className="panel offer" key={j.id}>
+            <PanelTitle eyebrow="CAREER MARKET" title={s.teams[j.teamId].name} />
+            <p>{j.reason}</p>
+            <button className="primary" onClick={() => setState(acceptJob(s, j.id))}>
+              Accept role · {money(j.salary)} / year
+            </button>
+          </section>
+        ))}
+    </Page>
+  )
+}
+export default function App() {
+  const [s, setS] = useState<GameState | null>(() => loadGame())
+  const [view, setView] = useState<View>('dashboard')
+  const [matchId, setMatchId] = useState<string>()
+  const [attack, setAttack] = useState('Measured defaults')
+  const [defense, setDefense] = useState('Disciplined retakes')
+  const start = (name: string, team: string) => {
+    const n = createGame(name, team)
+    saveGame(n)
+    setS(n)
+  }
+  const newGame = () => {
+    if (confirm('Start a new career? Your current local save will be replaced.')) {
+      resetGame()
+      setS(null)
+    }
+  }
+  const reset = () => {
+    if (confirm('Reset the local save? This cannot be undone.')) {
+      resetGame()
+      setS(null)
+    }
+  }
+  if (!s) return <Start start={start} />
+  const t = currentTeam(s)
+  const advance = () => {
+    setS(advanceWeek(s, attack, defense))
+  }
+  const advanceTournamentRound = () => {
+    setS(simulateTournamentRound(s, attack, defense))
+  }
+  const playNextTournamentMatch = (
+    competitionPhase: Exclude<CompetitionPhase, 'Break' | 'Offseason'>,
+    region?: Region,
+  ) => {
+    setS(simulateNextTournamentMatch(s, attack, defense, competitionPhase, region))
+  }
+  const activeCompetition = phaseForWeek(s.week)
+  const roundMode =
+    view === 'competition' &&
+    (activeCompetition === 'Kickoff' ||
+      isInternationalPhase(activeCompetition) ||
+      (activeCompetition === 'Stage 1' && s.week >= 16) ||
+      (activeCompetition === 'Stage 2' && s.week >= 32))
+  const content =
+    view === 'dashboard' ? (
+      <DashboardV2 s={s} setView={setView} setMatchId={setMatchId} />
+    ) : view === 'roster' ? (
+      <Roster s={s} setState={setS} />
+    ) : view === 'training' ? (
+      <Training s={s} setState={setS} />
+    ) : view === 'scouting' ? (
+      <Scouting s={s} setState={setS} />
+    ) : view === 'tactics' ? (
+      <TacticsV2
+        s={s}
+        setState={setS}
+        attack={attack}
+        setAttack={setAttack}
+        defense={defense}
+        setDefense={setDefense}
+      />
+    ) : view === 'matches' ? (
+      <MatchesV2 s={s} initialMatchId={matchId} />
+    ) : view === 'competition' ? (
+      <CompetitionV2
+        s={s}
+        onPlayNextMatch={playNextTournamentMatch}
+        onSimulateRound={advanceTournamentRound}
+        onOpenMatch={(id) => {
+          setMatchId(id)
+          setView('matches')
+        }}
+      />
+    ) : view === 'finances' ? (
+      <Finances s={s} />
+    ) : (
+      <Settings s={s} setState={setS} onNew={newGame} onReset={reset} />
+    )
+  return (
+    <div className="shell">
+      <aside>
+        <div className="brand">
+          <b>V</b>
+          <span>
+            <strong>VCT</strong>
+            <small>MANAGER</small>
+          </span>
+        </div>
+        <div className="season-chip">
+          ● 2026 SEASON <small>{phase(s.week)}</small>
+        </div>
+        <nav>
+          {(Object.keys(labels) as View[]).map((v, i) => (
+            <button className={view === v ? 'active' : ''} onClick={() => setView(v)} key={v}>
+              <small>{String(i + 1).padStart(2, '0')}</small>
+              {labels[v]}
+            </button>
+          ))}
+        </nav>
+        <div className="manager">
+          <b className="avatar">{s.managerName.slice(0, 2).toUpperCase()}</b>
+          <span>
+            <strong>{s.managerName}</strong>
+            <small>{t.short} · Manager</small>
+          </span>
+        </div>
+      </aside>
+      <main>
+        <header>
+          <span className="context">
+            <i style={{ background: t.color }} /> {t.name} <em>/</em> {phase(s.week)}
+          </span>
+          <span className="cash">{money(t.cash)}</span>
+          <button className="advance" onClick={roundMode ? advanceTournamentRound : advance}>
+            {roundMode ? 'Advance round' : 'Advance week'} <b>→</b>
+          </button>
+        </header>
+        {content}
+      </main>
+    </div>
+  )
+}

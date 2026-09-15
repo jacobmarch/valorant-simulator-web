@@ -20,15 +20,28 @@ The event header always identifies:
 
 ## Kickoff view
 
-Kickoff is not represented as a conventional championship tree. Its primary board has four life lanes, with opening-round byes shown separately:
+Kickoff is presented as a true three-path bracket rather than a standings grid or a set of life-status boxes. The opening-round byes are listed above the bracket, and every persisted fixture appears in its named round column.
 
-- Opening-round byes: the four returning Champions teams, shown separately with their Upper Round 2 entry.
-- Upper bracket: active teams with zero losses.
-- Middle bracket: active teams with one loss.
-- Lower bracket: active teams with two losses and no remaining safety net.
-- Masters bound: teams that won one of the three qualification finals.
+- Upper path: Upper Round 1 through Upper Final. Its winner qualifies undefeated.
+- Middle path: Middle Round 1 through Middle Final. Its winner qualifies with one loss.
+- Lower path: Lower Round 1 through Lower Final. Every match is elimination and its winner takes the third qualification place.
+
+Columns progress from left to right. Connector lines originate at the edge of source match cards, merge between paired feeder matches where two winners produce one downstream match, and terminate at the receiving match card. Empty downstream columns remain visible as placeholders so the user can understand the complete event structure before those matchups are known. Completed cards show scores and open their full match report when selected.
+
+The Middle Round 1 header explicitly identifies its feeder rule: each of the four Upper Round 1 losers plays one of the four Upper Round 2 losers. The UI must never render a post-opening bye. Upper, middle, and lower lanes use distinct connector colors and short source labels so cross-lane drops remain understandable without tracing an unlabeled grid.
 
 The page explains that a third loss eliminates a team. It also includes a full regional table and a matchday browser. Eliminated teams remain in the table so the user can understand the complete field.
+
+## Tournament progression controls
+
+When the calendar is currently inside Kickoff, a regional playoff, Masters, or Champions, the global calendar action reads **Advance round**. League-stage weeks continue to read **Advance week**.
+
+The current event also exposes two explicit actions:
+
+- **Play next match:** resolves exactly one scheduled fixture in the selected event and, for regional events, the selected region. It does not advance the week or apply weekly training, scouting, or financial updates.
+- **Simulate round:** resolves every remaining fixture in the current calendar round, applies the normal weekly transaction once, builds the next round, advances the calendar, and leaves the user on the Competition Center.
+
+The control shows the next named round and the number of unresolved matches in the selected view. Browsing a completed or future event never exposes controls that would mutate the current competition.
 
 ## Regional split view
 
@@ -82,7 +95,7 @@ Champions must contain:
 
 ## Save migration
 
-Game state version 7 adds the corrected fixed Kickoff bracket and regional playoff scheduling and qualification metadata on top of the tournament stage, bracket path, and group metadata. When an older save is loaded, that broken event restarts at its opening week. Only fixtures and linked match results from that event are removed. Regional progress, roster state, and career state remain intact. An inbox message explains the restart.
+Game state version 8 adds the corrected Kickoff feeder graph with four Middle Round 1 matches and no post-opening byes. A version 7 save still inside Kickoff restarts that event at week one. Only current-season Kickoff fixtures and linked match results are removed; roster and career state remain intact. An inbox message explains the restart. Earlier migrations continue to add tournament stage, bracket path, regional playoff, and qualification metadata.
 
 ## Acceptance criteria
 
@@ -92,6 +105,11 @@ Game state version 7 adds the corrected fixed Kickoff bracket and regional playo
 - Masters clearly distinguishes direct seeds, Swiss status, upper bracket, lower bracket, and grand final.
 - Champions clearly distinguishes four groups and the playoff bracket.
 - No raw round-number grid is used as the primary tournament visualization.
+- Kickoff is rendered as connected upper, middle, and lower round columns, with downstream placeholders.
+- Middle Round 1 displays four matches made from all four Upper Round 1 losers and all four Upper Round 2 losers.
+- Connector lines visibly meet both their source cards and their next-round destination; paired feeders visibly merge.
+- The user can resolve one visible tournament match without moving time or simulate the entire remaining round.
+- Tournament advancement keeps the Competition Center open and changes the global action label to Advance round.
 - The managed team is highlighted consistently in tables, lanes, groups, and matchup cards.
 - Scheduled fixtures show opponent, event round, week, and best-of format.
 - Completed fixtures show the winner and series score.
