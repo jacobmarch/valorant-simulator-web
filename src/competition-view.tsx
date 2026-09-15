@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useState, type CSSProperties, type ReactNode } from 'react'
 import {
   activePhaseForWeek,
   competitionRecord,
@@ -169,28 +169,30 @@ function FixtureCard({
           {fixture.status === 'completed' ? 'Final' : `Week ${fixture.week} · BO${fixture.bestOf}`}
         </span>
       </header>
-      <div className={result?.winnerId === a.id ? 'winner' : ''}>
-        <i style={{ background: a.color }} />
-        <strong>{featured ? a.name : a.short}</strong>
-        <small>{a.region}</small>
-        <b>{score(a.id)}</b>
-      </div>
-      <div className={b && result?.winnerId === b.id ? 'winner' : ''}>
-        {b ? (
-          <>
-            <i style={{ background: b.color }} />
-            <strong>{featured ? b.name : b.short}</strong>
-            <small>{b.region}</small>
-            <b>{score(b.id)}</b>
-          </>
-        ) : (
-          <>
-            <i className="bye" />
-            <strong>Bye</strong>
-            <small>No opponent</small>
-            <b>—</b>
-          </>
-        )}
+      <div className="matchup-teams">
+        <div className={result?.winnerId === a.id ? 'winner' : ''}>
+          <i style={{ background: a.color }} />
+          <strong>{featured ? a.name : a.short}</strong>
+          <small>{a.region}</small>
+          <b>{score(a.id)}</b>
+        </div>
+        <div className={b && result?.winnerId === b.id ? 'winner' : ''}>
+          {b ? (
+            <>
+              <i style={{ background: b.color }} />
+              <strong>{featured ? b.name : b.short}</strong>
+              <small>{b.region}</small>
+              <b>{score(b.id)}</b>
+            </>
+          ) : (
+            <>
+              <i className="bye" />
+              <strong>Bye</strong>
+              <small>No opponent</small>
+              <b>—</b>
+            </>
+          )}
+        </div>
       </div>
     </article>
   )
@@ -522,7 +524,10 @@ function KickoffBracket({
                         </small>
                       </h3>
                       <p className="round-source">{round.source}</p>
-                      <div className="kickoff-round-track">
+                      <div
+                        className="kickoff-round-track"
+                        style={{ '--slots': String(round.expected) } as CSSProperties}
+                      >
                         {slots.map((fixture, slotIndex) => (
                           <div
                             className={'kickoff-match-node' + (fixture ? '' : ' placeholder-node')}

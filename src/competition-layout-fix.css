@@ -8,3 +8,52 @@
   width: auto;
   min-height: 0;
 }
+
+/*
+  Kickoff tree nodes are absolutely placed on a track. Slot height must exceed a
+  full two-team card, or later cards cover the second team on the cards above.
+*/
+.kickoff-round-track {
+  --kickoff-match-slot: 176px;
+  height: calc(var(--slots, 4) * var(--kickoff-match-slot));
+  overflow: visible;
+}
+.kickoff-bracket-rounds.slots-4 .kickoff-round-track {
+  --slots: 4;
+}
+.kickoff-bracket-rounds.slots-2 .kickoff-round-track {
+  --slots: 2;
+}
+.kickoff-match-node {
+  overflow: visible;
+}
+.kickoff-match-node .matchup-card,
+.bracket-step .matchup-card,
+.matchup-list .matchup-card {
+  height: auto;
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+}
+.matchup-teams {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+}
+.matchup-card > header,
+.matchup-teams > div {
+  flex: 0 0 auto;
+  position: relative;
+}
+.bracket-step {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.matchup-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: auto;
+}
