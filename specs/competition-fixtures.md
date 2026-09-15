@@ -13,7 +13,7 @@ Every scheduled match is stored as a Fixture with season, week, competition phas
 - The competition board groups the same fixtures by round.
 - Background teams use the same fixtures and match engine as the managed team.
 - Fixtures and results carry a season identifier so a new season cannot reuse the prior season's schedule.
-- Version-one browser saves migrate in place by adding fixture and Kickoff state, then scheduling the current week.
+- Older browser saves migrate in place; in-progress Kickoff saves are restarted at week one so they receive the fixed bracket, while completed event history is retained.
 
 ## Kickoff triple elimination
 
@@ -21,13 +21,14 @@ Each territory begins with 12 teams and three lives. The four teams that reached
 
 1. Week 1 schedules four matches between the other eight teams. The four returning Champions teams are not assigned a fixture.
 2. Week 2 schedules four Upper Round 2 matches pairing each bye team with a week-one winner, plus two Middle Round 1 matches for the week-one losers.
-3. Weeks 3–6 pair active teams by series record, avoiding a rematch when another opponent is available.
-4. A series loss removes one life.
-5. The third loss immediately eliminates the team.
-6. If later eliminations leave an odd active field, the lowest-priority active team receives a visible bye without changing its record.
-7. At the end of week 6, qualification deciders continue until exactly three teams remain alive.
-All non-bye closing-path Kickoff fixtures in week six, including qualification deciders, are best-of-five; earlier Kickoff fixtures remain best-of-three.
-8. Those three teams are marked qualified for Masters 1. No team may be marked eliminated with fewer than three losses.
+3. Week 3 schedules Upper Round 3 from the Upper Round 2 winners, Middle Round 2 from the Middle Round 1 winners plus Upper Round 2 losers, and Lower Round 1 from the Middle Round 1 losers.
+4. Week 4 schedules the Upper Final, Middle Round 3, and Lower Round 2 from those completed results. The Upper Final winner is the first qualifier.
+5. Week 5 schedules Middle Round 4 and Lower Round 3 from their fixed predecessor slots.
+6. Week 6 schedules the Middle Final as a BO5 and Lower Round 4 as a BO3. The Middle Final winner is the second qualifier.
+7. Lower Round 5 is a BO3 when needed to reduce the remaining lower path to two teams. The Lower Final is then a BO5, and its winner is the third qualifier.
+8. Only the Upper Final, Middle Final, and Lower Final are best-of-five. Every other Kickoff fixture is best-of-three, including Lower Rounds 4 and 5.
+9. A series loss removes one life, and the third loss immediately eliminates the team. Teams stop receiving fixtures once eliminated; no round uses record-based or Swiss pairing.
+10. The three path winners are marked qualified for Masters 1. Every other team must have three losses and be eliminated.
 
 The competition screen must show regional Kickoff standings; wins, losses, and three visible life indicators; active, eliminated, or qualified state; all fixtures grouped by round; and the selected week's matchup list.
 

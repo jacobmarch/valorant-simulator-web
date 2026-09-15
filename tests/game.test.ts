@@ -23,7 +23,7 @@ describe('competition fixtures',()=>{
     delete legacy.fixtures;delete legacy.kickoff;legacy.version=1
     localStorage.setItem(SAVE_KEY,JSON.stringify(legacy))
     const migrated=loadGame()!
-    expect(migrated.version).toBe(6)
+    expect(migrated.version).toBe(7)
     expect(nextFixtureForTeam(migrated,'c9',migrated.week)).toBeDefined()
   })
   test('an in-progress legacy international save restarts on the corrected bracket',()=>{
@@ -33,7 +33,7 @@ describe('competition fixtures',()=>{
     legacy.fixtures.filter((fixture:any)=>fixture.phase==='Masters 1').forEach((fixture:any)=>{delete fixture.stage;delete fixture.bracket})
     localStorage.setItem(SAVE_KEY,JSON.stringify(legacy))
     const migrated=loadGame()!
-    expect(migrated.version).toBe(6)
+    expect(migrated.version).toBe(7)
     expect(migrated.week).toBe(8)
     expect(migrated.fixtures.filter(fixture=>fixture.phase==='Masters 1')).toHaveLength(4)
     expect(migrated.fixtures.filter(fixture=>fixture.phase==='Masters 1').every(fixture=>fixture.stage==='Swiss')).toBeTrue()

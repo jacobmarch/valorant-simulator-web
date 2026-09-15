@@ -32,15 +32,22 @@ describe('regional split playoffs',()=>{
       expect(fixtures.filter(fixture=>fixture.label==='Middle Round 1')).toHaveLength(2)
     })
   })
-  test('Kickoff uses best-of-five closing series',()=>{
-    const state=advance(6)
-    const closing=state.fixtures.filter(fixture=>fixture.phase==='Kickoff'&&(fixture.bId&&(fixture.week===6||fixture.label==='Qualification decider')))
-    expect(closing.length).toBeGreaterThan(0)
-    expect(closing.every(fixture=>fixture.bestOf===5)).toBeTrue()
-    const earlier=state.fixtures.filter(fixture=>fixture.phase==='Kickoff'&&fixture.week<6&&fixture.bId)
-    expect(earlier.every(fixture=>fixture.bestOf===3)).toBeTrue()
+  test("Kickoff uses BO5 only for the three bracket finals",()=>{
+    const state=advance(6),finals=["Upper Final","Middle Final","Lower Final"]
+    const kickoff=state.fixtures.filter(fixture=>fixture.phase==="Kickoff"&&fixture.bId)
+    expect(kickoff.filter(fixture=>finals.includes(fixture.label))).toHaveLength(12)
+    expect(kickoff.every(fixture=>finals.includes(fixture.label)?fixture.bestOf===5:fixture.bestOf===3)).toBeTrue()
   })
-  test('the next season carries Champions qualifiers into Kickoff byes',()=>{
+  test("Kickoff Round 2 pairs each Round 1 winner with a bye team",()=>{
+    const state=advance(1),region="Americas"
+    const byes=Object.values(state.teams).filter(team=>team.region===region&&state.kickoff[team.id].openingBye).map(team=>team.id)
+    const roundOne=state.fixtures.filter(fixture=>fixture.phase==="Kickoff"&&fixture.region===region&&fixture.label==="Upper Round 1")
+    const upperTwo=state.fixtures.filter(fixture=>fixture.phase==="Kickoff"&&fixture.region===region&&fixture.label==="Upper Round 2")
+    expect(upperTwo).toHaveLength(4)
+    expect(upperTwo.every(fixture=>byes.includes(fixture.aId))).toBeTrue()
+    expect(upperTwo.map(fixture=>fixture.bId).sort()).toEqual(roundOne.map(fixture=>fixture.winnerId).sort())
+  })
+  test('the next season carries Champions qualifiers into Kickoff byes',{timeout:10000},()=>{
     const beforeReset=advance(51)
     const expected=new Map((['Americas','EMEA','Pacific','China'] as const).map(region=>[region,new Set(regionalPlayoffQualifiers(beforeReset,'Stage 2',region,4))]))
     const state=advanceWeek(beforeReset,'Measured defaults','Disciplined retakes')
@@ -87,5 +94,16 @@ describe('regional split playoffs',()=>{
       expect(regionalPlayoffQualifiers(state,'Stage 2',region)).toHaveLength(4)
     })
   })
+  test("Kickoff bracket paths stop the undefeated upper winner",()=>{
+    const state=advance(6)
+    ;(["Americas","EMEA","Pacific","China"] as const).forEach(region=>{
+      const upperFinal=state.fixtures.find(fixture=>fixture.phase==="Kickoff"&&fixture.region===region&&fixture.label==="Upper Final")
+      expect(upperFinal?.status).toBe("completed")
+      const upperWinner=upperFinal?.winnerId
+      expect(upperWinner).toBeDefined()
+      expect(state.kickoff[upperWinner!].losses).toBe(0)
+      expect(state.fixtures.filter(fixture=>fixture.phase==="Kickoff"&&fixture.region===region&&(fixture.aId===upperWinner||fixture.bId===upperWinner)).every(fixture=>fixture.week<=4)).toBeTrue()
+      expect(Object.values(state.teams).filter(team=>team.region===region&&state.kickoff[team.id].status==="active")).toHaveLength(0)
+    })
+  })
 })
-

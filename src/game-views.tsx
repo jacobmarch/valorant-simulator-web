@@ -171,8 +171,9 @@ function Scoreboard({s,match,stats,mode,sortKey,direction,onSort,onModeChange}:{
 }
 
 export function MatchesV2({s,initialMatchId}:{s:GameState;initialMatchId?:string}){
-  const matches=s.matches.filter(match=>match.aId===s.currentTeamId||match.bId===s.currentTeamId)
-  const[selectedId,setSelectedId]=useState(matches.find(match=>match.id===initialMatchId)?.id??matches[0]?.id??"")
+  const matches=s.matches
+  const managedMatches=s.matches.filter(match=>match.aId===s.currentTeamId||match.bId===s.currentTeamId)
+  const[selectedId,setSelectedId]=useState(matches.find(match=>match.id===initialMatchId)?.id??managedMatches[0]?.id??matches[0]?.id??"")
   const[tab,setTab]=useState<"series"|number>("series")
   const[scoreboardMode,setScoreboardMode]=useState<ScoreboardMode>("teams")
   const[sortKey,setSortKey]=useState<ScoreSortKey>("acs")

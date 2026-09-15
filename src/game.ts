@@ -30,7 +30,7 @@ export type Fixture = {
 export type KickoffRecord = { wins:number; losses:number; status:'active'|'qualified'|'eliminated'; openingBye:boolean }
 export type JobOffer = { id:string; teamId:string; expiresWeek:number; reason:string; salary:number; status:'pending'|'accepted'|'declined' }
 export type GameState = {
-  version:6; season:number; week:number; managerName:string; currentTeamId:string; teams:Record<string,Team>; players:Record<string,Player>
+  version:7; season:number; week:number; managerName:string; currentTeamId:string; teams:Record<string,Team>; players:Record<string,Player>
   matches:MatchResult[]; fixtures:Fixture[]; kickoff:Record<string,KickoffRecord>; inbox:string[]; jobs:JobOffer[]
   training:Record<string,Partial<Record<Skill,number>>>; scoutingHours:Record<string,number>
   settings:Record<string,DelegationMode|boolean>; rng:number; saveTimestamp:string
@@ -106,7 +106,7 @@ export function createGame(managerName:string,currentTeamId:string):GameState{
       status:'free-agent',isImport:false,scoutProgress:0,form:0}
   })
   const state:GameState={
-    version:6,season:2026,week:1,managerName:managerName||'Manager',currentTeamId,teams,players,matches:[],fixtures:[],
+    version:7,season:2026,week:1,managerName:managerName||'Manager',currentTeamId,teams,players,matches:[],fixtures:[],
     kickoff:Object.fromEntries(Object.keys(teams).map(id=>[id,{wins:0,losses:0,status:'active',openingBye:openingKickoffByes.has(id)}])),
     inbox:['Welcome to the 2026 VCT season. Your first Kickoff matchup is on the competition board.'],jobs:[],training:{},scoutingHours:{},
     settings:{roster:'hands-on',training:'hands-on',scouting:'hands-on',finances:'balanced',sponsorships:false,personalities:false},
@@ -139,6 +139,23 @@ function migrateGame(raw:unknown):GameState|null{
     state.fixtures.filter(fixture=>fixture.season===state.season&&fixture.phase==="Kickoff"&&fixture.status==="scheduled"&&(fixture.round>=6||fixture.label==="Qualification decider")).forEach(fixture=>{fixture.bestOf=5})
     state.inbox.unshift("Kickoff closing-path series now use best-of-five.")
   }
+  if(previousVersion<7){
+    const kickoffFinals=["Upper Final","Middle Final","Lower Final"]
+    if(state.week<=6){
+      const kickoffFixtureIds=new Set(state.fixtures.filter(fixture=>fixture.season===state.season&&fixture.phase==="Kickoff").map(fixture=>fixture.id))
+      state.fixtures=state.fixtures.filter(fixture=>!(fixture.season===state.season&&fixture.phase==="Kickoff"))
+      state.matches=state.matches.filter(match=>match.phase!=="Kickoff"&&!kickoffFixtureIds.has(match.fixtureId??""))
+      Object.entries(state.kickoff).forEach(([id,record])=>{
+        record.wins=0;record.losses=0;record.status="active"
+        state.teams[id].wins=0;state.teams[id].losses=0;state.teams[id].mapWins=0;state.teams[id].mapLosses=0
+        state.teams[id].playoffStage=record.openingBye?"Kickoff · Round 1 bye":"Kickoff · 3 lives"
+      })
+      state.week=1
+      state.inbox.unshift("Kickoff was reset to the fixed triple-elimination bracket.")
+    }else{
+      state.fixtures.filter(fixture=>fixture.season===state.season&&fixture.phase==="Kickoff").forEach(fixture=>{fixture.bestOf=kickoffFinals.includes(fixture.label)?5:3})
+    }
+  }
   const active=phaseForWeek(state.week)
   if(previousVersion<3&&isInternationalPhase(active)){
     const phase=active as 'Masters 1'|'Masters 2'|'Champions'
@@ -151,7 +168,7 @@ function migrateGame(raw:unknown):GameState|null{
       state.inbox.unshift(`${phase} was restarted with the corrected 2026 tournament format.`)
     }
   }
-  state.version=6
+  state.version=7
   ensureWeekScheduled(state,state.week)
   return state
 }
@@ -172,27 +189,6 @@ function phaseRound(week:number,phase:CompetitionPhase){
   const starts:Partial<Record<CompetitionPhase,number>>={Kickoff:1,'Masters 1':8,'Stage 1':12,'Masters 2':20,'Stage 2':24,Champions:36}
   return week-(starts[phase]??week)+1
 }
-function completedOpponents(state:GameState,teamId:string,phase:string){
-  return new Set(state.fixtures.filter(f=>f.status==='completed'&&f.phase===phase&&(f.aId===teamId||f.bId===teamId))
-    .map(f=>f.aId===teamId?f.bId:f.aId).filter(Boolean))
-}
-function pairByRecord(state:GameState,teamIds:string[],phase:string){
-  const sorted=[...teamIds].sort((a,b)=>{
-    const ar=state.kickoff[a],br=state.kickoff[b]
-    return ar.losses-br.losses||br.wins-ar.wins||a.localeCompare(b)
-  })
-  const pairs:Array<[string,string|null]>=[]
-  while(sorted.length){
-    const aId=sorted.shift()!
-    if(!sorted.length){pairs.push([aId,null]);break}
-    const previous=completedOpponents(state,aId,phase)
-    let opponentIndex=sorted.findIndex(id=>!previous.has(id))
-    if(opponentIndex<0)opponentIndex=0
-    const[bId]=sorted.splice(opponentIndex,1)
-    pairs.push([aId,bId])
-  }
-  return pairs
-}
 function kickoffSecondRoundPairs(state:GameState,region:Region):Array<[string,string|null,string]>{
   const active=Object.values(state.teams).filter(team=>team.region===region&&state.kickoff[team.id].status==='active').map(team=>team.id)
   const roundOne=state.fixtures.filter(fixture=>fixture.season===state.season&&fixture.phase==='Kickoff'&&fixture.region===region&&fixture.week===1&&fixture.status==='completed'&&fixture.bId).sort((left,right)=>left.id.localeCompare(right.id))
@@ -205,7 +201,7 @@ function kickoffSecondRoundPairs(state:GameState,region:Region):Array<[string,st
     for(let index=0;index<losers.length;index+=2)pairs.push([losers[index],losers[index+1]??null,'Middle Round 1'])
     return pairs
   }
-  return pairByRecord(state,active,'Kickoff').map(([aId,bId])=>[aId,bId,'Round 2'])
+  return []
 }
 function regionalRoundRobin(teamIds:string[],round:number){
   const ids=[...teamIds]
@@ -284,6 +280,17 @@ function addRegionalFixtures(state:GameState,phase:'Stage 1'|'Stage 2',region:Re
     season:state.season,week,phase,scope:'regional',region,round:options.round,label,aId,bId,
     bestOf:options.bestOf??3,status:'scheduled',stage:'Playoffs',bracket:options.bracket,
   }))
+}
+function addKickoffFixtures(state:GameState,region:Region,week:number,round:number,label:string,pairs:Array<[string,string|null]>,bestOf:3|5=3){
+  pairs.forEach(([aId,bId],index)=>state.fixtures.push({
+    id:`${state.season}-${fixtureId('Kickoff',week,region,state.fixtures.length,`-${label.toLowerCase().replaceAll(' ','-')}-${index}`)}`,season:state.season,week,phase:'Kickoff',scope:'regional',region,round,
+    label:bId?label:label+' bye',aId,bId,bestOf,status:bId?'scheduled':'completed',winnerId:bId?undefined:aId,
+  }))
+}
+function adjacentKickoffPairs(ids:string[]):Array<[string,string|null]>{
+  const pairs:Array<[string,string|null]>=[]
+  for(let index=0;index<ids.length;index+=2)pairs.push([ids[index],ids[index+1]??null])
+  return pairs
 }
 function mastersEntrants(state:GameState,phase:'Masters 1'|'Masters 2'){
   const source=phase==='Masters 1'?'Kickoff':'Stage 1'
@@ -443,16 +450,51 @@ export function ensureWeekScheduled(state:GameState,week=state.week){
 
   if(phase==='Kickoff'){
     regions.forEach(region=>{
-      const active=Object.values(state.teams)
-        .filter(team=>team.region===region&&state.kickoff[team.id]?.status==='active')
-        .map(team=>team.id)
-      const pairings:Array<[string,string|null,string]>=round===1?pairByRecord(state,active.filter(id=>!state.kickoff[id].openingBye),phase).map(([aId,bId])=>[aId,bId,'Upper Round 1'] as [string,string|null,string]):round===2?kickoffSecondRoundPairs(state,region):pairByRecord(state,active,phase).map(([aId,bId])=>[aId,bId,'Round '+round] as [string,string|null,string]); pairings.forEach(([aId,bId,label],index)=>{
-        state.fixtures.push({
-          id:`${state.season}-${fixtureId(phase,week,region,index)}`,season:state.season,week,phase,scope:'regional',region,round,
-          label:bId?label:label+' bye',aId,bId,bestOf:bId&&round>=6?5:3,
-          status:bId?'scheduled':'completed',winnerId:bId?undefined:aId,
-        })
-      })
+      const active=Object.values(state.teams).filter(team=>team.region===region&&state.kickoff[team.id]?.status==='active').map(team=>team.id)
+      const completed=(label:string)=>state.fixtures.filter(fixture=>fixture.season===state.season&&fixture.phase==='Kickoff'&&fixture.region===region&&(fixture.label===label||fixture.label===label+' bye')&&fixture.status==='completed').sort((left,right)=>left.id.localeCompare(right.id))
+      const winners=(label:string)=>completed(label).map(resultWinner).filter((id):id is string=>Boolean(id))
+      const losers=(label:string)=>completed(label).map(resultLoser).filter((id):id is string=>Boolean(id))
+      if(round===1){
+        addKickoffFixtures(state,region,week,1,'Upper Round 1',adjacentKickoffPairs(active.filter(id=>!state.kickoff[id].openingBye)))
+        return
+      }
+      if(round===2){
+        kickoffSecondRoundPairs(state,region).forEach(([aId,bId,label])=>addKickoffFixtures(state,region,week,2,label,[[aId,bId]]))
+        return
+      }
+      if(round===3){
+        const upperTwo=completed('Upper Round 2'),middleOne=completed('Middle Round 1')
+        if(upperTwo.length===4&&middleOne.length===2){
+          addKickoffFixtures(state,region,week,3,'Upper Round 3',adjacentKickoffPairs(winners('Upper Round 2')))
+          addKickoffFixtures(state,region,week,3,'Middle Round 2',adjacentKickoffPairs([...winners('Middle Round 1'),...losers('Upper Round 2')]))
+          addKickoffFixtures(state,region,week,3,'Lower Round 1',adjacentKickoffPairs(losers('Middle Round 1')))
+        }
+        return
+      }
+      if(round===4){
+        const upperThree=completed('Upper Round 3'),middleTwo=completed('Middle Round 2'),lowerOne=completed('Lower Round 1')
+        if(upperThree.length===2&&middleTwo.length===3&&lowerOne.length===1){
+          addKickoffFixtures(state,region,week,4,'Upper Final',[[winners('Upper Round 3')[0],winners('Upper Round 3')[1]]],5)
+          addKickoffFixtures(state,region,week,4,'Middle Round 3',adjacentKickoffPairs([...losers('Upper Round 3'),...winners('Middle Round 2')]))
+          addKickoffFixtures(state,region,week,4,'Lower Round 2',adjacentKickoffPairs([...losers('Middle Round 2'),...winners('Lower Round 1')]))
+        }
+        return
+      }
+      if(round===5){
+        const upperFinal=completed('Upper Final'),middleThree=completed('Middle Round 3'),lowerTwo=completed('Lower Round 2')
+        if(upperFinal.length===1&&middleThree.length===3&&lowerTwo.length===2){
+          addKickoffFixtures(state,region,week,5,'Middle Round 4',adjacentKickoffPairs([...losers('Upper Final'),...winners('Middle Round 3')]))
+          addKickoffFixtures(state,region,week,5,'Lower Round 3',adjacentKickoffPairs([...losers('Middle Round 3'),...winners('Lower Round 2')]))
+        }
+        return
+      }
+      if(round===6){
+        const middleFour=completed('Middle Round 4'),lowerThree=completed('Lower Round 3')
+        if(middleFour.length===2&&lowerThree.length===2){
+          addKickoffFixtures(state,region,week,6,'Middle Final',[[winners('Middle Round 4')[0],winners('Middle Round 4')[1]]],5)
+          addKickoffFixtures(state,region,week,6,'Lower Round 4',[[losers('Middle Round 4')[0],winners('Lower Round 3')[0]],[losers('Middle Round 4')[1],winners('Lower Round 3')[1]]])
+        }
+      }
     })
     return
   }
@@ -696,26 +738,34 @@ function finishInternationalWeek(state:GameState,phase:'Masters 1'|'Masters 2'|'
   return managed
 }
 function finishKickoffRegion(state:GameState,region:Region,attackStyle:string,defenseStyle:string){
-  let active=Object.values(state.teams).filter(team=>team.region===region&&state.kickoff[team.id].status==='active').map(team=>team.id)
-  let decider=0
-  while(active.length>3&&decider<30){
-    const ordered=[...active].sort((a,b)=>{
-      const ar=state.kickoff[a],br=state.kickoff[b]
-      return br.losses-ar.losses||ar.wins-br.wins||a.localeCompare(b)
-    })
-    const aId=ordered[0],bId=ordered[1]
-    const fixture:Fixture={
-      id:`${state.season}-${fixtureId('Kickoff',6,region,decider,'-decider')}`,season:state.season,week:6,phase:'Kickoff',scope:'regional',region,
-      round:7,label:'Qualification decider',aId,bId,bestOf:5,status:'scheduled',
-    }
-    state.fixtures.push(fixture);playFixture(state,fixture,attackStyle,defenseStyle)
-    active=Object.values(state.teams).filter(team=>team.region===region&&state.kickoff[team.id].status==='active').map(team=>team.id)
-    decider++
+  const upperFinal=state.fixtures.find(fixture=>fixture.season===state.season&&fixture.phase==="Kickoff"&&fixture.region===region&&fixture.label==="Upper Final"&&fixture.status==="completed")
+  const middleFinal=state.fixtures.find(fixture=>fixture.season===state.season&&fixture.phase==="Kickoff"&&fixture.region===region&&fixture.label==="Middle Final"&&fixture.status==="completed")
+  const lowerRoundFour=state.fixtures.filter(fixture=>fixture.season===state.season&&fixture.phase==="Kickoff"&&fixture.region===region&&fixture.label==="Lower Round 4"&&fixture.status==="completed")
+  if(!upperFinal||!middleFinal||lowerRoundFour.length!==2)return
+  let lowerRoundFive=state.fixtures.filter(fixture=>fixture.season===state.season&&fixture.phase==="Kickoff"&&fixture.region===region&&(fixture.label==="Lower Round 5"||fixture.label==="Lower Round 5 bye"))
+  if(!lowerRoundFive.length){
+    const lowerWinners=lowerRoundFour.map(resultWinner).filter((id):id is string=>Boolean(id))
+    if(lowerWinners.length!==2)return
+    addKickoffFixtures(state,region,6,6,"Lower Round 5",[[resultLoser(middleFinal)!,lowerWinners[0]],[lowerWinners[1],null]])
+    lowerRoundFive=state.fixtures.filter(fixture=>fixture.season===state.season&&fixture.phase==="Kickoff"&&fixture.region===region&&(fixture.label==="Lower Round 5"||fixture.label==="Lower Round 5 bye"))
+    lowerRoundFive.filter(fixture=>fixture.status==="scheduled").forEach(fixture=>playFixture(state,fixture,attackStyle,defenseStyle))
   }
-  active.sort((a,b)=>state.kickoff[b].wins-state.kickoff[a].wins||state.kickoff[a].losses-state.kickoff[b].losses)
-    .slice(0,3).forEach(id=>{
-      state.kickoff[id].status='qualified';state.teams[id].playoffStage='Masters 1 · qualified';state.teams[id].championshipPoints+=2
-    })
+  if(!lowerRoundFive.every(fixture=>fixture.status==="completed"))return
+  let lowerFinal=state.fixtures.find(fixture=>fixture.season===state.season&&fixture.phase==="Kickoff"&&fixture.region===region&&fixture.label==="Lower Final")
+  if(!lowerFinal){
+    const lowerFinalists=lowerRoundFive.map(resultWinner).filter((id):id is string=>Boolean(id))
+    if(lowerFinalists.length!==2)return
+    addKickoffFixtures(state,region,6,6,"Lower Final",[[lowerFinalists[0],lowerFinalists[1]]],5)
+    lowerFinal=state.fixtures.find(fixture=>fixture.season===state.season&&fixture.phase==="Kickoff"&&fixture.region===region&&fixture.label==="Lower Final")
+    if(lowerFinal)playFixture(state,lowerFinal,attackStyle,defenseStyle)
+  }
+  if(!lowerFinal||lowerFinal.status!=="completed")return
+  const qualified=[resultWinner(upperFinal),resultWinner(middleFinal),resultWinner(lowerFinal)].filter((id):id is string=>Boolean(id))
+  qualified.forEach(id=>{
+    state.kickoff[id].status="qualified"
+    state.teams[id].playoffStage="Masters 1 · qualified"
+    state.teams[id].championshipPoints+=2
+  })
 }
 function updateDevelopmentAndFinances(state:GameState){
   Object.values(state.players).forEach(player=>{

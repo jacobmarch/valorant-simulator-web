@@ -82,7 +82,7 @@ Champions must contain:
 
 ## Save migration
 
-Game state version 4 adds regional playoff scheduling and qualification metadata on top of the tournament stage, bracket path, and group metadata. When an older save is loaded, that broken event restarts at its opening week. Only fixtures and linked match results from that event are removed. Regional progress, roster state, and career state remain intact. An inbox message explains the restart.
+Game state version 7 adds the corrected fixed Kickoff bracket and regional playoff scheduling and qualification metadata on top of the tournament stage, bracket path, and group metadata. When an older save is loaded, that broken event restarts at its opening week. Only fixtures and linked match results from that event are removed. Regional progress, roster state, and career state remain intact. An inbox message explains the restart.
 
 ## Acceptance criteria
 

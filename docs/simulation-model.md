@@ -72,8 +72,8 @@ The 2026 event sequence and territory structure are based on the official [VALOR
 
 ## 12. Persisted fixture and event invariants
 
-The fixture list is the single source of truth for dashboard opponents, match preparation, weekly resolution, matchup lists, and bracket columns. A fixture is generated before its week is shown and stores both participants, format, round, scope, status, result link, and season. Existing version-one browser saves are migrated by adding this state and scheduling their current week.
+The fixture list is the single source of truth for dashboard opponents, match preparation, weekly resolution, matchup lists, and bracket columns. A fixture is generated before its week is shown and stores both participants, format, round, scope, status, result link, and season. Older browser saves are migrated to the current fixture schema; in-progress Kickoff saves are restarted at week one when the bracket rules change.
 
-Kickoff uses three lives. Pairings are record-based, rematches are avoided when possible, and a third loss is the only elimination condition. Week-six qualification deciders are BO5 closing series and reduce each territory to exactly three surviving Masters 1 qualifiers. The bracket screen shows every round, scheduled/completed state, and remaining lives.
+Kickoff uses three lives and fixed bracket slots. Round-one winners are paired one-to-one with the four opening-bye teams in Upper Round 2; all later rounds consume only the named predecessor slots. Only Upper Final, Middle Final, and Lower Final are BO5. Every other Kickoff fixture is BO3, and each non-qualifier reaches elimination at three losses. The bracket screen shows every round, scheduled/completed state, and remaining lives.
 
 Every simulated death has an opposing killer. Each round creates exactly one first kill and one first death. The losing side has four or five casualties in a normal round, while the winning side has zero to four. A player cannot die twice in one round. This produces realistic death volume in close maps without independently fabricating player totals.
