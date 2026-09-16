@@ -883,6 +883,8 @@
 
 /* Connected Kickoff bracket: each line originates from a matchup and terminates at the next feeder. */
 .kickoff-bracket-rounds {
+  --slots: 4;
+  --kickoff-match-slot: 176px;
   --kickoff-column-gap: 44px;
   --kickoff-connector-half-gap: 22px;
   --kickoff-connector-overlap: 1px;
@@ -890,6 +892,9 @@
   grid-auto-columns: 224px;
   gap: var(--kickoff-column-gap);
   align-items: stretch;
+}
+.kickoff-bracket-rounds.slots-2 {
+  --slots: 2;
 }
 .kickoff-bracket-column {
   width: 224px;
@@ -910,12 +915,8 @@
 }
 .kickoff-round-track {
   position: relative;
-  --slots: 4;
-  --kickoff-match-slot: 176px;
+  /* Inherit --slots from the lane so later rounds stay on the same Y scale. */
   height: calc(var(--slots) * var(--kickoff-match-slot));
-}
-.kickoff-bracket-rounds.slots-2 .kickoff-round-track {
-  --slots: 2;
 }
 .kickoff-match-node {
   position: absolute;
