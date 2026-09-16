@@ -204,14 +204,22 @@ nav button small {
   font-weight: 700;
   padding: 12px 17px;
   font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  line-height: 1;
 }
 .advance {
-  display: flex;
   gap: 20px;
-  align-items: center;
 }
-.advance b {
-  font-size: 17px;
+.advance b,
+.primary b {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  transform: translateY(1px);
 }
 .page {
   max-width: 1280px;
@@ -390,9 +398,8 @@ nav button small {
 .full {
   width: 100%;
 }
-.primary b {
-  float: right;
-  font-size: 16px;
+.primary.full {
+  justify-content: space-between;
 }
 .link {
   border: 0;
