@@ -52,3 +52,12 @@
   gap: 12px;
   height: auto;
 }
+
+/* Lane titles must not inherit the shell chrome sticky/z-index. */
+.kickoff-bracket-lane > header,
+.bracket-lane > header {
+  position: static;
+  z-index: auto;
+  top: auto;
+  height: auto;
+}
