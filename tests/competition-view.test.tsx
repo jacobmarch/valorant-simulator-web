@@ -30,6 +30,9 @@ describe('competition center', () => {
     expect(html).toContain('matchup-teams')
     expect(html).toContain('kickoff-bracket-rounds slots-4')
     expect(html).toContain('kickoff-bracket-rounds slots-2')
+    expect(html).not.toMatch(/kickoff-round-track"[^>]*--slots/)
+    expect(html).toContain('Upper Round 3')
+    expect(html).toContain('Upper Final')
   })
   test('Masters opens on a Swiss view with direct regional seeds', () => {
     let state = createGame('Manager', 'sen')

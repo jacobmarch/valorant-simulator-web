@@ -161,7 +161,7 @@ nav button small {
   width: calc(100% - 238px);
   min-height: 100vh;
 }
-.shell header {
+.shell main > header {
   height: 74px;
   border-bottom: 1px solid #ffffff0d;
   display: flex;
@@ -172,7 +172,7 @@ nav button small {
   background: #0a0f1ded;
   position: sticky;
   top: 0;
-  z-index: 3;
+  z-index: 20;
   backdrop-filter: blur(12px);
 }
 .context {
@@ -204,14 +204,22 @@ nav button small {
   font-weight: 700;
   padding: 12px 17px;
   font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  line-height: 1;
 }
 .advance {
-  display: flex;
   gap: 20px;
-  align-items: center;
 }
-.advance b {
-  font-size: 17px;
+.advance b,
+.primary b {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  transform: translateY(1px);
 }
 .page {
   max-width: 1280px;
@@ -390,9 +398,8 @@ nav button small {
 .full {
   width: 100%;
 }
-.primary b {
-  float: right;
-  font-size: 16px;
+.primary.full {
+  justify-content: space-between;
 }
 .link {
   border: 0;
@@ -1113,7 +1120,7 @@ tr.current td:first-child {
   .page {
     padding: 34px 25px;
   }
-  .shell header {
+  .shell main > header {
     padding: 0 25px;
   }
   .training-row {
@@ -1161,7 +1168,7 @@ tr.current td:first-child {
     margin: 0;
     width: 100%;
   }
-  .shell header {
+  .shell main > header {
     height: 62px;
     padding: 0 16px;
   }

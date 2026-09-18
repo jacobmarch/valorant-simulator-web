@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import {
   activePhaseForWeek,
   competitionRecord,
@@ -524,10 +524,7 @@ function KickoffBracket({
                         </small>
                       </h3>
                       <p className="round-source">{round.source}</p>
-                      <div
-                        className="kickoff-round-track"
-                        style={{ '--slots': String(round.expected) } as CSSProperties}
-                      >
+                      <div className="kickoff-round-track">
                         {slots.map((fixture, slotIndex) => (
                           <div
                             className={'kickoff-match-node' + (fixture ? '' : ' placeholder-node')}

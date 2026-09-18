@@ -12,17 +12,12 @@
 /*
   Kickoff tree nodes are absolutely placed on a track. Slot height must exceed a
   full two-team card, or later cards cover the second team on the cards above.
+  --slots is owned by the lane (.kickoff-bracket-rounds.slots-N) so every column
+  in that path uses the same height and connector lines meet the next round.
 */
 .kickoff-round-track {
-  --kickoff-match-slot: 176px;
-  height: calc(var(--slots, 4) * var(--kickoff-match-slot));
+  height: calc(var(--slots, 4) * var(--kickoff-match-slot, 176px));
   overflow: visible;
-}
-.kickoff-bracket-rounds.slots-4 .kickoff-round-track {
-  --slots: 4;
-}
-.kickoff-bracket-rounds.slots-2 .kickoff-round-track {
-  --slots: 2;
 }
 .kickoff-match-node {
   overflow: visible;
@@ -55,5 +50,14 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  height: auto;
+}
+
+/* Lane titles must not inherit the shell chrome sticky/z-index. */
+.kickoff-bracket-lane > header,
+.bracket-lane > header {
+  position: static;
+  z-index: auto;
+  top: auto;
   height: auto;
 }
