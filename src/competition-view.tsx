@@ -1,10 +1,12 @@
 import { useState, type ReactNode } from 'react'
 import {
   activePhaseForWeek,
+  canPlayNextTournamentMatch,
   competitionRecord,
   currentTeam,
   dateForWeek,
   fixturesForWeek,
+  liveTournamentRoundFixtures,
   phaseForWeek,
   rankedTeams,
   regionalPlayoffQualifiers,
@@ -1076,16 +1078,16 @@ export function CompetitionV2({
     status = statusFor(s, phase),
     currentPhase = activePhaseForWeek(s.week),
     isCurrentEvent = phase === currentPhase && phaseForWeek(s.week) !== 'Break',
-    currentRoundFixtures = s.fixtures
-      .filter(
-        (fixture) =>
-          fixture.season === s.season &&
-          fixture.week === s.week &&
-          fixture.phase === phase &&
-          fixture.status === 'scheduled' &&
-          (info.type === 'international' || fixture.region === region),
-      )
-      .sort((left, right) => left.round - right.round || left.label.localeCompare(right.label)),
+    currentRoundFixtures = liveTournamentRoundFixtures(
+      s,
+      phase,
+      info.type === 'regional' ? region : undefined,
+    ),
+    canPlayNextMatch = canPlayNextTournamentMatch(
+      s,
+      phase,
+      info.type === 'regional' ? region : undefined,
+    ),
     selectEvent = (next: PlayablePhase) => {
       setPhase(next)
       setWeek(Math.max(events[next].start, Math.min(events[next].end, s.week)))
@@ -1148,17 +1150,22 @@ export function CompetitionV2({
         <section className="tournament-controls">
           <div>
             <div className="eyebrow">LIVE TOURNAMENT CONTROL</div>
-            <strong>{currentRoundFixtures[0]?.label ?? 'Round complete'}</strong>
+            <strong>
+              {[...new Set(currentRoundFixtures.map((fixture) => fixture.label))].join(' · ') ||
+                'Round complete'}
+            </strong>
             <span>
               {currentRoundFixtures.length
                 ? currentRoundFixtures.length + ' matches remain in this round.'
-                : 'All scheduled matches are complete. Advance to build the next round.'}
+                : canPlayNextMatch
+                  ? 'This round is complete. Play next match to start the next round.'
+                  : 'All scheduled matches are complete. Advance to build the next round.'}
             </span>
           </div>
           <div>
             <button
               className="secondary"
-              disabled={!currentRoundFixtures.length}
+              disabled={!canPlayNextMatch}
               onClick={() =>
                 onPlayNextMatch?.(phase, info.type === 'regional' ? region : undefined)
               }
