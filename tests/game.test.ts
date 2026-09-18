@@ -134,6 +134,154 @@ describe('competition fixtures', () => {
     expect(state.week).toBe(7)
   })
 
+  test('Masters 1 playoffs advance one bracket round at a time', { timeout: 15000 }, () => {
+    let state = createGame('Manager', 'c9')
+    for (let week = 0; week < 9; week++)
+      state = advanceWeek(state, 'Measured defaults', 'Disciplined retakes')
+    expect(state.week).toBe(10)
+    expect(
+      fixturesForWeek(state, 10).every(
+        (fixture) => fixture.label === 'Upper Quarterfinal' && fixture.status === 'scheduled',
+      ),
+    ).toBeTrue()
+    state = simulateTournamentRound(state, 'Measured defaults', 'Disciplined retakes')
+    expect(state.week).toBe(10)
+    const afterQuarters = fixturesForWeek(state, 10)
+    expect(
+      afterQuarters.filter(
+        (fixture) => fixture.label === 'Upper Quarterfinal' && fixture.status === 'completed',
+      ),
+    ).toHaveLength(4)
+    expect(
+      afterQuarters.filter(
+        (fixture) => fixture.label === 'Upper Semifinal' && fixture.status === 'scheduled',
+      ),
+    ).toHaveLength(2)
+    expect(
+      afterQuarters.filter(
+        (fixture) => fixture.label === 'Lower Round 1' && fixture.status === 'scheduled',
+      ),
+    ).toHaveLength(2)
+    expect(afterQuarters.some((fixture) => fixture.label === 'Grand Final')).toBeFalse()
+    state = simulateTournamentRound(state, 'Measured defaults', 'Disciplined retakes')
+    expect(state.week).toBe(10)
+    expect(
+      fixturesForWeek(state, 10).filter(
+        (fixture) => fixture.label === 'Upper Final' && fixture.status === 'scheduled',
+      ),
+    ).toHaveLength(1)
+    expect(
+      fixturesForWeek(state, 10).filter(
+        (fixture) => fixture.label === 'Lower Round 2' && fixture.status === 'scheduled',
+      ),
+    ).toHaveLength(2)
+  })
+
+  test('Play next match opens the next Masters 1 playoff round', { timeout: 15000 }, () => {
+    let state = createGame('Manager', 'c9')
+    for (let week = 0; week < 9; week++)
+      state = advanceWeek(state, 'Measured defaults', 'Disciplined retakes')
+    const quarters = fixturesForWeek(state, 10).filter(
+      (fixture) => fixture.label === 'Upper Quarterfinal' && fixture.status === 'scheduled',
+    )
+    expect(quarters).toHaveLength(4)
+    for (let index = 0; index < 4; index++)
+      state = simulateNextTournamentMatch(
+        state,
+        'Measured defaults',
+        'Disciplined retakes',
+        'Masters 1',
+      )
+    expect(
+      fixturesForWeek(state, 10).filter(
+        (fixture) => fixture.label === 'Upper Quarterfinal' && fixture.status === 'completed',
+      ),
+    ).toHaveLength(4)
+    expect(
+      fixturesForWeek(state, 10).filter(
+        (fixture) =>
+          (fixture.label === 'Upper Semifinal' || fixture.label === 'Lower Round 1') &&
+          fixture.status === 'scheduled',
+      ).length,
+    ).toBeGreaterThan(0)
+    let stuck = structuredClone(state)
+    stuck.fixtures = stuck.fixtures.filter(
+      (fixture) => fixture.label !== 'Upper Semifinal' && fixture.label !== 'Lower Round 1',
+    )
+    stuck = simulateNextTournamentMatch(
+      stuck,
+      'Measured defaults',
+      'Disciplined retakes',
+      'Masters 1',
+    )
+    expect(stuck.week).toBe(10)
+    expect(
+      fixturesForWeek(stuck, 10).some(
+        (fixture) =>
+          (fixture.label === 'Upper Semifinal' || fixture.label === 'Lower Round 1') &&
+          fixture.status === 'completed',
+      ),
+    ).toBeTrue()
+    const completedBefore = fixturesForWeek(state, 10).filter(
+      (fixture) =>
+        (fixture.label === 'Upper Semifinal' || fixture.label === 'Lower Round 1') &&
+        fixture.status === 'completed',
+    ).length
+    state = simulateNextTournamentMatch(
+      state,
+      'Measured defaults',
+      'Disciplined retakes',
+      'Masters 1',
+    )
+    expect(state.week).toBe(10)
+    expect(
+      fixturesForWeek(state, 10).filter(
+        (fixture) =>
+          (fixture.label === 'Upper Semifinal' || fixture.label === 'Lower Round 1') &&
+          fixture.status === 'completed',
+      ).length,
+    ).toBe(completedBefore + 1)
+  })
+
+  test('Stage 1 playoffs do not dump the remaining bracket on Advance round', {
+    timeout: 15000,
+  }, () => {
+    let state = createGame('Manager', 'c9')
+    for (let week = 0; week < 16; week++)
+      state = advanceWeek(state, 'Measured defaults', 'Disciplined retakes')
+    expect(state.week).toBe(17)
+    state = simulateTournamentRound(state, 'Measured defaults', 'Disciplined retakes')
+    expect(state.week).toBe(17)
+    const americas = state.fixtures.filter(
+      (fixture) =>
+        fixture.phase === 'Stage 1' && fixture.region === 'Americas' && fixture.week === 17,
+    )
+    expect(
+      americas.filter(
+        (fixture) => fixture.label === 'Upper Final' && fixture.status === 'scheduled',
+      ),
+    ).toHaveLength(1)
+    expect(americas.some((fixture) => fixture.label === 'Lower Round 3')).toBeFalse()
+    expect(americas.some((fixture) => fixture.label === 'Grand Final')).toBeFalse()
+  })
+
+  test('league weeks still resolve the full matchday when advancing the week', () => {
+    let state = createGame('Manager', 'c9')
+    for (let week = 0; week < 11; week++)
+      state = advanceWeek(state, 'Measured defaults', 'Disciplined retakes')
+    expect(state.week).toBe(12)
+    const before = fixturesForWeek(state, 12).filter((fixture) => fixture.stage === 'League')
+    expect(before.length).toBeGreaterThan(0)
+    expect(before.every((fixture) => fixture.status === 'scheduled')).toBeTrue()
+    state = advanceWeek(state, 'Measured defaults', 'Disciplined retakes')
+    expect(state.week).toBe(13)
+    expect(
+      state.fixtures
+        .filter((fixture) => fixture.week === 12 && fixture.stage === 'League')
+        .every((fixture) => fixture.status === 'completed'),
+    ).toBeTrue()
+  })
+
   test('the scheduled opponent is the opponent that gets simulated', () => {
     const state = createGame('Manager', 'c9')
     const fixture = nextFixtureForTeam(state, 'c9', 1)!

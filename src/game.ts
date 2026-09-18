@@ -1044,21 +1044,6 @@ function regionalFixtures(
       fixture.label === label,
   )
 }
-function playRegionalLabel(
-  state: GameState,
-  phase: 'Stage 1' | 'Stage 2',
-  week: number,
-  region: Region,
-  label: string,
-  attackStyle: string,
-  defenseStyle: string,
-) {
-  const fixture = regionalFixtures(state, phase, region, label).find(
-    (candidate) => candidate.status === 'scheduled',
-  )
-  if (!fixture) return null
-  return playFixture(state, fixture, attackStyle, defenseStyle)
-}
 function scheduleRegionalPlayoffWeek(state: GameState, phase: 'Stage 1' | 'Stage 2', week: number) {
   const config = regionalPlayoffConfig(phase)
   regions.forEach((region) => {
@@ -1140,12 +1125,31 @@ function scheduleRegionalPlayoffWeek(state: GameState, phase: 'Stage 1' | 'Stage
     }
   })
 }
+function awardRegionalPlayoffQualifiers(
+  state: GameState,
+  phase: 'Stage 1' | 'Stage 2',
+  region: Region,
+) {
+  const config = regionalPlayoffConfig(phase)
+  const prefix = phase === 'Stage 1' ? 'Masters 2 qualifier #' : 'Champions qualifier #'
+  if (
+    Object.values(state.teams).some(
+      (team) => team.region === region && team.playoffStage.startsWith(prefix),
+    )
+  )
+    return
+  regionalPlayoffQualifiers(state, phase, region, config.qualifiers).forEach((id, index) => {
+    state.teams[id].playoffStage = prefix + (index + 1)
+    state.teams[id].championshipPoints += phase === 'Stage 1' ? 3 : 5
+  })
+}
 function finishRegionalWeek(
   state: GameState,
   phase: 'Stage 1' | 'Stage 2',
   week: number,
   attackStyle: string,
   defenseStyle: string,
+  autoPlay = true,
 ) {
   const config = regionalPlayoffConfig(phase)
   let managed: MatchResult | null = null
@@ -1153,19 +1157,23 @@ function finishRegionalWeek(
     if (result && (result.aId === state.currentTeamId || result.bId === state.currentTeamId))
       managed = result
   }
+  const playNew = (fixtures: Fixture[]) => {
+    if (!autoPlay) return
+    fixtures
+      .filter((fixture) => fixture.status === 'scheduled')
+      .forEach((fixture) => remember(playFixture(state, fixture, attackStyle, defenseStyle)))
+  }
+  const completed = (region: Region, label: string) =>
+    regionalFixtures(state, phase, region, label).filter(
+      (fixture) => fixture.status === 'completed',
+    )
   if (week === config.playoffStart + 1) {
     regions.forEach((region) => {
-      const semis = regionalFixtures(state, phase, region, 'Upper Semifinal').sort((left, right) =>
-        left.id.localeCompare(right.id),
-      )
-      const lowerOne = regionalFixtures(state, phase, region, 'Lower Round 1').sort((left, right) =>
-        left.id.localeCompare(right.id),
-      )
+      const semis = completed(region, 'Upper Semifinal')
+      const lowerOne = completed(region, 'Lower Round 1')
       if (
         semis.length === 2 &&
-        semis.every((fixture) => fixture.status === 'completed') &&
         lowerOne.length === 2 &&
-        lowerOne.every((fixture) => fixture.status === 'completed') &&
         !regionalFixtures(state, phase, region, 'Upper Final').length
       ) {
         addRegionalFixtures(
@@ -1176,9 +1184,6 @@ function finishRegionalWeek(
           'Upper Final',
           [[resultWinner(semis[0])!, resultWinner(semis[1])!]],
           { bracket: 'Upper', round: 3 },
-        )
-        remember(
-          playRegionalLabel(state, phase, week, region, 'Upper Final', attackStyle, defenseStyle),
         )
         addRegionalFixtures(
           state,
@@ -1192,12 +1197,18 @@ function finishRegionalWeek(
           ],
           { bracket: 'Lower', round: 3 },
         )
-        const lowerTwo = regionalFixtures(state, phase, region, 'Lower Round 2').sort(
-          (left, right) => left.id.localeCompare(right.id),
-        )
-        lowerTwo.forEach((fixture) =>
-          remember(playFixture(state, fixture, attackStyle, defenseStyle)),
-        )
+        playNew([
+          ...regionalFixtures(state, phase, region, 'Upper Final'),
+          ...regionalFixtures(state, phase, region, 'Lower Round 2'),
+        ])
+      }
+      if (
+        completed(region, 'Upper Final').length !== 1 ||
+        completed(region, 'Lower Round 2').length !== 2
+      )
+        return
+      if (!regionalFixtures(state, phase, region, 'Lower Round 3').length) {
+        const lowerTwo = completed(region, 'Lower Round 2')
         addRegionalFixtures(
           state,
           phase,
@@ -1207,19 +1218,17 @@ function finishRegionalWeek(
           [[resultWinner(lowerTwo[0])!, resultWinner(lowerTwo[1])!]],
           { bracket: 'Lower', round: 4 },
         )
-        remember(
-          playRegionalLabel(state, phase, week, region, 'Lower Round 3', attackStyle, defenseStyle),
-        )
+        playNew(regionalFixtures(state, phase, region, 'Lower Round 3'))
       }
     })
   }
   if (week === config.playoffStart + 2) {
     regions.forEach((region) => {
-      const lowerFinal = regionalFixtures(state, phase, region, 'Lower Final')[0]
-      const upperFinal = regionalFixtures(state, phase, region, 'Upper Final')[0]
+      const lowerFinal = completed(region, 'Lower Final')[0]
+      const upperFinal = completed(region, 'Upper Final')[0]
       if (
-        lowerFinal?.status === 'completed' &&
-        upperFinal?.status === 'completed' &&
+        lowerFinal &&
+        upperFinal &&
         !regionalFixtures(state, phase, region, 'Grand Final').length
       ) {
         addRegionalFixtures(
@@ -1231,17 +1240,10 @@ function finishRegionalWeek(
           [[resultWinner(upperFinal)!, resultWinner(lowerFinal)!]],
           { bracket: 'Final', round: 6, bestOf: 5 },
         )
-        remember(
-          playRegionalLabel(state, phase, week, region, 'Grand Final', attackStyle, defenseStyle),
-        )
-        regionalPlayoffQualifiers(state, phase, region, config.qualifiers).forEach((id, index) => {
-          state.teams[id].playoffStage =
-            phase === 'Stage 1'
-              ? 'Masters 2 qualifier #' + (index + 1)
-              : 'Champions qualifier #' + (index + 1)
-          state.teams[id].championshipPoints += phase === 'Stage 1' ? 3 : 5
-        })
+        playNew(regionalFixtures(state, phase, region, 'Grand Final'))
       }
+      if (completed(region, 'Grand Final').length === 1)
+        awardRegionalPlayoffQualifiers(state, phase, region)
     })
   }
   return managed
@@ -1805,16 +1807,28 @@ function playFixture(
   if (fixture.phase === 'Kickoff') applyKickoffResult(state, result)
   return result
 }
-export function simulateNextTournamentMatch(
-  input: GameState,
+function buildIntraWeekRounds(
+  state: GameState,
   attackStyle: string,
   defenseStyle: string,
+  autoPlay: boolean,
+) {
+  const phase = phaseForWeek(state.week)
+  if (phase === 'Kickoff')
+    regions.forEach((region) =>
+      finishKickoffRegion(state, region, attackStyle, defenseStyle, autoPlay),
+    )
+  if (phase === 'Stage 1' || phase === 'Stage 2')
+    finishRegionalWeek(state, phase, state.week, attackStyle, defenseStyle, autoPlay)
+  if (phase === 'Masters 1' || phase === 'Masters 2' || phase === 'Champions')
+    finishInternationalWeek(state, phase, state.week, attackStyle, defenseStyle, autoPlay)
+}
+function nextScheduledTournamentFixture(
+  state: GameState,
   phase?: Exclude<CompetitionPhase, 'Break' | 'Offseason'>,
   region?: Region,
-): GameState {
-  const state: GameState = structuredClone(input)
-  ensureWeekScheduled(state, state.week)
-  const fixture = fixturesForWeek(state, state.week)
+) {
+  return fixturesForWeek(state, state.week)
     .filter(
       (candidate) =>
         candidate.status === 'scheduled' &&
@@ -1827,6 +1841,40 @@ export function simulateNextTournamentMatch(
         left.label.localeCompare(right.label) ||
         left.id.localeCompare(right.id),
     )[0]
+}
+export function canPlayNextTournamentMatch(
+  input: GameState,
+  phase?: Exclude<CompetitionPhase, 'Break' | 'Offseason'>,
+  region?: Region,
+) {
+  if (nextScheduledTournamentFixture(input, phase, region)) return true
+  const peek: GameState = structuredClone(input)
+  ensureWeekScheduled(peek, peek.week)
+  buildIntraWeekRounds(peek, 'Measured defaults', 'Disciplined retakes', false)
+  return Boolean(nextScheduledTournamentFixture(peek, phase, region))
+}
+function isLastIntraWeekRound(state: GameState, roundFixtures: Fixture[]) {
+  const peek: GameState = structuredClone(state)
+  roundFixtures.forEach((fixture) => {
+    const next = peek.fixtures.find((candidate) => candidate.id === fixture.id)
+    if (!next || next.status === 'completed' || !next.bId) return
+    next.status = 'completed'
+    next.winnerId = next.aId
+  })
+  buildIntraWeekRounds(peek, 'Measured defaults', 'Disciplined retakes', false)
+  return !fixturesForWeek(peek, peek.week).some((fixture) => fixture.status === 'scheduled')
+}
+export function simulateNextTournamentMatch(
+  input: GameState,
+  attackStyle: string,
+  defenseStyle: string,
+  phase?: Exclude<CompetitionPhase, 'Break' | 'Offseason'>,
+  region?: Region,
+): GameState {
+  const state: GameState = structuredClone(input)
+  ensureWeekScheduled(state, state.week)
+  buildIntraWeekRounds(state, attackStyle, defenseStyle, false)
+  const fixture = nextScheduledTournamentFixture(state, phase, region)
   if (!fixture) return state
   const result = playFixture(state, fixture, attackStyle, defenseStyle)
   if (result) {
@@ -1847,6 +1895,7 @@ export function simulateNextTournamentMatch(
         '.',
     )
   }
+  buildIntraWeekRounds(state, attackStyle, defenseStyle, false)
   state.saveTimestamp = new Date().toISOString()
   saveGame(state)
   return state
@@ -1875,110 +1924,183 @@ function playScheduledByLabel(
     })
   return managed
 }
+function internationalFixtures(
+  state: GameState,
+  phase: 'Masters 1' | 'Masters 2' | 'Champions',
+  label: string,
+) {
+  return state.fixtures
+    .filter(
+      (fixture) =>
+        fixture.season === state.season && fixture.phase === phase && fixture.label === label,
+    )
+    .sort((left, right) => left.id.localeCompare(right.id))
+}
 function finishInternationalWeek(
   state: GameState,
   phase: 'Masters 1' | 'Masters 2' | 'Champions',
   week: number,
   attackStyle: string,
   defenseStyle: string,
+  autoPlay = true,
 ) {
   let managed: MatchResult | null = null
   const play = (...labels: string[]) => {
+    if (!autoPlay) return
     const result = playScheduledByLabel(state, phase, week, labels, attackStyle, defenseStyle)
     if (result) managed = result
   }
+  const existing = (label: string) => internationalFixtures(state, phase, label)
+  const completed = (label: string) =>
+    existing(label).filter((fixture) => fixture.status === 'completed')
   if (phase === 'Masters 1' || phase === 'Masters 2') {
     const start = phase === 'Masters 1' ? 8 : 20
     if (week === start + 1) {
-      const entrants = mastersEntrants(state, phase).swiss.filter((id) => {
-        const record = swissRecord(state, phase, id)
-        return record.wins === 1 && record.losses === 1
-      })
-      addInternationalFixtures(state, phase, week, 'Swiss Decider', pairPool(state, entrants), {
-        stage: 'Swiss',
-        bracket: 'Swiss',
-        round: 3,
-      })
-      play('Swiss Decider')
+      if (
+        completed('Swiss Advancement').length === 2 &&
+        completed('Swiss Elimination').length === 2 &&
+        !existing('Swiss Decider').length
+      ) {
+        const entrants = mastersEntrants(state, phase).swiss.filter((id) => {
+          const record = swissRecord(state, phase, id)
+          return record.wins === 1 && record.losses === 1
+        })
+        addInternationalFixtures(state, phase, week, 'Swiss Decider', pairPool(state, entrants), {
+          stage: 'Swiss',
+          bracket: 'Swiss',
+          round: 3,
+        })
+        play('Swiss Decider')
+      }
+      return managed
     }
     if (week === start + 2) {
-      const qf = state.fixtures.filter((f) => f.phase === phase && f.label === 'Upper Quarterfinal')
+      const qf = completed('Upper Quarterfinal')
+      if (qf.length === 4 && !existing('Upper Semifinal').length) {
+        addInternationalFixtures(
+          state,
+          phase,
+          week,
+          'Upper Semifinal',
+          [
+            [resultWinner(qf[0])!, resultWinner(qf[1])!],
+            [resultWinner(qf[2])!, resultWinner(qf[3])!],
+          ],
+          { stage: 'Playoffs', bracket: 'Upper', round: 2 },
+        )
+        addInternationalFixtures(
+          state,
+          phase,
+          week,
+          'Lower Round 1',
+          [
+            [resultLoser(qf[0])!, resultLoser(qf[1])!],
+            [resultLoser(qf[2])!, resultLoser(qf[3])!],
+          ],
+          { stage: 'Playoffs', bracket: 'Lower', round: 2 },
+        )
+        play('Upper Semifinal', 'Lower Round 1')
+      }
+      if (completed('Upper Semifinal').length !== 2 || completed('Lower Round 1').length !== 2)
+        return managed
+      if (!existing('Upper Final').length) {
+        const upperSemis = completed('Upper Semifinal'),
+          lowerOne = completed('Lower Round 1')
+        addInternationalFixtures(
+          state,
+          phase,
+          week,
+          'Upper Final',
+          [[resultWinner(upperSemis[0])!, resultWinner(upperSemis[1])!]],
+          { stage: 'Playoffs', bracket: 'Upper', round: 3 },
+        )
+        addInternationalFixtures(
+          state,
+          phase,
+          week,
+          'Lower Round 2',
+          [
+            [resultLoser(upperSemis[0])!, resultWinner(lowerOne[0])!],
+            [resultLoser(upperSemis[1])!, resultWinner(lowerOne[1])!],
+          ],
+          { stage: 'Playoffs', bracket: 'Lower', round: 3 },
+        )
+        play('Upper Final', 'Lower Round 2')
+      }
+      if (completed('Upper Final').length !== 1 || completed('Lower Round 2').length !== 2)
+        return managed
+      if (!existing('Lower Round 3').length) {
+        const lowerTwo = completed('Lower Round 2')
+        addInternationalFixtures(
+          state,
+          phase,
+          week,
+          'Lower Round 3',
+          [[resultWinner(lowerTwo[0])!, resultWinner(lowerTwo[1])!]],
+          { stage: 'Playoffs', bracket: 'Lower', round: 4 },
+        )
+        play('Lower Round 3')
+      }
+      if (completed('Lower Round 3').length !== 1) return managed
+      if (!existing('Lower Final').length) {
+        const upperFinal = completed('Upper Final')[0],
+          lowerThree = completed('Lower Round 3')[0]
+        addInternationalFixtures(
+          state,
+          phase,
+          week,
+          'Lower Final',
+          [[resultLoser(upperFinal)!, resultWinner(lowerThree)!]],
+          { stage: 'Playoffs', bracket: 'Lower', round: 5, bestOf: 5 },
+        )
+        play('Lower Final')
+      }
+      if (completed('Lower Final').length !== 1) return managed
+      if (!existing('Grand Final').length) {
+        const upperFinal = completed('Upper Final')[0],
+          lowerFinal = completed('Lower Final')[0]
+        addInternationalFixtures(
+          state,
+          phase,
+          week,
+          'Grand Final',
+          [[resultWinner(upperFinal)!, resultWinner(lowerFinal)!]],
+          { stage: 'Playoffs', bracket: 'Final', round: 6, bestOf: 5 },
+        )
+        play('Grand Final')
+      }
+    }
+    return managed
+  }
+  if (week === 41) {
+    if (
+      completed('Upper Final').length === 1 &&
+      completed('Lower Round 2').length === 2 &&
+      !existing('Lower Round 3').length
+    ) {
+      const lowerTwo = completed('Lower Round 2')
       addInternationalFixtures(
         state,
-        phase,
-        week,
-        'Upper Semifinal',
-        [
-          [resultWinner(qf[0])!, resultWinner(qf[1])!],
-          [resultWinner(qf[2])!, resultWinner(qf[3])!],
-        ],
-        { stage: 'Playoffs', bracket: 'Upper', round: 2 },
-      )
-      addInternationalFixtures(
-        state,
-        phase,
-        week,
-        'Lower Round 1',
-        [
-          [resultLoser(qf[0])!, resultLoser(qf[1])!],
-          [resultLoser(qf[2])!, resultLoser(qf[3])!],
-        ],
-        { stage: 'Playoffs', bracket: 'Lower', round: 2 },
-      )
-      play('Upper Semifinal', 'Lower Round 1')
-      const upperSemis = state.fixtures.filter(
-          (f) => f.phase === phase && f.label === 'Upper Semifinal',
-        ),
-        lowerOne = state.fixtures.filter((f) => f.phase === phase && f.label === 'Lower Round 1')
-      addInternationalFixtures(
-        state,
-        phase,
-        week,
-        'Upper Final',
-        [[resultWinner(upperSemis[0])!, resultWinner(upperSemis[1])!]],
-        { stage: 'Playoffs', bracket: 'Upper', round: 3 },
-      )
-      addInternationalFixtures(
-        state,
-        phase,
-        week,
-        'Lower Round 2',
-        [
-          [resultLoser(upperSemis[0])!, resultWinner(lowerOne[0])!],
-          [resultLoser(upperSemis[1])!, resultWinner(lowerOne[1])!],
-        ],
-        { stage: 'Playoffs', bracket: 'Lower', round: 3 },
-      )
-      play('Upper Final', 'Lower Round 2')
-      const lowerTwo = state.fixtures.filter(
-        (f) => f.phase === phase && f.label === 'Lower Round 2',
-      )
-      addInternationalFixtures(
-        state,
-        phase,
+        'Champions',
         week,
         'Lower Round 3',
         [[resultWinner(lowerTwo[0])!, resultWinner(lowerTwo[1])!]],
         { stage: 'Playoffs', bracket: 'Lower', round: 4 },
       )
       play('Lower Round 3')
-      const upperFinal = state.fixtures.find(
-          (f) => f.phase === phase && f.label === 'Upper Final',
-        )!,
-        lowerThree = state.fixtures.find((f) => f.phase === phase && f.label === 'Lower Round 3')!
+    }
+  }
+  if (week === 42) {
+    if (
+      completed('Upper Final').length === 1 &&
+      completed('Lower Final').length === 1 &&
+      !existing('Grand Final').length
+    ) {
+      const upperFinal = completed('Upper Final')[0],
+        lowerFinal = completed('Lower Final')[0]
       addInternationalFixtures(
         state,
-        phase,
-        week,
-        'Lower Final',
-        [[resultLoser(upperFinal)!, resultWinner(lowerThree)!]],
-        { stage: 'Playoffs', bracket: 'Lower', round: 5, bestOf: 5 },
-      )
-      play('Lower Final')
-      const lowerFinal = state.fixtures.find((f) => f.phase === phase && f.label === 'Lower Final')!
-      addInternationalFixtures(
-        state,
-        phase,
+        'Champions',
         week,
         'Grand Final',
         [[resultWinner(upperFinal)!, resultWinner(lowerFinal)!]],
@@ -1986,36 +2108,6 @@ function finishInternationalWeek(
       )
       play('Grand Final')
     }
-    return managed
-  }
-  if (week === 41) {
-    const lowerTwo = state.fixtures.filter(
-      (f) => f.phase === 'Champions' && f.label === 'Lower Round 2',
-    )
-    addInternationalFixtures(
-      state,
-      'Champions',
-      week,
-      'Lower Round 3',
-      [[resultWinner(lowerTwo[0])!, resultWinner(lowerTwo[1])!]],
-      { stage: 'Playoffs', bracket: 'Lower', round: 4 },
-    )
-    play('Lower Round 3')
-  }
-  if (week === 42) {
-    const upperFinal = state.fixtures.find(
-        (f) => f.phase === 'Champions' && f.label === 'Upper Final',
-      )!,
-      lowerFinal = state.fixtures.find((f) => f.phase === 'Champions' && f.label === 'Lower Final')!
-    addInternationalFixtures(
-      state,
-      'Champions',
-      week,
-      'Grand Final',
-      [[resultWinner(upperFinal)!, resultWinner(lowerFinal)!]],
-      { stage: 'Playoffs', bracket: 'Final', round: 6, bestOf: 5 },
-    )
-    play('Grand Final')
   }
   return managed
 }
@@ -2099,6 +2191,7 @@ function finishKickoffRegion(
     (id): id is string => Boolean(id),
   )
   qualified.forEach((id) => {
+    if (state.kickoff[id].status === 'qualified') return
     state.kickoff[id].status = 'qualified'
     state.teams[id].playoffStage = 'Masters 1 · qualified'
     state.teams[id].championshipPoints += 2
@@ -2132,22 +2225,23 @@ export function simulateTournamentRound(
   defenseStyle: string,
 ): GameState {
   const phase = phaseForWeek(input.week)
-  if (phase !== 'Kickoff' || input.week !== 6) return advanceWeek(input, attackStyle, defenseStyle)
+  if (phase === 'Break' || phase === 'Offseason')
+    return advanceWeek(input, attackStyle, defenseStyle)
   const state: GameState = structuredClone(input)
   ensureWeekScheduled(state, state.week)
-  regions.forEach((region) => finishKickoffRegion(state, region, attackStyle, defenseStyle, false))
+  buildIntraWeekRounds(state, attackStyle, defenseStyle, false)
   let scheduled = fixturesForWeek(state, state.week).filter(
     (fixture) => fixture.status === 'scheduled',
   )
-  if (scheduled.length && scheduled.every((fixture) => fixture.label === 'Lower Final')) {
-    return advanceWeek(state, attackStyle, defenseStyle)
-  }
   if (!scheduled.length) return advanceWeek(state, attackStyle, defenseStyle)
   const round = Math.min(...scheduled.map((fixture) => fixture.round))
   scheduled = scheduled.filter((fixture) => fixture.round === round)
+  if (isLastIntraWeekRound(state, scheduled)) return advanceWeek(state, attackStyle, defenseStyle)
   scheduled.forEach((fixture) => playFixture(state, fixture, attackStyle, defenseStyle))
-  regions.forEach((region) => finishKickoffRegion(state, region, attackStyle, defenseStyle, false))
-  state.inbox.unshift('Kickoff ' + scheduled[0].label + ' completed. The bracket has been updated.')
+  buildIntraWeekRounds(state, attackStyle, defenseStyle, false)
+  state.inbox.unshift(
+    phase + ' ' + scheduled[0].label + ' completed. The bracket has been updated.',
+  )
   state.saveTimestamp = new Date().toISOString()
   saveGame(state)
   return state

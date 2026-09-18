@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import {
   activePhaseForWeek,
+  canPlayNextTournamentMatch,
   competitionRecord,
   currentTeam,
   dateForWeek,
@@ -1086,6 +1087,11 @@ export function CompetitionV2({
           (info.type === 'international' || fixture.region === region),
       )
       .sort((left, right) => left.round - right.round || left.label.localeCompare(right.label)),
+    canPlayNextMatch = canPlayNextTournamentMatch(
+      s,
+      phase,
+      info.type === 'regional' ? region : undefined,
+    ),
     selectEvent = (next: PlayablePhase) => {
       setPhase(next)
       setWeek(Math.max(events[next].start, Math.min(events[next].end, s.week)))
@@ -1152,13 +1158,15 @@ export function CompetitionV2({
             <span>
               {currentRoundFixtures.length
                 ? currentRoundFixtures.length + ' matches remain in this round.'
-                : 'All scheduled matches are complete. Advance to build the next round.'}
+                : canPlayNextMatch
+                  ? 'This round is complete. Play next match to start the next round.'
+                  : 'All scheduled matches are complete. Advance to build the next round.'}
             </span>
           </div>
           <div>
             <button
               className="secondary"
-              disabled={!currentRoundFixtures.length}
+              disabled={!canPlayNextMatch}
               onClick={() =>
                 onPlayNextMatch?.(phase, info.type === 'regional' ? region : undefined)
               }
