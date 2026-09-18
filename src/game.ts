@@ -1807,6 +1807,121 @@ function playFixture(
   if (fixture.phase === 'Kickoff') applyKickoffResult(state, result)
   return result
 }
+const tournamentSteps: string[][] = [
+  ['Swiss Opening'],
+  ['Swiss Advancement', 'Swiss Elimination'],
+  ['Swiss Decider'],
+  ['Upper Quarterfinal'],
+  ['Upper Semifinal', 'Lower Round 1'],
+  ['Upper Final', 'Lower Round 2'],
+  ['Lower Round 3'],
+  ['Lower Final'],
+  ['Grand Final'],
+]
+function liveStepFixtures(scheduled: Fixture[]) {
+  if (!scheduled.length) return []
+  if (scheduled.every((fixture) => fixture.phase !== 'Kickoff')) {
+    const step = tournamentSteps.find((labels) =>
+      labels.some((label) => scheduled.some((fixture) => fixture.label === label)),
+    )
+    if (step) return scheduled.filter((fixture) => step.includes(fixture.label))
+  }
+  const round = Math.min(...scheduled.map((fixture) => fixture.round))
+  return scheduled.filter((fixture) => fixture.round === round)
+}
+export function liveTournamentRoundFixtures(
+  state: GameState,
+  phase: Exclude<CompetitionPhase, 'Break' | 'Offseason'>,
+  region?: Region,
+) {
+  return liveStepFixtures(
+    fixturesForWeek(state, state.week)
+      .filter(
+        (fixture) =>
+          fixture.status === 'scheduled' &&
+          fixture.phase === phase &&
+          (!region || fixture.region === region),
+      )
+      .sort(
+        (left, right) =>
+          left.round - right.round ||
+          left.label.localeCompare(right.label) ||
+          left.id.localeCompare(right.id),
+      ),
+  )
+}
+function isPackedTournamentWeek(week: number) {
+  const phase = phaseForWeek(week)
+  if (phase === 'Kickoff') return week === 6
+  if (phase === 'Masters 1') return week === 9 || week === 10
+  if (phase === 'Masters 2') return week === 21 || week === 22
+  if (phase === 'Champions') return week === 41 || week === 42
+  if (phase === 'Stage 1' || phase === 'Stage 2') {
+    const start = regionalPlayoffConfig(phase).playoffStart
+    return week === start + 1 || week === start + 2
+  }
+  return false
+}
+function finalizeCalendarWeek(state: GameState) {
+  const managedTeam = currentTeam(state)
+  if (state.week % 8 === 0 && managedTeam.wins > managedTeam.losses) {
+    const candidate = Object.values(state.teams).find(
+      (team) =>
+        team.id !== managedTeam.id &&
+        team.losses > team.wins &&
+        !state.jobs.some((job) => job.teamId === team.id && job.status === 'pending'),
+    )
+    if (candidate) {
+      state.jobs.unshift({
+        id: `job-${state.week}`,
+        teamId: candidate.id,
+        expiresWeek: state.week + 2,
+        reason: 'The organization is seeking a new direction after a difficult run.',
+        salary: 180000 + candidate.losses * 12000,
+        status: 'pending',
+      })
+      state.inbox.unshift(`${candidate.name} has opened a manager position for you.`)
+    }
+  }
+  state.week++
+  if (state.week > 52) {
+    const openingByes = new Set(
+      regions.flatMap((region) => regionalPlayoffQualifiers(state, 'Stage 2', region, 4)),
+    )
+    state.week = 1
+    state.season++
+    state.inbox.unshift(
+      `The 2026 competition rules continue into season ${state.season}. The new Kickoff bracket is ready.`,
+    )
+    Object.entries(state.kickoff).forEach(([id, record]) => {
+      record.wins = 0
+      record.losses = 0
+      record.status = 'active'
+      record.openingBye = openingByes.has(id)
+      state.teams[id].playoffStage = record.openingBye
+        ? 'Kickoff · Round 1 bye'
+        : 'Kickoff · 3 lives'
+    })
+  }
+  ensureWeekScheduled(state, state.week)
+  state.saveTimestamp = new Date().toISOString()
+  saveGame(state)
+}
+function tickCalendar(state: GameState) {
+  updateDevelopmentAndFinances(state)
+  const phase = phaseForWeek(state.week)
+  if (phase === 'Break') {
+    state.inbox.unshift(
+      `Calendar break before ${breakWeeks[state.week] ?? 'the next event'}. No match was scheduled this week.`,
+    )
+  } else {
+    state.inbox.unshift(
+      `${currentTeam(state).name} had no scheduled match in ${phaseLabel(state.week)}.`,
+    )
+  }
+  finalizeCalendarWeek(state)
+  return state
+}
 function buildIntraWeekRounds(
   state: GameState,
   attackStyle: string,
@@ -1852,17 +1967,6 @@ export function canPlayNextTournamentMatch(
   ensureWeekScheduled(peek, peek.week)
   buildIntraWeekRounds(peek, 'Measured defaults', 'Disciplined retakes', false)
   return Boolean(nextScheduledTournamentFixture(peek, phase, region))
-}
-function isLastIntraWeekRound(state: GameState, roundFixtures: Fixture[]) {
-  const peek: GameState = structuredClone(state)
-  roundFixtures.forEach((fixture) => {
-    const next = peek.fixtures.find((candidate) => candidate.id === fixture.id)
-    if (!next || next.status === 'completed' || !next.bId) return
-    next.status = 'completed'
-    next.winnerId = next.aId
-  })
-  buildIntraWeekRounds(peek, 'Measured defaults', 'Disciplined retakes', false)
-  return !fixturesForWeek(peek, peek.week).some((fixture) => fixture.status === 'scheduled')
 }
 export function simulateNextTournamentMatch(
   input: GameState,
@@ -2230,18 +2334,22 @@ export function simulateTournamentRound(
   const state: GameState = structuredClone(input)
   ensureWeekScheduled(state, state.week)
   buildIntraWeekRounds(state, attackStyle, defenseStyle, false)
-  let scheduled = fixturesForWeek(state, state.week).filter(
+  const scheduled = fixturesForWeek(state, state.week).filter(
     (fixture) => fixture.status === 'scheduled',
   )
-  if (!scheduled.length) return advanceWeek(state, attackStyle, defenseStyle)
-  const round = Math.min(...scheduled.map((fixture) => fixture.round))
-  scheduled = scheduled.filter((fixture) => fixture.round === round)
-  if (isLastIntraWeekRound(state, scheduled)) return advanceWeek(state, attackStyle, defenseStyle)
-  scheduled.forEach((fixture) => playFixture(state, fixture, attackStyle, defenseStyle))
+  if (!scheduled.length) return tickCalendar(state)
+  const step = liveStepFixtures(scheduled)
+  step.forEach((fixture) => playFixture(state, fixture, attackStyle, defenseStyle))
   buildIntraWeekRounds(state, attackStyle, defenseStyle, false)
-  state.inbox.unshift(
-    phase + ' ' + scheduled[0].label + ' completed. The bracket has been updated.',
+  const remaining = fixturesForWeek(state, state.week).some(
+    (fixture) => fixture.status === 'scheduled',
   )
+  if (!remaining && !isPackedTournamentWeek(state.week)) {
+    updateDevelopmentAndFinances(state)
+    finalizeCalendarWeek(state)
+    return state
+  }
+  state.inbox.unshift(phase + ' ' + step[0].label + ' completed. The bracket has been updated.')
   state.saveTimestamp = new Date().toISOString()
   saveGame(state)
   return state
@@ -2315,48 +2423,7 @@ export function advanceWeek(
         `${managedTeam.name} had no scheduled match in ${phaseLabel(state.week)}.`,
       )
   }
-  if (state.week % 8 === 0 && managedTeam.wins > managedTeam.losses) {
-    const candidate = Object.values(state.teams).find(
-      (team) =>
-        team.id !== managedTeam.id &&
-        team.losses > team.wins &&
-        !state.jobs.some((job) => job.teamId === team.id && job.status === 'pending'),
-    )
-    if (candidate) {
-      state.jobs.unshift({
-        id: `job-${state.week}`,
-        teamId: candidate.id,
-        expiresWeek: state.week + 2,
-        reason: 'The organization is seeking a new direction after a difficult run.',
-        salary: 180000 + candidate.losses * 12000,
-        status: 'pending',
-      })
-      state.inbox.unshift(`${candidate.name} has opened a manager position for you.`)
-    }
-  }
-  state.week++
-  if (state.week > 52) {
-    const openingByes = new Set(
-      regions.flatMap((region) => regionalPlayoffQualifiers(state, 'Stage 2', region, 4)),
-    )
-    state.week = 1
-    state.season++
-    state.inbox.unshift(
-      `The 2026 competition rules continue into season ${state.season}. The new Kickoff bracket is ready.`,
-    )
-    Object.entries(state.kickoff).forEach(([id, record]) => {
-      record.wins = 0
-      record.losses = 0
-      record.status = 'active'
-      record.openingBye = openingByes.has(id)
-      state.teams[id].playoffStage = record.openingBye
-        ? 'Kickoff · Round 1 bye'
-        : 'Kickoff · 3 lives'
-    })
-  }
-  ensureWeekScheduled(state, state.week)
-  state.saveTimestamp = new Date().toISOString()
-  saveGame(state)
+  finalizeCalendarWeek(state)
   return state
 }
 export function acceptJob(state: GameState, id: string) {
