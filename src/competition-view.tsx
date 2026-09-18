@@ -541,17 +541,36 @@ function KickoffBracket({
                             )}
                           </div>
                         ))}
+                        {round.flow !== 'end' &&
+                          slots.map((_, slotIndex) => (
+                            <span
+                              className={
+                                'kickoff-out-connector' + (round.flow === 'merge' ? ' is-half' : '')
+                              }
+                              key={round.label + '-out-' + slotIndex}
+                              style={{ top: centerFor(slotIndex) + '%' }}
+                            />
+                          ))}
                         {round.flow === 'merge' &&
                           slots.map((_, slotIndex) => {
                             if (slotIndex % 2) return null
                             const start = centerFor(slotIndex)
                             const end = centerFor(Math.min(slotIndex + 1, slots.length - 1))
+                            const mid = (start + end) / 2
                             return (
                               <span
-                                className="kickoff-merge-connector"
+                                className="kickoff-merge-group"
                                 key={round.label + '-connector-' + slotIndex}
-                                style={{ top: start + '%', height: end - start + '%' }}
-                              />
+                              >
+                                <span
+                                  className="kickoff-merge-connector"
+                                  style={{ top: start + '%', height: end - start + '%' }}
+                                />
+                                <span
+                                  className="kickoff-join-connector"
+                                  style={{ top: mid + '%' }}
+                                />
+                              </span>
                             )
                           })}
                       </div>
