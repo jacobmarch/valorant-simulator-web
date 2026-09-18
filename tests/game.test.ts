@@ -3,6 +3,7 @@ import {
   SAVE_KEY,
   advanceWeek,
   createGame,
+  currentTournamentDeskFixtures,
   fixturesForWeek,
   loadGame,
   nextFixtureForTeam,
@@ -259,6 +260,45 @@ describe('competition fixtures', () => {
           fixture.status === 'completed',
       ).length,
     ).toBe(completedBefore + 1)
+  })
+
+  test('Masters 1 match desk keeps completed series until the round is finished', {
+    timeout: 15000,
+  }, () => {
+    let state = createGame('Manager', 'c9')
+    for (let week = 0; week < 9; week++)
+      state = advanceWeek(state, 'Measured defaults', 'Disciplined retakes')
+    expect(
+      currentTournamentDeskFixtures(state, 'Masters 1').every(
+        (fixture) => fixture.label === 'Upper Quarterfinal' && fixture.status === 'scheduled',
+      ),
+    ).toBeTrue()
+    state = simulateNextTournamentMatch(
+      state,
+      'Measured defaults',
+      'Disciplined retakes',
+      'Masters 1',
+    )
+    const afterOne = currentTournamentDeskFixtures(state, 'Masters 1')
+    expect(afterOne).toHaveLength(4)
+    expect(afterOne.filter((fixture) => fixture.status === 'completed')).toHaveLength(1)
+    expect(afterOne.filter((fixture) => fixture.status === 'scheduled')).toHaveLength(3)
+    expect(afterOne.every((fixture) => fixture.label === 'Upper Quarterfinal')).toBeTrue()
+    for (let index = 0; index < 3; index++)
+      state = simulateNextTournamentMatch(
+        state,
+        'Measured defaults',
+        'Disciplined retakes',
+        'Masters 1',
+      )
+    const nextRound = currentTournamentDeskFixtures(state, 'Masters 1')
+    expect(nextRound.every((fixture) => fixture.label === 'Upper Quarterfinal')).toBeFalse()
+    expect(
+      nextRound.every(
+        (fixture) => fixture.label === 'Upper Semifinal' || fixture.label === 'Lower Round 1',
+      ),
+    ).toBeTrue()
+    expect(nextRound.every((fixture) => fixture.status === 'scheduled')).toBeTrue()
   })
 
   test('Stage 1 playoffs do not dump the remaining bracket on Advance round', {

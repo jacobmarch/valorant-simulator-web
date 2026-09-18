@@ -57,6 +57,10 @@
   gap: 12px;
   height: auto;
 }
+.swiss-result-round .matchup-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
 
 /* Lane titles must not inherit the shell chrome sticky/z-index. */
 .kickoff-bracket-lane > header,

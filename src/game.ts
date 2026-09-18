@@ -1829,26 +1829,43 @@ function liveStepFixtures(scheduled: Fixture[]) {
   const round = Math.min(...scheduled.map((fixture) => fixture.round))
   return scheduled.filter((fixture) => fixture.round === round)
 }
+function compareFixtures(left: Fixture, right: Fixture) {
+  return (
+    left.round - right.round ||
+    left.label.localeCompare(right.label) ||
+    left.id.localeCompare(right.id)
+  )
+}
+function eventWeekFixtures(
+  state: GameState,
+  phase: Exclude<CompetitionPhase, 'Break' | 'Offseason'>,
+  region?: Region,
+) {
+  return fixturesForWeek(state, state.week)
+    .filter((fixture) => fixture.phase === phase && (!region || fixture.region === region))
+    .sort(compareFixtures)
+}
 export function liveTournamentRoundFixtures(
   state: GameState,
   phase: Exclude<CompetitionPhase, 'Break' | 'Offseason'>,
   region?: Region,
 ) {
   return liveStepFixtures(
-    fixturesForWeek(state, state.week)
-      .filter(
-        (fixture) =>
-          fixture.status === 'scheduled' &&
-          fixture.phase === phase &&
-          (!region || fixture.region === region),
-      )
-      .sort(
-        (left, right) =>
-          left.round - right.round ||
-          left.label.localeCompare(right.label) ||
-          left.id.localeCompare(right.id),
-      ),
+    eventWeekFixtures(state, phase, region).filter((fixture) => fixture.status === 'scheduled'),
   )
+}
+export function currentTournamentDeskFixtures(
+  state: GameState,
+  phase: Exclude<CompetitionPhase, 'Break' | 'Offseason'>,
+  region?: Region,
+) {
+  const weekFixtures = eventWeekFixtures(state, phase, region)
+  const remaining = liveStepFixtures(
+    weekFixtures.filter((fixture) => fixture.status === 'scheduled'),
+  )
+  if (!remaining.length) return []
+  const labels = new Set(remaining.map((fixture) => fixture.label))
+  return weekFixtures.filter((fixture) => labels.has(fixture.label))
 }
 function isPackedTournamentWeek(week: number) {
   const phase = phaseForWeek(week)

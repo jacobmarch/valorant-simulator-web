@@ -6,6 +6,7 @@ import {
   currentTeam,
   dateForWeek,
   fixturesForWeek,
+  currentTournamentDeskFixtures,
   liveTournamentRoundFixtures,
   phaseForWeek,
   rankedTeams,
@@ -771,14 +772,17 @@ function fixtureRecord(id: string, fixtures: Fixture[]) {
     .forEach((f) => (f.winnerId === id ? wins++ : losses++))
   return { wins, losses }
 }
+const swissRoundOrder = ['Swiss Opening', 'Swiss Advancement', 'Swiss Elimination', 'Swiss Decider']
 function SwissView({
   s,
   phase,
   fixtures,
+  onOpenMatch,
 }: {
   s: GameState
   phase: 'Masters 1' | 'Masters 2'
   fixtures: Fixture[]
+  onOpenMatch?: (matchId: string) => void
 }) {
   const source = phase === 'Masters 1' ? 'Kickoff' : 'Stage 1',
     direct = regions.map((region) =>
@@ -858,6 +862,52 @@ function SwissView({
             </div>
           )}
         </div>
+      </section>
+      <section className="panel swiss-results">
+        <PanelTitle
+          eyebrow="SWISS RESULTS"
+          title="Stage games played"
+          right={
+            <Badge>
+              {swiss.filter((fixture) => fixture.status === 'completed').length} / {swiss.length}
+            </Badge>
+          }
+        />
+        {swiss.length ? (
+          swissRoundOrder
+            .map((label) => ({
+              label,
+              matches: swiss.filter((fixture) => fixture.label === label),
+            }))
+            .filter((round) => round.matches.length)
+            .map((round) => (
+              <div className="swiss-result-round" key={round.label}>
+                <h3>
+                  {round.label.replace('Swiss ', '')}
+                  <small>
+                    {round.matches.filter((fixture) => fixture.status === 'completed').length} of{' '}
+                    {round.matches.length} complete
+                  </small>
+                </h3>
+                <div className="matchup-list">
+                  {round.matches.map((fixture) => (
+                    <FixtureCard
+                      s={s}
+                      fixture={fixture}
+                      featured
+                      onOpenMatch={onOpenMatch}
+                      key={fixture.id}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))
+        ) : (
+          <div className="competition-empty">
+            <strong>No Swiss results yet</strong>
+            <span>Completed Swiss series appear here as the stage is played.</span>
+          </div>
+        )}
       </section>
     </div>
   )
@@ -953,7 +1003,15 @@ function PlayoffBracket({
     </section>
   )
 }
-function ChampionsGroups({ s, fixtures }: { s: GameState; fixtures: Fixture[] }) {
+function ChampionsGroups({
+  s,
+  fixtures,
+  onOpenMatch,
+}: {
+  s: GameState
+  fixtures: Fixture[]
+  onOpenMatch?: (matchId: string) => void
+}) {
   return (
     <section className="panel">
       <PanelTitle
@@ -992,6 +1050,18 @@ function ChampionsGroups({ s, fixtures }: { s: GameState; fixtures: Fixture[] })
                   )
                 })}
               {!ids.length && <p>Draw pending</p>}
+              {matches.length ? (
+                <div className="group-results">
+                  {matches.map((fixture) => (
+                    <FixtureCard
+                      s={s}
+                      fixture={fixture}
+                      onOpenMatch={onOpenMatch}
+                      key={fixture.id}
+                    />
+                  ))}
+                </div>
+              ) : null}
             </article>
           )
         })}
@@ -1015,7 +1085,7 @@ function InternationalView({
   const fixtures = s.fixtures.filter(
       (f) => f.season === s.season && f.phase === phase && f.scope === 'international',
     ),
-    current = fixtures.filter((f) => f.status === 'scheduled' && f.week === s.week)
+    current = currentTournamentDeskFixtures(s, phase)
   return (
     <>
       <div className="stage-tabs">
@@ -1032,9 +1102,13 @@ function InternationalView({
       </div>
       {stage === 'opening' ? (
         phase === 'Champions' ? (
-          <ChampionsGroups s={s} fixtures={fixtures.filter((f) => stageFor(f) === 'Groups')} />
+          <ChampionsGroups
+            onOpenMatch={onOpenMatch}
+            s={s}
+            fixtures={fixtures.filter((f) => stageFor(f) === 'Groups')}
+          />
         ) : (
-          <SwissView s={s} phase={phase} fixtures={fixtures} />
+          <SwissView onOpenMatch={onOpenMatch} s={s} phase={phase} fixtures={fixtures} />
         )
       ) : (
         <PlayoffBracket onOpenMatch={onOpenMatch} s={s} fixtures={fixtures} />
@@ -1047,7 +1121,7 @@ function InternationalView({
         empty={
           s.week < events[phase].start
             ? 'The qualified field appears when the event begins.'
-            : 'No matches remain this week.'
+            : 'This round is complete. Advance when you are ready for the next round.'
         }
       />
     </>
