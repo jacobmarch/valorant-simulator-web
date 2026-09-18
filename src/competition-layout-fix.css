@@ -22,6 +22,11 @@
 .kickoff-match-node {
   overflow: visible;
 }
+.kickoff-out-connector,
+.kickoff-join-connector,
+.kickoff-merge-connector {
+  transform: none;
+}
 .kickoff-match-node .matchup-card,
 .bracket-step .matchup-card,
 .matchup-list .matchup-card {

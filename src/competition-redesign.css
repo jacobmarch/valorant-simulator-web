@@ -938,52 +938,60 @@
 .kickoff-match-node .matchup-teams > div small {
   display: none;
 }
-.kickoff-bracket-column:not(:last-child) .kickoff-match-node::after {
-  content: "";
+/*
+  Connector geometry lives on the untransformed track, not on match nodes.
+  Nodes use translateY(-50%) and vary in height (filled card vs placeholder),
+  so 1px borders on ::before/::after round to different device pixels at zoom.
+*/
+.kickoff-out-connector,
+.kickoff-join-connector,
+.kickoff-merge-connector {
+  pointer-events: none;
+  box-sizing: border-box;
+  border: 0;
+}
+.kickoff-merge-group {
+  display: contents;
+}
+.kickoff-out-connector,
+.kickoff-join-connector {
   position: absolute;
-  top: 50%;
-  right: calc(-1 * var(--kickoff-connector-half-gap));
+  z-index: 0;
+  height: 1px;
+  background: #7d8da866;
+}
+.kickoff-out-connector {
+  left: calc(100% - var(--kickoff-connector-overlap));
+  width: calc(var(--kickoff-column-gap) + var(--kickoff-connector-overlap));
+}
+.kickoff-out-connector.is-half {
   width: calc(var(--kickoff-connector-half-gap) + var(--kickoff-connector-overlap));
-  border-top: 1px solid #7d8da866;
+}
+.kickoff-join-connector {
+  left: calc(100% + var(--kickoff-connector-half-gap) - var(--kickoff-connector-overlap));
+  width: calc(var(--kickoff-connector-half-gap) + var(--kickoff-connector-overlap));
 }
 .kickoff-merge-connector {
   position: absolute;
+  z-index: 0;
   right: calc(-1 * var(--kickoff-connector-half-gap));
-  border-right: 1px solid #7d8da866;
+  width: 1px;
+  background: #7d8da866;
 }
-.kickoff-merge-connector::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 0;
-  width: calc(var(--kickoff-connector-half-gap) + var(--kickoff-connector-overlap));
-  border-top: 1px solid #7d8da866;
+.kickoff-bracket-lane.upper .kickoff-out-connector,
+.kickoff-bracket-lane.upper .kickoff-join-connector,
+.kickoff-bracket-lane.upper .kickoff-merge-connector {
+  background: #62a0ff88;
 }
-.kickoff-bracket-column:not(:first-child) .kickoff-match-node::before {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: calc(-1 * var(--kickoff-connector-half-gap));
-  width: calc(var(--kickoff-connector-half-gap) + var(--kickoff-connector-overlap));
-  border-top: 1px solid #7d8da866;
+.kickoff-bracket-lane.middle .kickoff-out-connector,
+.kickoff-bracket-lane.middle .kickoff-join-connector,
+.kickoff-bracket-lane.middle .kickoff-merge-connector {
+  background: #f1c75b88;
 }
-.kickoff-bracket-lane.upper .kickoff-bracket-column:not(:last-child) .kickoff-match-node::after,
-.kickoff-bracket-lane.upper .kickoff-merge-connector,
-.kickoff-bracket-lane.upper .kickoff-merge-connector::after,
-.kickoff-bracket-lane.upper .kickoff-bracket-column:not(:first-child) .kickoff-match-node::before {
-  border-color: #62a0ff88;
-}
-.kickoff-bracket-lane.middle .kickoff-bracket-column:not(:last-child) .kickoff-match-node::after,
-.kickoff-bracket-lane.middle .kickoff-merge-connector,
-.kickoff-bracket-lane.middle .kickoff-merge-connector::after,
-.kickoff-bracket-lane.middle .kickoff-bracket-column:not(:first-child) .kickoff-match-node::before {
-  border-color: #f1c75b88;
-}
-.kickoff-bracket-lane.lower .kickoff-bracket-column:not(:last-child) .kickoff-match-node::after,
-.kickoff-bracket-lane.lower .kickoff-merge-connector,
-.kickoff-bracket-lane.lower .kickoff-merge-connector::after,
-.kickoff-bracket-lane.lower .kickoff-bracket-column:not(:first-child) .kickoff-match-node::before {
-  border-color: #ff9b6288;
+.kickoff-bracket-lane.lower .kickoff-out-connector,
+.kickoff-bracket-lane.lower .kickoff-join-connector,
+.kickoff-bracket-lane.lower .kickoff-merge-connector {
+  background: #ff9b6288;
 }
 .placeholder-node .bracket-placeholder {
   min-height: 92px;
