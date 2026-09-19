@@ -556,6 +556,8 @@ type ScoreNumericKey =
   | 'firstKills'
   | 'firstDeaths'
   | 'clutches'
+  | 'plants'
+  | 'defuses'
   | 'headshots'
 type ScoreSortKey = 'player' | 'kd' | ScoreNumericKey
 
@@ -569,6 +571,8 @@ const scoreColumns: Array<{ key: ScoreSortKey; label: string }> = [
   { key: 'firstKills', label: 'FK' },
   { key: 'firstDeaths', label: 'FD' },
   { key: 'clutches', label: 'Clutches' },
+  { key: 'plants', label: 'Plants' },
+  { key: 'defuses', label: 'Defuses' },
   { key: 'headshots', label: 'HS' },
 ]
 
@@ -590,6 +594,33 @@ function scoreValue(
     firstKills: stat.firstKills,
     firstDeaths: stat.firstDeaths,
     clutches: stat.clutches,
+    plants: stat.plants,
+    defuses: stat.defuses,
+    headshots: stat.headshots,
+  }[key]
+}
+
+function scoreCell(stat: PlayerStat, key: ScoreSortKey, player?: Player) {
+  if (key === 'player')
+    return (
+      <>
+        <strong>{player?.name}</strong>
+        <small>{player?.primaryRole}</small>
+      </>
+    )
+  if (key === 'kd') return `${stat.kills}/${stat.deaths}`
+  if (key === 'kast') return `${stat.kast}%`
+  return {
+    acs: stat.acs,
+    adr: stat.adr,
+    kills: stat.kills,
+    deaths: stat.deaths,
+    assists: stat.assists,
+    firstKills: stat.firstKills,
+    firstDeaths: stat.firstDeaths,
+    clutches: stat.clutches,
+    plants: stat.plants,
+    defuses: stat.defuses,
     headshots: stat.headshots,
   }[key]
 }
@@ -697,22 +728,14 @@ function ScoreTable({
                     </span>
                   </td>
                 )}
-                <td className="scoreboard-player">
-                  <strong>{player.name}</strong>
-                  <small>{player.primaryRole}</small>
-                </td>
-                <td>{stats[id].acs}</td>
-                <td>{stats[id].adr}</td>
-                <td>
-                  {stats[id].kills}/{stats[id].deaths}
-                </td>
-                <td>{stats[id].assists}</td>
-                <td>{stats[id].kast}%</td>
-                <td>
-                  {stats[id].firstKills}/{stats[id].firstDeaths}
-                </td>
-                <td>{stats[id].clutches}</td>
-                <td>{stats[id].headshots}</td>
+                {scoreColumns.map((column) => (
+                  <td
+                    key={column.key}
+                    className={column.key === 'player' ? 'scoreboard-player' : undefined}
+                  >
+                    {scoreCell(stats[id], column.key, player)}
+                  </td>
+                ))}
               </tr>
             )
           })}
