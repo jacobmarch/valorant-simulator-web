@@ -658,8 +658,12 @@ function ScoreHeader({
   onSort: (key: ScoreSortKey) => void
 }) {
   const active = sortKey === column.key
+  const numeric = column.key !== 'player'
   return (
-    <th aria-sort={active ? (direction === 'asc' ? 'ascending' : 'descending') : 'none'}>
+    <th
+      className={numeric ? 'scoreboard-num' : undefined}
+      aria-sort={active ? (direction === 'asc' ? 'ascending' : 'descending') : 'none'}
+    >
       <button
         type="button"
         className={active ? 'scoreboard-sort active' : 'scoreboard-sort'}
@@ -731,7 +735,7 @@ function ScoreTable({
                 {scoreColumns.map((column) => (
                   <td
                     key={column.key}
-                    className={column.key === 'player' ? 'scoreboard-player' : undefined}
+                    className={column.key === 'player' ? 'scoreboard-player' : 'scoreboard-num'}
                   >
                     {scoreCell(stats[id], column.key, player)}
                   </td>

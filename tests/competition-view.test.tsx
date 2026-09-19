@@ -153,6 +153,8 @@ describe('competition center', () => {
       },
     )
     expect(tables.length).toBe(2)
+    expect(html).toContain('class="scoreboard-num"')
+    expect((html.match(/class="scoreboard-num"/g) ?? []).length).toBeGreaterThan(20)
     for (const table of tables) {
       expect(table.headers).toEqual([
         'Player',
