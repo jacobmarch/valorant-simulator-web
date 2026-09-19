@@ -431,6 +431,13 @@
 .scoreboard-table .scoreboard-player {
   min-width: 145px;
 }
+.scoreboard-table .scoreboard-num {
+  text-align: center;
+}
+.scoreboard-table .scoreboard-num .scoreboard-sort {
+  justify-content: center;
+  text-align: center;
+}
 .scoreboard-table td strong,
 .scoreboard-table td small {
   display: block;

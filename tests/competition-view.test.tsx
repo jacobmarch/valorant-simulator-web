@@ -119,4 +119,68 @@ describe('competition center', () => {
     const competition = renderToStaticMarkup(<CompetitionV2 s={viewState} onOpenMatch={() => {}} />)
     expect((competition.match(/role="button"/g) ?? []).length).toBeGreaterThan(0)
   })
+  test('match scoreboard keeps FK, FD, plants, and defuses in separate aligned columns', () => {
+    let state = createGame('Manager', 'sen')
+    state = advanceWeek(state, 'Measured defaults', 'Disciplined retakes')
+    const match =
+      state.matches.find(
+        (item) => item.aId === state.currentTeamId || item.bId === state.currentTeamId,
+      ) ?? state.matches[0]
+    const html = renderToStaticMarkup(<MatchesV2 s={state} initialMatchId={match.id} />)
+    const tables = [...html.matchAll(/<table class="scoreboard-table">([\s\S]*?)<\/table>/g)].map(
+      (block) => {
+        const table = block[1]
+        const headers = [
+          ...(table.match(/<thead>[\s\S]*?<\/thead>/)?.[0].matchAll(/<th[\s\S]*?<\/th>/g) ?? []),
+        ].map((cell) =>
+          cell[0]
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/[↕↑↓]/g, '')
+            .replace(/\s+/g, ' ')
+            .trim(),
+        )
+        const rows = [
+          ...(table.match(/<tbody>[\s\S]*?<\/tbody>/)?.[0].matchAll(/<tr[\s\S]*?<\/tr>/g) ?? []),
+        ].map((row) =>
+          [...row[0].matchAll(/<td[\s\S]*?<\/td>/g)].map((cell) =>
+            cell[0]
+              .replace(/<[^>]+>/g, ' ')
+              .replace(/\s+/g, ' ')
+              .trim(),
+          ),
+        )
+        return { headers, rows }
+      },
+    )
+    expect(tables.length).toBe(2)
+    expect(html).toContain('class="scoreboard-num"')
+    expect((html.match(/class="scoreboard-num"/g) ?? []).length).toBeGreaterThan(20)
+    for (const table of tables) {
+      expect(table.headers).toEqual([
+        'Player',
+        'ACS',
+        'ADR / damage',
+        'K/D',
+        'Assists',
+        'KAST',
+        'FK',
+        'FD',
+        'Clutches',
+        'Plants',
+        'Defuses',
+        'HS',
+      ])
+      expect(table.rows.length).toBe(5)
+      for (const row of table.rows) {
+        expect(row).toHaveLength(table.headers.length)
+        expect(row[table.headers.indexOf('K/D')]).toMatch(/^\d+\/\d+$/)
+        expect(row[table.headers.indexOf('ACS')]).toMatch(/^\d+$/)
+        expect(row[table.headers.indexOf('ADR / damage')]).toMatch(/^\d+$/)
+        expect(row[table.headers.indexOf('FK')]).toMatch(/^\d+$/)
+        expect(row[table.headers.indexOf('FD')]).toMatch(/^\d+$/)
+        expect(row[table.headers.indexOf('Plants')]).toMatch(/^\d+$/)
+        expect(row[table.headers.indexOf('Defuses')]).toMatch(/^\d+$/)
+      }
+    }
+  })
 })
