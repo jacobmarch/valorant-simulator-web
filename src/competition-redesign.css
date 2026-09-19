@@ -458,6 +458,32 @@
   grid-template-columns: minmax(260px, 0.35fr) minmax(0, 1fr);
   gap: 18px;
 }
+.swiss-results {
+  grid-column: 1 / -1;
+}
+.swiss-result-round {
+  margin-top: 12px;
+}
+.swiss-result-round h3 {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin: 0 0 8px;
+  font: 600 18px "Barlow Condensed";
+}
+.swiss-result-round h3 small {
+  color: #6f7d98;
+  font: 600 11px "Barlow Condensed";
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.group-results {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
 .direct-seeds > p {
   color: #7d8ba7;
   font-size: 12px;
