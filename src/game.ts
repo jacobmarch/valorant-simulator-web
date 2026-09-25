@@ -8,6 +8,7 @@ import {
   type Region,
   type Role,
 } from './seed'
+import { replenishFreeAgents, runAiTransfers } from './transfers'
 
 export type Skill = (typeof skills)[number]
 export type DelegationMode = 'hands-on' | 'balanced' | 'hands-off'
@@ -128,8 +129,20 @@ export type JobOffer = {
   salary: number
   status: 'pending' | 'accepted' | 'declined'
 }
+export type TransferRecord = {
+  id: string
+  season: number
+  week: number
+  kind: 'signing' | 'buyout' | 'release' | 'status'
+  playerId: string
+  playerName: string
+  fromTeamId: string | null
+  toTeamId: string | null
+  fee: number
+  note?: string
+}
 export type GameState = {
-  version: 8
+  version: 9
   season: number
   week: number
   managerName: string
@@ -141,6 +154,7 @@ export type GameState = {
   kickoff: Record<string, KickoffRecord>
   inbox: string[]
   jobs: JobOffer[]
+  transfers: TransferRecord[]
   training: Record<string, Partial<Record<Skill, number>>>
   scoutingHours: Record<string, number>
   settings: Record<string, DelegationMode | boolean>
@@ -285,7 +299,7 @@ export function createGame(managerName: string, currentTeamId: string): GameStat
     }
   })
   const state: GameState = {
-    version: 8,
+    version: 9,
     season: 2026,
     week: 1,
     managerName: managerName || 'Manager',
@@ -304,6 +318,7 @@ export function createGame(managerName: string, currentTeamId: string): GameStat
       'Welcome to the 2026 VCT season. Your first Kickoff matchup is on the competition board.',
     ],
     jobs: [],
+    transfers: [],
     training: {},
     scoutingHours: {},
     settings: {
@@ -317,6 +332,7 @@ export function createGame(managerName: string, currentTeamId: string): GameStat
     rng: 20260201,
     saveTimestamp: new Date().toISOString(),
   }
+  replenishFreeAgents(state)
   ensureWeekScheduled(state, 1)
   return state
 }
@@ -466,7 +482,9 @@ function migrateGame(raw: unknown): GameState | null {
       state.inbox.unshift(`${phase} was restarted with the corrected 2026 tournament format.`)
     }
   }
-  state.version = 8
+  state.transfers ??= []
+  if (previousVersion < 9) replenishFreeAgents(state)
+  state.version = 9
   ensureWeekScheduled(state, state.week)
   return state
 }
@@ -492,9 +510,6 @@ export function currentTeam(state: GameState) {
 }
 export function teamPlayers(state: GameState, teamId = state.currentTeamId) {
   return state.teams[teamId].playerIds.map((id) => state.players[id]).filter(Boolean)
-}
-export function buyout(player: Player) {
-  return money(player.salary * player.years)
 }
 export function teamStrength(state: GameState, teamId: string) {
   const team = state.teams[teamId]
@@ -1900,6 +1915,7 @@ function finalizeCalendarWeek(state: GameState) {
       state.inbox.unshift(`${candidate.name} has opened a manager position for you.`)
     }
   }
+  runAiTransfers(state)
   state.week++
   if (state.week > 52) {
     const openingByes = new Set(

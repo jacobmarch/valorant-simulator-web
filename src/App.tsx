@@ -3,7 +3,6 @@ import {
   acceptJob,
   activePhaseForWeek,
   advanceWeek,
-  buyout,
   createGame,
   currentTeam,
   dateForWeek,
@@ -22,7 +21,27 @@ import {
   type Player,
   type PlayerStat,
   type Skill,
+  type TransferRecord,
 } from './game'
+import {
+  MAX_ROSTER,
+  buyOutError,
+  buyOutPlayer,
+  contractValue,
+  contractedPlayers,
+  freeAgents,
+  nextTransferWindow,
+  playerOverall,
+  releaseError,
+  releasePlayer,
+  rosterHistory,
+  setPlayerStatus,
+  signFreeAgent,
+  signFreeAgentError,
+  transferWindowForWeek,
+  transferWindows,
+  type TransferOutcome,
+} from './transfers'
 import { DashboardV2, MatchesV2, TacticsV2 } from './game-views'
 import { CompetitionV2 } from './competition-view'
 import { maps, roles, seedTeams, skills, type Region, type Role } from './seed'
@@ -390,117 +409,193 @@ function _Dashboard({ s, setView }: { s: GameState; setView: (v: View) => void }
 function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => void }) {
   const t = currentTeam(s)
   const ps = teamPlayers(s)
-  const free = Object.values(s.players).filter((p) => p.status === 'free-agent')
-  const update = (id: string, changes: Partial<Player>) => {
-    const n = structuredClone(s)
-    n.players[id] = { ...n.players[id], ...changes }
-    if (changes.status) {
-      const starters = n.teams[t.id].playerIds.filter((x) => n.players[x].status === 'starter')
-      n.teams[t.id].lineup = (
-        starters.length >= 5
-          ? starters
-          : n.teams[t.id].playerIds.filter((x) => n.players[x].status !== 'inactive')
-      ).slice(0, 5)
+  const [market, setMarket] = useState<'free' | 'contracted'>('free')
+  const [marketRegion, setMarketRegion] = useState<Region>(t.region)
+  const [notice, setNotice] = useState<string | null>(null)
+  const openWindow = transferWindowForWeek(s.week)
+  const next = nextTransferWindow(s.week)
+  const free = freeAgents(s).sort((a, b) => playerOverall(b) - playerOverall(a))
+  const contracted = contractedPlayers(s, t.id)
+    .filter((p) => s.teams[p.teamId as string].region === marketRegion)
+    .sort((a, b) => playerOverall(b) - playerOverall(a))
+    .slice(0, 20)
+  const history = rosterHistory(s, t.id).slice(0, 8)
+  const apply = (outcome: TransferOutcome) => {
+    if (!outcome.ok) {
+      setNotice(outcome.error)
+      return
     }
-    saveGame(n)
-    setState(n)
+    setNotice(null)
+    saveGame(outcome.state)
+    setState(outcome.state)
   }
-  const release = (p: Player) => {
-    if (t.playerIds.length <= 5) return
-    const n = structuredClone(s)
-    n.teams[t.id].playerIds = t.playerIds.filter((id) => id !== p.id)
-    n.teams[t.id].lineup = t.lineup.filter((id) => id !== p.id)
-    n.players[p.id].teamId = null
-    n.players[p.id].status = 'free-agent'
-    const fill = n.teams[t.id].playerIds.find(
-      (id) => !n.teams[t.id].lineup.includes(id) && n.players[id].status !== 'inactive',
-    )
-    if (fill) n.teams[t.id].lineup.push(fill)
-    saveGame(n)
-    setState(n)
-  }
-  const sign = (p: Player) => {
-    if (t.playerIds.length >= 7 || t.cash < buyout(p)) return
-    const n = structuredClone(s)
-    n.teams[t.id].playerIds.push(p.id)
-    n.players[p.id].teamId = t.id
-    n.players[p.id].region = t.region
-    n.players[p.id].status = 'substitute'
-    n.teams[t.id].cash -= buyout(p)
-    n.inbox.unshift(`Signed ${p.name} from the free-agent market.`)
-    saveGame(n)
-    setState(n)
+  const describe = (m: TransferRecord) => {
+    const from = m.fromTeamId ? s.teams[m.fromTeamId]?.short : 'Free agency'
+    const to = m.toTeamId ? s.teams[m.toTeamId]?.short : 'Free agency'
+    if (m.kind === 'status') return `${m.playerName}: ${m.note}`
+    if (m.kind === 'release') return `${m.playerName} released by ${from}`
+    return `${m.playerName} · ${from} → ${to} · ${money(m.fee)}`
   }
   return (
     <Page
       eyebrow={`ROSTER ROOM / ${t.short}`}
       title="Make the hard calls."
-      subtitle={`${ps.length} players on contract · ${t.lineup.length}/5 starters assigned`}
+      subtitle={`${ps.length} players on contract · ${t.lineup.length}/5 starters assigned · ${
+        openWindow
+          ? `${openWindow.label} open through week ${openWindow.end}`
+          : `Transfer window closed · ${next.label} opens week ${next.start}`
+      }`}
     >
+      {notice && (
+        <div className="callout" role="alert">
+          <strong>Move not allowed</strong>
+          <span>{notice}</span>
+        </div>
+      )}
       <div className="columns">
         <section className="panel">
           <PanelTitle
             eyebrow="CURRENT ROSTER"
             title="Depth chart"
-            right={<span className="muted">{ps.length} / 7</span>}
+            right={
+              <span className="muted">
+                {ps.length} / {MAX_ROSTER}
+              </span>
+            }
           />
-          {ps.map((p) => (
-            <div className="player-row" key={p.id}>
-              <b className="avatar" style={{ color: t.color, background: `${t.color}22` }}>
-                {p.name.slice(0, 2).toUpperCase()}
-              </b>
-              <div className="player-name">
-                <strong>{p.name}</strong>
+          {ps.map((p) => {
+            const releaseBlock = releaseError(s, t.id, p.id)
+            return (
+              <div className="player-row" key={p.id}>
+                <b className="avatar" style={{ color: t.color, background: `${t.color}22` }}>
+                  {p.name.slice(0, 2).toUpperCase()}
+                </b>
+                <div className="player-name">
+                  <strong>{p.name}</strong>
+                  <span>
+                    <Badge color={p.status === 'starter' ? '#d7ff56' : '#94a3b8'}>{p.status}</Badge>
+                    <Badge>{p.primaryRole}</Badge>
+                    {p.isImport && <Badge>Import</Badge>}
+                  </span>
+                </div>
+                <b className="ovr">
+                  {playerOverall(p)}
+                  <small>OVR</small>
+                </b>
+                <select
+                  value={p.status}
+                  onChange={(e) =>
+                    apply(
+                      setPlayerStatus(
+                        s,
+                        t.id,
+                        p.id,
+                        e.target.value as 'starter' | 'substitute' | 'inactive',
+                      ),
+                    )
+                  }
+                >
+                  <option value="starter">Starter</option>
+                  <option value="substitute">Substitute</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+                <button
+                  className="x"
+                  title={releaseBlock ?? `Release ${p.name}`}
+                  onClick={() => apply(releasePlayer(s, t.id, p.id))}
+                >
+                  ×
+                </button>
+              </div>
+            )
+          })}
+          <div style={{ marginTop: 28 }}>
+            <PanelTitle eyebrow="ROSTER HISTORY" title="Recent moves" />
+          </div>
+          {history.length ? (
+            history.map((m) => (
+              <div className="market-row" key={m.id}>
                 <span>
-                  <Badge color={p.status === 'starter' ? '#d7ff56' : '#94a3b8'}>{p.status}</Badge>
-                  <Badge>{p.primaryRole}</Badge>
+                  <strong>{describe(m)}</strong>
+                  <small>
+                    Season {m.season} · week {m.week}
+                  </small>
                 </span>
               </div>
-              <b className="ovr">
-                {Math.round(Object.values(p.ratings).reduce((a, b) => a + b, 0) / 6)}
-                <small>OVR</small>
-              </b>
-              <select
-                value={p.status}
-                onChange={(e) => update(p.id, { status: e.target.value as Player['status'] })}
-              >
-                <option value="starter">Starter</option>
-                <option value="substitute">Substitute</option>
-                <option value="inactive">Inactive</option>
-              </select>
-              <button className="x" onClick={() => release(p)}>
-                ×
-              </button>
-            </div>
-          ))}
+            ))
+          ) : (
+            <p className="muted">No roster moves yet this save.</p>
+          )}
         </section>
         <section className="panel">
           <PanelTitle
             eyebrow="MARKET"
             title="Available talent"
-            right={<span className="muted">Tier 2 / free agents</span>}
+            right={<span className="muted">Cash {money(t.cash)}</span>}
           />
-          {free.map((p) => (
-            <div className="market-row" key={p.id}>
-              <span>
-                <strong>{p.name}</strong>
-                <small>
-                  {p.primaryRole} · {money(p.salary)} / yr
-                </small>
-              </span>
-              <button
-                className="secondary compact"
-                disabled={t.playerIds.length >= 7 || t.cash < buyout(p)}
-                onClick={() => sign(p)}
-              >
-                Sign
-              </button>
-            </div>
-          ))}
+          <div className="tabs">
+            <button className={market === 'free' ? 'active' : ''} onClick={() => setMarket('free')}>
+              Free agents
+            </button>
+            <button
+              className={market === 'contracted' ? 'active' : ''}
+              onClick={() => setMarket('contracted')}
+            >
+              Buyouts
+            </button>
+            {market === 'contracted' &&
+              (['Americas', 'EMEA', 'Pacific', 'China'] as Region[]).map((r) => (
+                <button
+                  key={r}
+                  className={marketRegion === r ? 'active' : ''}
+                  onClick={() => setMarketRegion(r)}
+                >
+                  {r}
+                </button>
+              ))}
+          </div>
+          {(market === 'free' ? free : contracted).map((p) => {
+            const block =
+              market === 'free' ? signFreeAgentError(s, t.id, p.id) : buyOutError(s, t.id, p.id)
+            return (
+              <div className="market-row" key={p.id}>
+                <span>
+                  <strong>
+                    {p.name} · {playerOverall(p)} OVR
+                  </strong>
+                  <small>
+                    {p.primaryRole}
+                    {p.teamId ? ` · ${s.teams[p.teamId].short}` : ''} · {money(p.salary)} / yr ×{' '}
+                    {p.years} · {market === 'free' ? 'cost' : 'buyout'} {money(contractValue(p))}
+                  </small>
+                </span>
+                <button
+                  className="secondary compact"
+                  disabled={Boolean(block)}
+                  title={block ?? undefined}
+                  onClick={() =>
+                    apply(
+                      market === 'free'
+                        ? signFreeAgent(s, t.id, p.id)
+                        : buyOutPlayer(s, t.id, p.id),
+                    )
+                  }
+                >
+                  {market === 'free' ? 'Sign' : 'Buy out'}
+                </button>
+              </div>
+            )
+          })}
           <div className="callout">
             <strong>Buyout rule</strong>
             <span>
-              Contracted players cost annual salary × remaining years. The buyer pays immediately.
+              Contracted players cost annual salary × remaining years. The buyer pays the seller
+              immediately and takes over the contract. Signings, buyouts, and releases only happen
+              in transfer windows: weeks{' '}
+              {transferWindows
+                .map((w) => (w.start === w.end ? `${w.start}` : `${w.start}–${w.end}`))
+                .join(', ')}
+              .
             </span>
           </div>
         </section>
