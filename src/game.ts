@@ -30,6 +30,7 @@ export type Player = {
   primaryRole: Role
   secondaryRoles: Role[]
   ratings: Ratings
+  age: number
   salary: number
   years: number
   status: PlayerStatus
@@ -129,7 +130,7 @@ export type JobOffer = {
   status: 'pending' | 'accepted' | 'declined'
 }
 export type GameState = {
-  version: 8
+  version: 9
   season: number
   week: number
   managerName: string
@@ -172,6 +173,8 @@ const random = (state: GameState) => {
   state.rng = (state.rng * 1664525 + 1013904223) >>> 0
   return state.rng / 4294967296
 }
+const seedAge = (teamIndex: number, playerIndex: number) =>
+  19 + ((teamIndex * 5 + playerIndex * 3) % 10)
 const money = (value: number) => Math.round(value / 1000) * 1000
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
 
@@ -236,6 +239,7 @@ export function createGame(managerName: string, currentTeamId: string): GameStat
               ? [roles[(playerIndex + 1) % roles.length]]
               : [],
         ratings: emptyRatings(base),
+        age: seedAge(teamIndex, playerIndex),
         salary: money(55000 + base * 1400),
         years: 1 + (playerIndex % 3),
         status: 'starter',
@@ -276,6 +280,7 @@ export function createGame(managerName: string, currentTeamId: string): GameStat
       primaryRole: roleFor(index + 1),
       secondaryRoles: [],
       ratings: emptyRatings(62 + index * 2),
+      age: 17 + (index % 4),
       salary: 35000 + index * 4000,
       years: 1,
       status: 'free-agent',
@@ -285,7 +290,7 @@ export function createGame(managerName: string, currentTeamId: string): GameStat
     }
   })
   const state: GameState = {
-    version: 8,
+    version: 9,
     season: 2026,
     week: 1,
     managerName: managerName || 'Manager',
@@ -466,7 +471,18 @@ function migrateGame(raw: unknown): GameState | null {
       state.inbox.unshift(`${phase} was restarted with the corrected 2026 tournament format.`)
     }
   }
-  state.version = 8
+  Object.values(state.players).forEach((player) => {
+    if (typeof player.age === 'number') return
+    const [teamIndex, playerIndex] = player.id.startsWith('tier2-')
+      ? [-1, Number(player.id.slice(6))]
+      : [
+          seedTeams.findIndex((team) => player.id.startsWith(`${team.id}-`)),
+          Number(player.id.split('-').at(-1)),
+        ]
+    player.age =
+      teamIndex < 0 ? 17 + ((playerIndex || 0) % 4) : seedAge(teamIndex, playerIndex || 0)
+  })
+  state.version = 9
   ensureWeekScheduled(state, state.week)
   return state
 }
@@ -1901,28 +1917,131 @@ function finalizeCalendarWeek(state: GameState) {
     }
   }
   state.week++
-  if (state.week > 52) {
-    const openingByes = new Set(
-      regions.flatMap((region) => regionalPlayoffQualifiers(state, 'Stage 2', region, 4)),
-    )
-    state.week = 1
-    state.season++
-    state.inbox.unshift(
-      `The 2026 competition rules continue into season ${state.season}. The new Kickoff bracket is ready.`,
-    )
-    Object.entries(state.kickoff).forEach(([id, record]) => {
-      record.wins = 0
-      record.losses = 0
-      record.status = 'active'
-      record.openingBye = openingByes.has(id)
-      state.teams[id].playoffStage = record.openingBye
-        ? 'Kickoff · Round 1 bye'
-        : 'Kickoff · 3 lives'
-    })
-  }
+  if (state.week === OFFSEASON_START_WEEK) warnExpiringContracts(state)
+  if (state.week > 52) rolloverSeason(state)
   ensureWeekScheduled(state, state.week)
   state.saveTimestamp = new Date().toISOString()
   saveGame(state)
+}
+const OFFSEASON_START_WEEK = 44
+const MIN_ROSTER = 5
+
+export function expiringContracts(state: GameState, teamId = state.currentTeamId) {
+  return teamPlayers(state, teamId).filter((player) => player.years <= 1)
+}
+function warnExpiringContracts(state: GameState) {
+  const expiring = expiringContracts(state)
+  if (!expiring.length) return
+  state.inbox.unshift(
+    `Contracts expiring after season ${state.season}: ${expiring.map((player) => player.name).join(', ')}. Players still on contract at rollover leave in free agency unless you need them to field five.`,
+  )
+}
+function renewalYears(player: Player) {
+  if (player.age >= 30) return 1
+  return player.age <= 23 ? 3 : 2
+}
+function refillLineup(state: GameState, team: Team) {
+  team.lineup = team.lineup.filter((id) => team.playerIds.includes(id))
+  team.playerIds
+    .filter((id) => !team.lineup.includes(id) && state.players[id].status !== 'inactive')
+    .concat(team.playerIds.filter((id) => !team.lineup.includes(id)))
+    .forEach((id) => {
+      if (team.lineup.length < 5 && !team.lineup.includes(id)) {
+        team.lineup.push(id)
+        state.players[id].status = 'starter'
+      }
+    })
+  team.lineup.forEach((id) => {
+    team.roleAssignments[id] ??= state.players[id].primaryRole
+  })
+  Object.keys(team.roleAssignments).forEach((id) => {
+    if (!team.lineup.includes(id)) delete team.roleAssignments[id]
+  })
+}
+function agePlayer(state: GameState, player: Player) {
+  player.age++
+  if (player.age <= 22)
+    skills.forEach((skill) => {
+      if (random(state) < 0.5) player.ratings[skill] = Math.min(100, player.ratings[skill] + 1)
+    })
+  if (player.age >= 29)
+    skills.forEach((skill) => {
+      if (random(state) < (player.age - 27) * 0.15)
+        player.ratings[skill] = Math.max(1, player.ratings[skill] - 1)
+    })
+}
+function resolveExpiredContracts(state: GameState, team: Team) {
+  const managed = team.id === state.currentTeamId
+  const expired = team.playerIds.filter((id) => state.players[id].years <= 0)
+  if (!expired.length) return
+  // AI organizations keep their starters; the managed team lets everyone walk.
+  // Either way the best expiring players re-sign until the roster can field five.
+  const keep = new Set(managed ? [] : expired.filter((id) => team.lineup.includes(id)))
+  const byRating = [...expired].sort(
+    (a, b) => overall(state.players[b]) - overall(state.players[a]),
+  )
+  byRating.forEach((id) => {
+    if (team.playerIds.length - expired.length + keep.size < MIN_ROSTER) keep.add(id)
+  })
+  const renewed: string[] = []
+  const departed: string[] = []
+  expired.forEach((id) => {
+    const player = state.players[id]
+    if (keep.has(id)) {
+      player.years = renewalYears(player)
+      player.salary = money(player.salary * 1.05)
+      renewed.push(player.name)
+      return
+    }
+    team.playerIds = team.playerIds.filter((candidate) => candidate !== id)
+    player.teamId = null
+    player.status = 'free-agent'
+    player.years = 1
+    departed.push(player.name)
+  })
+  refillLineup(state, team)
+  if (managed) {
+    if (departed.length)
+      state.inbox.unshift(`Contracts expired and left for free agency: ${departed.join(', ')}.`)
+    if (renewed.length)
+      state.inbox.unshift(`Re-signed to keep a legal roster of five: ${renewed.join(', ')}.`)
+  }
+}
+function overall(player: Player) {
+  return Object.values(player.ratings).reduce((a, b) => a + b, 0) / skills.length
+}
+export function rolloverSeason(state: GameState) {
+  const openingByes = new Set(
+    regions.flatMap((region) => regionalPlayoffQualifiers(state, 'Stage 2', region, 4)),
+  )
+  const finishedSeason = state.season
+  state.week = 1
+  state.season++
+  Object.values(state.players).forEach((player) => {
+    agePlayer(state, player)
+    if (player.teamId) player.years--
+  })
+  Object.values(state.teams).forEach((team) => {
+    resolveExpiredContracts(state, team)
+    team.championshipPoints = 0
+    team.wins = 0
+    team.losses = 0
+    team.mapWins = 0
+    team.mapLosses = 0
+  })
+  state.jobs.forEach((job) => {
+    if (job.status === 'pending') job.status = 'declined'
+  })
+  Object.entries(state.kickoff).forEach(([id, record]) => {
+    record.wins = 0
+    record.losses = 0
+    record.status = 'active'
+    record.openingBye = openingByes.has(id)
+    state.teams[id].playoffStage = record.openingBye ? 'Kickoff · Round 1 bye' : 'Kickoff · 3 lives'
+  })
+  state.inbox.unshift(
+    `Season ${finishedSeason} is complete. Championship Points are reset, players are a year older, and the season ${state.season} Kickoff bracket is ready.`,
+  )
 }
 function tickCalendar(state: GameState) {
   updateDevelopmentAndFinances(state)
