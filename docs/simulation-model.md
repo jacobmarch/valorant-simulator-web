@@ -52,6 +52,14 @@ The user distributes a configured weekly scout-hour pool among targets. Basic id
 
 Before each user-team match, require or permit a legal starting lineup, map veto/pick-ban sequence, attack style, and defense style. Styles influence round probabilities but are broad MVP controls. Detailed agent compositions, pistol plans, economy plans, anti-stratting, timeouts, and between-map changes are later extensions.
 
+### Map pool, tiers and veto
+
+Map ratings live in `src/map-data.ts`, one row per map on a 1-10 scale: `operator` (rifle vs Operator), `openness` (choke points vs wide open), `utility`, `retakes`, and `attackerSided`. Edit those numbers (or `MAP_FIT_WEIGHT`) to change how maps play.
+
+Each team's lineup is summarised as aim, Operator threat, utility (including whether a Controller and Initiator are fielded), trading and clutch, measured against the league average. That shape scored against each map's ratings gives a map fit; ranking the pool by fit gives the team's map tier from 1 (best) to 7 (worst). Tiers are recomputed from the current lineup whenever they are read, so roster changes, role changes and player development move them.
+
+Every series runs a VCT-style veto with the higher seed first: BO3 is ban, ban, pick, pick, ban, ban, decider; BO5 is ban, ban, pick, pick, pick, pick, decider. Teams pick maps where their tier beats the opponent's and ban maps where it does not, with a little randomness. On each map, the fit difference is added to team strength (capped per map) and `attackerSided` sets the per-round side edge. Match prep shows both teams' tiers and the projected veto, and the match center lists the veto that happened.
+
 ## 8. Match simulation
 
 Regular matches are best-of-3. Grand finals and lower finals are best-of-5. Each map is simulated round by round behind the scenes using team strength, player ratings, lineup legality, role fit, map/style modifiers, form, opponent strength, and seeded randomness.

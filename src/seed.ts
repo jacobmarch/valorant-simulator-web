@@ -1,3 +1,4 @@
+import { mapPool } from './map-data'
 export type Region = 'Americas' | 'EMEA' | 'Pacific' | 'China'
 export type Role = 'Duelist' | 'Initiator' | 'Controller' | 'Sentinel' | 'Flex'
 
@@ -297,7 +298,7 @@ export const previousChampionsByRegion: Record<Region, string[]> = {
   China: ['edg', 'xlg', 'blg', 'wolves'],
 }
 
-export const maps = ['Abyss', 'Bind', 'Breeze', 'Haven', 'Icebox', 'Lotus', 'Sunset']
+export const maps = mapPool.map((map) => map.name)
 export const roles: Role[] = ['Duelist', 'Initiator', 'Controller', 'Sentinel', 'Flex']
 export const skills = [
   'Mechanics',
