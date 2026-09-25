@@ -127,7 +127,7 @@ describe('season rollover', () => {
     })
     memory.set(SAVE_KEY, JSON.stringify(state))
     const loaded = loadGame()!
-    expect(loaded.version).toBe(10)
+    expect(loaded.version).toBe(11)
     Object.values(loaded.players).forEach((player) => {
       expect(player.age).toBeGreaterThanOrEqual(17)
     })

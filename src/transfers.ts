@@ -1,4 +1,5 @@
 import type { GameState, Player, PlayerStatus, Team, TransferRecord } from './game'
+import { MORALE_DEFAULT, overallRating, seedPotential } from './development'
 import { roles, type Region } from './seed'
 
 export const MIN_ROSTER = 5
@@ -346,7 +347,15 @@ export function replenishFreeAgents(state: GameState, minimum = MIN_FREE_AGENTS)
       isImport: false,
       scoutProgress: 0,
       form: 0,
+      morale: MORALE_DEFAULT,
+      potential: 0,
     }
+    const prospect = state.players[id]
+    prospect.potential = seedPotential(
+      overallRating(prospect.ratings),
+      prospect.age,
+      Math.floor(random(state) * 5),
+    )
     count++
   }
 }

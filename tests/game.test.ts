@@ -1,15 +1,15 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import {
-  SAVE_KEY,
   advanceWeek,
   createGame,
   currentTournamentDeskFixtures,
   fixturesForWeek,
   loadGame,
   nextFixtureForTeam,
+  SAVE_KEY,
   simulateNextTournamentMatch,
-  simulateTournamentRound,
   simulateSeries,
+  simulateTournamentRound,
 } from '../src/game'
 
 const memory = new Map<string, string>()
@@ -38,7 +38,7 @@ describe('competition fixtures', () => {
     legacy.version = 1
     localStorage.setItem(SAVE_KEY, JSON.stringify(legacy))
     const migrated = loadGame()!
-    expect(migrated.version).toBe(10)
+    expect(migrated.version).toBe(11)
     expect(nextFixtureForTeam(migrated, 'c9', migrated.week)).toBeDefined()
   })
   test('an in-progress legacy international save restarts on the corrected bracket', () => {
@@ -54,7 +54,7 @@ describe('competition fixtures', () => {
       })
     localStorage.setItem(SAVE_KEY, JSON.stringify(legacy))
     const migrated = loadGame()!
-    expect(migrated.version).toBe(10)
+    expect(migrated.version).toBe(11)
     expect(migrated.week).toBe(8)
     expect(migrated.fixtures.filter((fixture) => fixture.phase === 'Masters 1')).toHaveLength(4)
     expect(
@@ -73,7 +73,7 @@ describe('competition fixtures', () => {
 
     const migrated = loadGame()!
     const kickoff = migrated.fixtures.filter((fixture) => fixture.phase === 'Kickoff')
-    expect(migrated.version).toBe(10)
+    expect(migrated.version).toBe(11)
     expect(migrated.week).toBe(1)
     expect(kickoff).toHaveLength(16)
     expect(kickoff.every((fixture) => fixture.label === 'Upper Round 1' && fixture.bId)).toBeTrue()
@@ -390,7 +390,9 @@ describe('competition fixtures', () => {
       state = advanceWeek(state, 'Measured defaults', 'Disciplined retakes')
     expect(state.season).toBe(2027)
     expect(fixturesForWeek(state, 1)).toHaveLength(16)
-    expect(nextFixtureForTeam(state, 'c9', 1)).toBeDefined()
+    // Stage 2 results decide who gets an opening bye, so check a team that plays in round 1.
+    const opener = Object.keys(state.kickoff).find((id) => !state.kickoff[id].openingBye)!
+    expect(nextFixtureForTeam(state, opener, 1)).toBeDefined()
   })
   test('Masters uses an eight-team Swiss stage and a complete double-elimination playoff', () => {
     let state = createGame('Manager', 'c9')

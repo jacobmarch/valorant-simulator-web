@@ -482,6 +482,10 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
                     </Badge>
                     {p.isImport && <Badge>Import</Badge>}
                   </span>
+                  <small>
+                    POT {p.potential} · Morale {Math.round(p.morale)} · Form {p.form > 0 ? '+' : ''}
+                    {p.form.toFixed(1)}
+                  </small>
                 </div>
                 <b className="ovr">
                   {playerOverall(p)}
@@ -569,7 +573,7 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
                     {p.name} · {playerOverall(p)} OVR
                   </strong>
                   <small>
-                    {p.primaryRole}
+                    {p.primaryRole} · Age {p.age}
                     {p.teamId ? ` · ${s.teams[p.teamId].short}` : ''} · {money(p.salary)} / yr ×{' '}
                     {p.years} · {market === 'free' ? 'cost' : 'buyout'} {money(contractValue(p))}
                   </small>
@@ -623,7 +627,7 @@ function Training({ s, setState }: { s: GameState; setState: (s: GameState) => v
     <Page
       eyebrow="PLAYER DEVELOPMENT / 40 HOURS"
       title="Build the weekly edge."
-      subtitle="Five hours maintains a skill. Everything above that creates a chance to grow."
+      subtitle="Five hours maintains a skill. Growth is faster for young players and slows once they reach potential."
     >
       <section className="panel training">
         <PanelTitle
@@ -640,7 +644,8 @@ function Training({ s, setState }: { s: GameState; setState: (s: GameState) => v
                 <strong>{p.name}</strong>
                 <span>
                   {p.primaryRole} · rating{' '}
-                  {Math.round(Object.values(p.ratings).reduce((x, y) => x + y, 0) / 6)}
+                  {Math.round(Object.values(p.ratings).reduce((x, y) => x + y, 0) / 6)} · potential{' '}
+                  {p.potential} · age {p.age}
                 </span>
               </div>
               <div className="hours">

@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
+import { MORALE_DEFAULT } from '../src/development'
 import { advanceWeek, createGame, type GameState } from '../src/game'
 import {
   MIN_ROSTER,
   buyOutPlayer,
   contractValue,
   freeAgents,
+  playerOverall,
   releasePlayer,
   rosterHistory,
   rosterViolations,
@@ -140,6 +142,20 @@ describe('releases and status changes', () => {
     expect(expectError(setPlayerStatus(next, 'c9', agent.id, 'starter'))).toContain(
       'already has five starters',
     )
+  })
+})
+
+describe('free-agent pool', () => {
+  test('generated prospects carry age, potential, form and morale', () => {
+    const state = createGame('Manager', 'c9')
+    const prospects = freeAgents(state).filter((player) => player.id.startsWith('prospect-'))
+    expect(prospects.length).toBeGreaterThan(0)
+    prospects.forEach((player) => {
+      expect(player.age).toBeGreaterThanOrEqual(17)
+      expect(player.potential).toBeGreaterThanOrEqual(playerOverall(player))
+      expect(player.form).toBe(0)
+      expect(player.morale).toBe(MORALE_DEFAULT)
+    })
   })
 })
 
