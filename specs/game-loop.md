@@ -30,7 +30,7 @@ Allow a user to start with any VCT organization and play the complete 2026 seaso
 
 After week 52 the game moves to week 1 of the next season:
 
-- Every player ages one year. Players 22 and younger tend to gain a rating point per skill; players 29 and older tend to lose one, more often as they age.
+- Every player ages one year. Rating changes from age happen week by week through the development curve (see simulation model §5); players 28 and older also lose 1–2 potential.
 - Every contracted player's remaining years drop by one. At the start of the offseason (week 44) the inbox lists the managed team's contracts in their final year.
 - Players whose contracts reach zero leave for free agency. AI organizations re-sign their expiring starters. Any organization re-signs its best expiring players when it would otherwise drop below five. Renewals run 3 years at age 23 or younger, 2 years up to 29, and 1 year at 30 or older, at a 5% raise.
 - Lineups are refilled to five legal starters after departures.

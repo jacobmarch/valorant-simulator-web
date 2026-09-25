@@ -8,6 +8,17 @@ import {
   type Region,
   type Role,
 } from './seed'
+import {
+  DEFAULT_TRAINING,
+  MORALE_DEFAULT,
+  agePlayer as ageDevelopment,
+  conditionBonus,
+  developPlayer,
+  formAfterSeries,
+  moraleAfterSeries,
+  overallRating,
+  seedPotential,
+} from './development'
 
 export type Skill = (typeof skills)[number]
 export type DelegationMode = 'hands-on' | 'balanced' | 'hands-off'
@@ -36,7 +47,9 @@ export type Player = {
   status: PlayerStatus
   isImport: boolean
   scoutProgress: number
+  potential: number
   form: number
+  morale: number
 }
 export type Team = {
   id: string
@@ -130,7 +143,7 @@ export type JobOffer = {
   status: 'pending' | 'accepted' | 'declined'
 }
 export type GameState = {
-  version: 9
+  version: 10
   season: number
   week: number
   managerName: string
@@ -245,8 +258,15 @@ export function createGame(managerName: string, currentTeamId: string): GameStat
         status: 'starter',
         isImport: playerIndex === 0 && teamIndex % 5 === 0,
         scoutProgress: 100,
+        potential: 0,
         form: 0,
+        morale: MORALE_DEFAULT,
       }
+      players[id].potential = seedPotential(
+        overallRating(players[id].ratings),
+        players[id].age,
+        (teamIndex * 3 + playerIndex * 5) % 5,
+      )
       return id
     })
     const lineup = playerIds.slice(0, 5)
@@ -286,11 +306,18 @@ export function createGame(managerName: string, currentTeamId: string): GameStat
       status: 'free-agent',
       isImport: false,
       scoutProgress: 0,
+      potential: 0,
       form: 0,
+      morale: MORALE_DEFAULT,
     }
+    players[id].potential = seedPotential(
+      overallRating(players[id].ratings),
+      players[id].age,
+      2 + (index % 3),
+    )
   })
   const state: GameState = {
-    version: 9,
+    version: 10,
     season: 2026,
     week: 1,
     managerName: managerName || 'Manager',
@@ -482,7 +509,15 @@ function migrateGame(raw: unknown): GameState | null {
     player.age =
       teamIndex < 0 ? 17 + ((playerIndex || 0) % 4) : seedAge(teamIndex, playerIndex || 0)
   })
-  state.version = 9
+  if (previousVersion < 10) {
+    Object.values(state.players).forEach((player, index) => {
+      player.potential ??= seedPotential(overallRating(player.ratings), player.age, index % 5)
+      player.form = Number.isFinite(player.form) ? player.form : 0
+      player.morale ??= MORALE_DEFAULT
+    })
+    state.inbox.push('Players now have potential, form and morale.')
+  }
+  state.version = 10
   ensureWeekScheduled(state, state.week)
   return state
 }
@@ -522,7 +557,7 @@ export function teamStrength(state: GameState, teamId: string) {
         sum +
         (Object.values(player.ratings).reduce((a, b) => a + b, 0) / 6) *
           roleFit(player, team.roleAssignments[player.id] ?? player.primaryRole) +
-        player.form,
+        conditionBonus(player),
       0,
     ) / players.length
   )
@@ -1525,7 +1560,7 @@ function weightedPlayer(state: GameState, ids: string[], acc: Record<string, Sta
       player.ratings.Mechanics * 0.55 +
         player.ratings.Consistency * 0.25 +
         player.ratings.Clutch * 0.2 +
-        player.form +
+        conditionBonus(player) +
         acc[id].kills * 0.8,
     )
   })
@@ -1751,6 +1786,9 @@ export function simulateSeries(
   b.mapWins += bWins
   b.mapLosses += aWins
   state.teams[winnerId].championshipPoints++
+  updateFormAndMorale(state, [...a.lineup, ...b.lineup], mapResults, (id) =>
+    (winnerId === aId ? a : b).lineup.includes(id),
+  )
   const performances = mapResults
     .flatMap((result) =>
       Object.entries(result.stats).map(([playerId, stat]) => ({ playerId, stat, map: result.map })),
@@ -1789,6 +1827,21 @@ export function simulateSeries(
   }
 }
 
+function updateFormAndMorale(
+  state: GameState,
+  playerIds: string[],
+  mapResults: MapResult[],
+  won: (id: string) => boolean,
+) {
+  playerIds.forEach((id) => {
+    const player = state.players[id]
+    const played = mapResults.map((result) => result.stats[id]).filter(Boolean)
+    if (!player || !played.length) return
+    const averageAcs = played.reduce((sum, stat) => sum + stat.acs, 0) / played.length
+    player.form = formAfterSeries(player.form, averageAcs, won(id))
+    player.morale = moraleAfterSeries(player.morale, won(id))
+  })
+}
 function applyKickoffResult(state: GameState, result: MatchResult) {
   const loserId = result.winnerId === result.aId ? result.bId : result.aId
   state.kickoff[result.winnerId].wins++
@@ -1958,18 +2011,6 @@ function refillLineup(state: GameState, team: Team) {
     if (!team.lineup.includes(id)) delete team.roleAssignments[id]
   })
 }
-function agePlayer(state: GameState, player: Player) {
-  player.age++
-  if (player.age <= 22)
-    skills.forEach((skill) => {
-      if (random(state) < 0.5) player.ratings[skill] = Math.min(100, player.ratings[skill] + 1)
-    })
-  if (player.age >= 29)
-    skills.forEach((skill) => {
-      if (random(state) < (player.age - 27) * 0.15)
-        player.ratings[skill] = Math.max(1, player.ratings[skill] - 1)
-    })
-}
 function resolveExpiredContracts(state: GameState, team: Team) {
   const managed = team.id === state.currentTeamId
   const expired = team.playerIds.filter((id) => state.players[id].years <= 0)
@@ -2018,7 +2059,7 @@ export function rolloverSeason(state: GameState) {
   state.week = 1
   state.season++
   Object.values(state.players).forEach((player) => {
-    agePlayer(state, player)
+    ageDevelopment(player)
     if (player.teamId) player.years--
   })
   Object.values(state.teams).forEach((team) => {
@@ -2439,14 +2480,9 @@ function finishKickoffRegion(
 }
 function updateDevelopmentAndFinances(state: GameState) {
   Object.values(state.players).forEach((player) => {
-    const allocation = state.training[player.id] ?? {}
-    skills.forEach((skill) => {
-      const hours = allocation[skill] ?? 0
-      if (hours < 5 && random(state) < 0.13)
-        player.ratings[skill] = Math.max(1, player.ratings[skill] - 1)
-      if (hours > 5 && random(state) < Math.min(0.42, (hours - 5) * 0.026))
-        player.ratings[skill] = Math.min(100, player.ratings[skill] + 1)
-    })
+    const managed = player.teamId === state.currentTeamId
+    const allocation = state.training[player.id] ?? (managed ? {} : DEFAULT_TRAINING)
+    developPlayer(player, allocation, () => random(state))
   })
   Object.entries(state.scoutingHours).forEach(([id, hours]) => {
     if (state.players[id])

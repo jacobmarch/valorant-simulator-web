@@ -70,8 +70,7 @@ Every area is a player capability and may eventually be delegated:
 
 - No Tier 2 league simulation; Tier 2 may appear only as a low-detail affiliation for scouting targets.
 - No manager attributes.
-- No player potential system.
-- No player personalities, relationships, morale simulation, or team cohesion simulation.
+- Player potential, aging, form and individual morale are simplified (see simulation model); no personalities, relationships, or team cohesion simulation.
 - No staff or facilities.
 - No detailed sponsorship system.
 - No complex contract negotiation, clauses, bonuses, agent interactions, or multi-party deals.
