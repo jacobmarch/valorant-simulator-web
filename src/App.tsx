@@ -434,6 +434,8 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
     const to = m.toTeamId ? s.teams[m.toTeamId]?.short : 'Free agency'
     if (m.kind === 'status') return `${m.playerName}: ${m.note}`
     if (m.kind === 'release') return `${m.playerName} released by ${from}`
+    if (m.kind === 'expiry') return `${m.playerName}'s contract with ${from} expired`
+    if (m.kind === 'renewal') return `${m.playerName} re-signed with ${from} · ${m.note}`
     return `${m.playerName} · ${from} → ${to} · ${money(m.fee)}`
   }
   return (
@@ -475,6 +477,9 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
                   <span>
                     <Badge color={p.status === 'starter' ? '#d7ff56' : '#94a3b8'}>{p.status}</Badge>
                     <Badge>{p.primaryRole}</Badge>
+                    <Badge color={p.years <= 1 ? '#fbbf24' : '#94a3b8'}>
+                      {`Age ${p.age} · ${p.years}y left`}
+                    </Badge>
                     {p.isImport && <Badge>Import</Badge>}
                   </span>
                 </div>

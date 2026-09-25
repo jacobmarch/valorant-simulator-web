@@ -102,7 +102,7 @@ export function repairLineup(state: GameState, teamId: string) {
   )
 }
 
-function record(
+export function recordMove(
   state: GameState,
   entry: Omit<TransferRecord, 'id' | 'season' | 'week' | 'playerName'>,
 ) {
@@ -176,7 +176,7 @@ function applySigning(state: GameState, teamId: string, playerId: string) {
     cost = contractValue(player)
   team.cash -= cost
   joinTeam(state, player, team)
-  record(state, {
+  recordMove(state, {
     kind: 'signing',
     playerId,
     fromTeamId: null,
@@ -223,7 +223,7 @@ function applyBuyout(state: GameState, buyerId: string, playerId: string) {
   seller.cash += fee
   leaveTeam(state, player)
   joinTeam(state, player, buyer)
-  record(state, { kind: 'buyout', playerId, fromTeamId: seller.id, toTeamId: buyer.id, fee })
+  recordMove(state, { kind: 'buyout', playerId, fromTeamId: seller.id, toTeamId: buyer.id, fee })
   state.inbox.unshift(
     `${buyer.name} bought out ${player.name} from ${seller.name} for ${dollars(fee)}.`,
   )
@@ -263,7 +263,7 @@ function applyRelease(state: GameState, teamId: string, playerId: string) {
   leaveTeam(state, player)
   player.teamId = null
   player.status = 'free-agent'
-  record(state, { kind: 'release', playerId, fromTeamId: teamId, toTeamId: null, fee: 0 })
+  recordMove(state, { kind: 'release', playerId, fromTeamId: teamId, toTeamId: null, fee: 0 })
   if (teamId === state.currentTeamId) state.inbox.unshift(`Released ${player.name}.`)
 }
 
@@ -299,7 +299,7 @@ export function setPlayerStatus(
   const previous = player.status
   player.status = status
   repairLineup(state, teamId)
-  record(state, {
+  recordMove(state, {
     kind: 'status',
     playerId,
     fromTeamId: teamId,
@@ -327,6 +327,7 @@ export function replenishFreeAgents(state: GameState, minimum = MIN_FREE_AGENTS)
     state.players[id] = {
       id,
       name,
+      age: 17 + Math.floor(random(state) * 5),
       teamId: null,
       region: regionList[Math.floor(random(state) * regionList.length)],
       primaryRole: roles[Math.floor(random(state) * roles.length)],
