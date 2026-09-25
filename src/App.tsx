@@ -454,6 +454,9 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
                 <span>
                   <Badge color={p.status === 'starter' ? '#d7ff56' : '#94a3b8'}>{p.status}</Badge>
                   <Badge>{p.primaryRole}</Badge>
+                  <Badge color={p.years <= 1 ? '#fbbf24' : '#94a3b8'}>
+                    {`Age ${p.age} · ${p.years}y left`}
+                  </Badge>
                 </span>
               </div>
               <b className="ovr">
