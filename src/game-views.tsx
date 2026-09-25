@@ -5,6 +5,7 @@ import {
   currentTeam,
   dateForWeek,
   fixturesForWeek,
+  hasMatchDetail,
   isInternationalPhase,
   nextFixtureForTeam,
   phaseForWeek,
@@ -987,16 +988,23 @@ export function MatchesV2({ s, initialMatchId }: { s: GameState; initialMatchId?
           }
           right={<span className="muted">ACS · ADR / damage per round · K/D</span>}
         />
-        <Scoreboard
-          s={s}
-          match={match}
-          stats={stats}
-          mode={scoreboardMode}
-          sortKey={sortKey}
-          direction={sortDirection}
-          onSort={setScoreSort}
-          onModeChange={setScoreboardMode}
-        />
+        {hasMatchDetail(match) ? (
+          <Scoreboard
+            s={s}
+            match={match}
+            stats={stats}
+            mode={scoreboardMode}
+            sortKey={sortKey}
+            direction={sortDirection}
+            onSort={setScoreSort}
+            onModeChange={setScoreboardMode}
+          />
+        ) : (
+          <p className="muted">
+            Box scores and round logs are only kept for recent matches and your own team's matches
+            this season.
+          </p>
+        )}
       </section>
       <section className="panel">
         <PanelTitle
