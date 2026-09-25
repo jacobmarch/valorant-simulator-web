@@ -1003,6 +1003,26 @@ function PlayoffBracket({
     </section>
   )
 }
+const groupColumns = [
+  {
+    title: 'Opening',
+    note: '2 matches',
+    slots: [{ label: 'Opening', pending: 'Seeds 1v4 and 2v3 meet first.' }],
+  },
+  {
+    title: 'Round 2',
+    note: 'Winners · Elimination',
+    slots: [
+      { label: 'Winners', pending: 'Opening winners meet. The winner advances as 1st.' },
+      { label: 'Elimination', pending: 'Opening losers meet. The loser is eliminated.' },
+    ],
+  },
+  {
+    title: 'Decider',
+    note: 'Winner advances 2nd',
+    slots: [{ label: 'Decider', pending: 'Winners loser meets the Elimination winner.' }],
+  },
+] as const
 function ChampionsGroups({
   s,
   fixtures,
@@ -1027,41 +1047,56 @@ function ChampionsGroups({
             <article className="group-card" key={group}>
               <header>
                 <strong>Group {group}</strong>
-                <small>{matches.length} matches</small>
+                <small>{matches.filter((f) => f.status === 'completed').length} of 5 played</small>
               </header>
-              {ids
-                .sort((a, b) => {
-                  const ar = fixtureRecord(a, matches),
-                    br = fixtureRecord(b, matches)
-                  return br.wins - ar.wins || ar.losses - br.losses
-                })
-                .map((id, index) => {
-                  const team = s.teams[id],
-                    record = fixtureRecord(id, matches)
-                  return (
-                    <div className={id === s.currentTeamId ? 'managed' : ''} key={id}>
-                      <b>{index + 1}</b>
-                      <i style={{ background: team.color }} />
-                      <strong>{team.short}</strong>
-                      <small>
-                        {record.wins}–{record.losses}
-                      </small>
+              <div className="group-layout">
+                <div className="group-standings">
+                  {ids
+                    .sort((a, b) => {
+                      const ar = fixtureRecord(a, matches),
+                        br = fixtureRecord(b, matches)
+                      return br.wins - ar.wins || ar.losses - br.losses
+                    })
+                    .map((id, index) => {
+                      const team = s.teams[id],
+                        record = fixtureRecord(id, matches)
+                      return (
+                        <div className={id === s.currentTeamId ? 'managed' : ''} key={id}>
+                          <b>{index + 1}</b>
+                          <i style={{ background: team.color }} />
+                          <strong>{team.short}</strong>
+                          <small>
+                            {record.wins}–{record.losses}
+                          </small>
+                        </div>
+                      )
+                    })}
+                  {!ids.length && <p>Draw pending</p>}
+                </div>
+                <div className="bracket-path group-bracket">
+                  {groupColumns.map((column) => (
+                    <div className="bracket-step" key={column.title}>
+                      <h3>
+                        {column.title}
+                        <small>{column.note}</small>
+                      </h3>
+                      {column.slots.map((slot) => {
+                        const slotMatches = matches.filter((f) => f.label.endsWith(slot.label))
+                        return slotMatches.length ? (
+                          slotMatches.map((f) => (
+                            <FixtureCard s={s} fixture={f} onOpenMatch={onOpenMatch} key={f.id} />
+                          ))
+                        ) : (
+                          <div className="bracket-placeholder" key={slot.label}>
+                            <strong>{slot.label} match</strong>
+                            <span>{slot.pending}</span>
+                          </div>
+                        )
+                      })}
                     </div>
-                  )
-                })}
-              {!ids.length && <p>Draw pending</p>}
-              {matches.length ? (
-                <div className="group-results">
-                  {matches.map((fixture) => (
-                    <FixtureCard
-                      s={s}
-                      fixture={fixture}
-                      onOpenMatch={onOpenMatch}
-                      key={fixture.id}
-                    />
                   ))}
                 </div>
-              ) : null}
+              </div>
             </article>
           )
         })}
