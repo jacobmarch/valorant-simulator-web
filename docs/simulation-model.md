@@ -34,9 +34,15 @@ Salary is charged weekly using annual salary divided by the configured weeks-per
 
 ## 5. Training
 
-Each player receives exactly 40 available training hours per week. The user allocates hours among Mechanics, Tactical Decision-Making, Utility, Consistency, Clutch, and Teamplay. Five hours per skill is the maintenance threshold. Below five hours creates bounded regression risk; above five hours increases improvement chance with diminishing returns, subject to rating caps. MVP development uses transparent bounded randomness, not potential.
+Each player receives exactly 40 available training hours per week. The user allocates hours among Mechanics, Tactical Decision-Making, Utility, Consistency, Clutch, and Teamplay. Five hours per skill is the maintenance threshold. Below five hours creates bounded regression risk; above five hours increases improvement chance with diminishing returns, subject to rating caps. Players the manager does not train (AI rosters, free agents) follow a default balanced plan slightly above maintenance.
 
 Training results show hours, maintenance status, prior rating, result, and reason. Training is individual only; team synergy is later.
+
+### Potential, age, form and morale
+
+Every player has an age and a potential (their overall-rating ceiling). Seed ages range 19–28 for VCT players and 17–20 for free agents; younger players start with more headroom above their current overall. Training growth chance is multiplied by an age factor (1.5× at 20 and under down to 0.45× past 29), a potential factor (full speed with 5+ points of headroom, about 8% once the player reaches potential), and a morale factor (0.8×–1.2×). From 27, Mechanics and Clutch carry a weekly decline chance regardless of training; tactical skills start declining after 30. At season rollover every player ages one year and players 28 and older lose 1–2 potential.
+
+Form (−6 to +6) reflects recent individual performance: after each series it moves toward the player's average ACS relative to 200, plus a small win/loss nudge, and decays 20% per week. Morale (5–95, default 60) rises 4 after a series win, falls 5 after a loss, and drifts each week toward a target set by status (starter 55, substitute 42, inactive 35). In the match engine each player's strength includes form plus (morale − 50) / 25, so a hot, happy lineup gains a few points of team strength.
 
 ## 6. Scouting
 

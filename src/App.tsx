@@ -457,6 +457,10 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
                   <Badge color={p.years <= 1 ? '#fbbf24' : '#94a3b8'}>
                     {`Age ${p.age} · ${p.years}y left`}
                   </Badge>
+                  <small>
+                    POT {p.potential} · Morale {Math.round(p.morale)} · Form {p.form > 0 ? '+' : ''}
+                    {p.form.toFixed(1)}
+                  </small>
                 </span>
               </div>
               <b className="ovr">
@@ -488,7 +492,7 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
               <span>
                 <strong>{p.name}</strong>
                 <small>
-                  {p.primaryRole} · {money(p.salary)} / yr
+                  {p.primaryRole} · Age {p.age} · {money(p.salary)} / yr
                 </small>
               </span>
               <button
@@ -526,7 +530,7 @@ function Training({ s, setState }: { s: GameState; setState: (s: GameState) => v
     <Page
       eyebrow="PLAYER DEVELOPMENT / 40 HOURS"
       title="Build the weekly edge."
-      subtitle="Five hours maintains a skill. Everything above that creates a chance to grow."
+      subtitle="Five hours maintains a skill. Growth is faster for young players and slows once they reach potential."
     >
       <section className="panel training">
         <PanelTitle
@@ -543,7 +547,8 @@ function Training({ s, setState }: { s: GameState; setState: (s: GameState) => v
                 <strong>{p.name}</strong>
                 <span>
                   {p.primaryRole} · rating{' '}
-                  {Math.round(Object.values(p.ratings).reduce((x, y) => x + y, 0) / 6)}
+                  {Math.round(Object.values(p.ratings).reduce((x, y) => x + y, 0) / 6)} · potential{' '}
+                  {p.potential} · age {p.age}
                 </span>
               </div>
               <div className="hours">
