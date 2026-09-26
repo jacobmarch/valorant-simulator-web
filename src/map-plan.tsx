@@ -33,7 +33,8 @@ export function MapPlan({
     tiers = mapTiers(s, team.id),
     suggested = suggestedMapTiers(s, team.id),
     records = seasonMapRecords(s, team.id),
-    opponentTiers = opponent ? mapTiers(s, opponent.id) : undefined
+    opponentTiers = opponent ? mapTiers(s, opponent.id) : undefined,
+    opponentRecords = opponent ? seasonMapRecords(s, opponent.id) : undefined
   const veto =
     opponent && fixture ? runVeto(s, fixture.aId, fixture.bId ?? opponent.id, fixture.bestOf) : null
   const saveOrder = (next: string[] | undefined) => {
@@ -45,7 +46,7 @@ export function MapPlan({
   return (
     <div className="maps map-plan">
       <div className="map-plan-head">
-        <div className="eyebrow">MAP POOL / 1 = BEST</div>
+        <div className="eyebrow">MAP POOL / 1 = BEST / SEASON RECORDS</div>
         {custom ? (
           <button type="button" className="map-plan-reset" onClick={() => saveOrder(undefined)}>
             Use suggested
@@ -57,7 +58,7 @@ export function MapPlan({
       <div className="map-plan-legend">
         <span>Tier</span>
         <span>Map</span>
-        <span>Season</span>
+        <span>{team.short}</span>
         <span>{opponent?.short ?? ''}</span>
         <span />
       </div>
@@ -75,7 +76,14 @@ export function MapPlan({
             <span className="map-plan-record">
               {record.wins}–{record.losses}
             </span>
-            <span className="map-plan-opp">{opponentTiers ? `T${opponentTiers[map]}` : ''}</span>
+            <span className="map-plan-opp">
+              {opponentTiers && opponentRecords && (
+                <>
+                  <b>T{opponentTiers[map]}</b>
+                  {opponentRecords[map].wins}–{opponentRecords[map].losses}
+                </>
+              )}
+            </span>
             <span className="map-plan-move">
               <button
                 type="button"
