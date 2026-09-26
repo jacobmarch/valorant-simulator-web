@@ -2315,3 +2315,79 @@ table {
     min-height: 0;
   }
 }
+
+/* Sim choice and map-by-map walkthrough */
+.sim-choice {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.sim-choice button {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  padding: 14px;
+  text-align: left;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text);
+}
+.sim-choice button svg {
+  color: var(--accent);
+}
+.sim-choice button span {
+  font-size: 13px;
+  color: var(--text-3);
+}
+.sim-choice button:hover {
+  border-color: var(--accent);
+}
+.walkthrough-maps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+.walkthrough-maps li {
+  display: grid;
+  gap: 2px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+.walkthrough-maps li small,
+.walkthrough-maps li em {
+  font-size: 12px;
+  font-style: normal;
+  color: var(--text-3);
+}
+.walkthrough-maps li.played em {
+  color: var(--text);
+  font-weight: 700;
+}
+.walkthrough-maps li.next {
+  border-color: var(--accent);
+}
+.walkthrough-maps li.unplayed {
+  opacity: 0.5;
+}
+.walkthrough-veto {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-2);
+  line-height: 1.6;
+}
+.walkthrough-final {
+  margin: 12px 0 0;
+  font-weight: 700;
+  color: var(--accent);
+}
+@media (max-width: 560px) {
+  .sim-choice {
+    grid-template-columns: 1fr;
+  }
+}
