@@ -49,7 +49,7 @@ import {
   transferWindows,
   type TransferOutcome,
 } from './transfers'
-import { DashboardV2, MatchesV2, TacticsV2 } from './game-views'
+import { DashboardV2, MatchPreview, MatchesV2, TacticsV2 } from './game-views'
 import { CompetitionV2 } from './competition-view'
 import { DEFAULT_TRAINING } from './development'
 import {
@@ -64,6 +64,7 @@ import {
 import { seedTeams, skills, type Region } from './seed'
 import {
   Badge,
+  Modal,
   PanelTitle,
   Page,
   Stat,
@@ -174,6 +175,7 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
   const [market, setMarket] = useState<'free' | 'contracted'>('free')
   const [marketRegion, setMarketRegion] = useState<Region>(t.region)
   const [notice, setNotice] = useState<string | null>(null)
+  const [popup, setPopup] = useState<'history' | 'rules' | null>(null)
   const openWindow = transferWindowForWeek(s.week)
   const next = nextTransferWindow(s.week)
   const free = freeAgents(s).sort((a, b) => playerOverall(b) - playerOverall(a))
@@ -209,6 +211,11 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
           ? `${openWindow.label} open through week ${openWindow.end}`
           : `Transfer window closed · ${next.label} opens week ${next.start}`
       }`}
+      actions={
+        <button className="secondary" onClick={() => setPopup('history')}>
+          Roster history
+        </button>
+      }
     >
       {notice && (
         <div className="callout" role="alert">
@@ -282,29 +289,16 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
               </div>
             )
           })}
-          <div style={{ marginTop: 28 }}>
-            <PanelTitle eyebrow="ROSTER HISTORY" title="Recent moves" />
-          </div>
-          {history.length ? (
-            history.map((m) => (
-              <div className="market-row" key={m.id}>
-                <span>
-                  <strong>{describe(m)}</strong>
-                  <small>
-                    Season {m.season} · week {m.week}
-                  </small>
-                </span>
-              </div>
-            ))
-          ) : (
-            <p className="muted">No roster moves yet this save.</p>
-          )}
         </section>
         <section className="panel">
           <PanelTitle
             eyebrow="MARKET"
             title="Available talent"
-            right={<span className="muted">Cash {money(t.cash)}</span>}
+            right={
+              <button className="link" onClick={() => setPopup('rules')}>
+                Transfer rules
+              </button>
+            }
           />
           <div className="tabs">
             <button className={market === 'free' ? 'active' : ''} onClick={() => setMarket('free')}>
@@ -327,52 +321,75 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
                 </button>
               ))}
           </div>
-          {(market === 'free' ? free : contracted).map((p) => {
-            const block =
-              market === 'free' ? signFreeAgentError(s, t.id, p.id) : buyOutError(s, t.id, p.id)
-            return (
-              <div className="market-row" key={p.id}>
-                <span>
-                  <strong>
-                    {p.name} · {playerOverall(p)} OVR
-                  </strong>
-                  <small>
-                    {p.primaryRole} · Age {p.age}
-                    {p.teamId ? ` · ${s.teams[p.teamId].short}` : ''} · {money(p.salary)} / yr ×{' '}
-                    {p.years} · {market === 'free' ? 'cost' : 'buyout'} {money(contractValue(p))}
-                  </small>
-                </span>
-                <button
-                  className="secondary compact"
-                  disabled={Boolean(block)}
-                  title={block ?? undefined}
-                  onClick={() =>
-                    apply(
-                      market === 'free'
-                        ? signFreeAgent(s, t.id, p.id)
-                        : buyOutPlayer(s, t.id, p.id),
-                    )
-                  }
-                >
-                  {market === 'free' ? 'Sign' : 'Buy out'}
-                </button>
-              </div>
-            )
-          })}
-          <div className="callout">
-            <strong>Buyout rule</strong>
-            <span>
-              Contracted players cost annual salary × remaining years. The buyer pays the seller
-              immediately and takes over the contract. Signings, buyouts, and releases only happen
-              in transfer windows: weeks{' '}
-              {transferWindows
-                .map((w) => (w.start === w.end ? `${w.start}` : `${w.start}–${w.end}`))
-                .join(', ')}
-              .
-            </span>
+          <div className="market-list">
+            {(market === 'free' ? free : contracted).map((p) => {
+              const block =
+                market === 'free' ? signFreeAgentError(s, t.id, p.id) : buyOutError(s, t.id, p.id)
+              return (
+                <div className="market-row" key={p.id}>
+                  <span>
+                    <strong>
+                      {p.name} · {playerOverall(p)} OVR
+                    </strong>
+                    <small>
+                      {p.primaryRole} · Age {p.age}
+                      {p.teamId ? ` · ${s.teams[p.teamId].short}` : ''} · {money(p.salary)} / yr ×{' '}
+                      {p.years} · {market === 'free' ? 'cost' : 'buyout'} {money(contractValue(p))}
+                    </small>
+                  </span>
+                  <button
+                    className="secondary compact"
+                    disabled={Boolean(block)}
+                    title={block ?? undefined}
+                    onClick={() =>
+                      apply(
+                        market === 'free'
+                          ? signFreeAgent(s, t.id, p.id)
+                          : buyOutPlayer(s, t.id, p.id),
+                      )
+                    }
+                  >
+                    {market === 'free' ? 'Sign' : 'Buy out'}
+                  </button>
+                </div>
+              )
+            })}
           </div>
         </section>
       </div>
+      {popup === 'history' && (
+        <Modal eyebrow="ROSTER HISTORY" title="Recent moves" onClose={() => setPopup(null)}>
+          {history.length ? (
+            history.map((m) => (
+              <div className="market-row" key={m.id}>
+                <span>
+                  <strong>{describe(m)}</strong>
+                  <small>
+                    Season {m.season} · week {m.week}
+                  </small>
+                </span>
+              </div>
+            ))
+          ) : (
+            <p className="muted">No roster moves yet this save.</p>
+          )}
+        </Modal>
+      )}
+      {popup === 'rules' && (
+        <Modal eyebrow="MARKET" title="Transfer rules" onClose={() => setPopup(null)}>
+          <p className="modal-lead">
+            Contracted players cost annual salary × remaining years. The buyer pays the seller
+            immediately and takes over the contract.
+          </p>
+          <p className="muted">
+            Signings, buyouts, and releases only happen in transfer windows: weeks{' '}
+            {transferWindows
+              .map((w) => (w.start === w.end ? `${w.start}` : `${w.start}–${w.end}`))
+              .join(', ')}
+            . You have {money(t.cash)} available.
+          </p>
+        </Modal>
+      )}
     </Page>
   )
 }
@@ -421,51 +438,60 @@ function Training({ s, setState }: { s: GameState; setState: (s: GameState) => v
             </Badge>
           }
         />
-        {ps.map((p) => {
-          const a = s.training[p.id] ?? {}
-          const total = skills.reduce((sum, x) => sum + (a[x] ?? 0), 0)
-          return (
-            <div className="training-row" key={p.id}>
-              <div className="player-name">
-                <strong>{p.name}</strong>
-                <span>
-                  {p.primaryRole} · rating{' '}
-                  {Math.round(Object.values(p.ratings).reduce((x, y) => x + y, 0) / 6)} · potential{' '}
-                  {p.potential} · age {p.age}
-                </span>
-              </div>
-              <div className="hours">
-                <b className={total < TRAINING_HOURS ? 'short' : ''}>
-                  {total}
-                  <small>/{TRAINING_HOURS}h</small>
-                </b>
-                <div className="bar">
-                  <i style={{ width: `${(total / TRAINING_HOURS) * 100}%` }} />
+        <div className="training-grid">
+          <div className="training-head">
+            <span>Player</span>
+            <span>Hours</span>
+            {skills.map((skill) => (
+              <span key={skill}>{skill}</span>
+            ))}
+            <span />
+          </div>
+          {ps.map((p) => {
+            const a = s.training[p.id] ?? {}
+            const total = skills.reduce((sum, x) => sum + (a[x] ?? 0), 0)
+            return (
+              <div className="training-line" key={p.id}>
+                <div className="player-name">
+                  <strong>{p.name}</strong>
+                  <span>
+                    {p.primaryRole} · {playerOverall(p)} OVR · POT {p.potential} · {p.age}y
+                  </span>
                 </div>
+                <div className="hours">
+                  <b className={total < TRAINING_HOURS ? 'short' : ''}>
+                    {total}
+                    <small>/{TRAINING_HOURS}</small>
+                  </b>
+                  <div className="bar">
+                    <i style={{ width: `${(total / TRAINING_HOURS) * 100}%` }} />
+                  </div>
+                </div>
+                {skills.map((skill) => (
+                  <input
+                    key={skill}
+                    type="number"
+                    min="0"
+                    max="40"
+                    aria-label={`${p.name} ${skill} hours`}
+                    title={
+                      (a[skill] ?? 0) >= 5
+                        ? `${skill}: maintained`
+                        : `${skill}: at risk of slipping`
+                    }
+                    className={(a[skill] ?? 0) >= 5 ? '' : 'risk'}
+                    value={a[skill] ?? 0}
+                    onChange={(e) => setH(p.id, skill, Number(e.target.value))}
+                  />
+                ))}
                 <button className="link" onClick={() => applyBalanced([p.id])}>
-                  Balanced plan
+                  Balanced
                 </button>
               </div>
-              <div className="skills">
-                {skills.map((skill) => (
-                  <label key={skill}>
-                    <span>{skill}</span>
-                    <input
-                      type="number"
-                      min="0"
-                      max="40"
-                      value={a[skill] ?? 0}
-                      onChange={(e) => setH(p.id, skill, Number(e.target.value))}
-                    />
-                    <small className={(a[skill] ?? 0) >= 5 ? '' : 'risk'}>
-                      {(a[skill] ?? 0) >= 5 ? 'maintained' : 'at risk'}
-                    </small>
-                  </label>
-                ))}
-              </div>
-            </div>
-          )
-        })}
+            )
+          })}
+        </div>
+        <p className="muted training-key">Amber boxes are under 5 hours and can slip this week.</p>
       </section>
     </Page>
   )
@@ -489,7 +515,7 @@ function Scouting({ s, setState }: { s: GameState; setState: (s: GameState) => v
     <Page
       eyebrow={`SQUAD / WEEK ${s.week}`}
       title="Scouting"
-      subtitle="Spend the weekly 40-hour scouting pool to turn uncertainty into a recruiting decision."
+      subtitle="Assign the weekly 40-hour pool; ratings show once a player is 60% scouted."
     >
       <section className="panel">
         <PanelTitle
@@ -501,34 +527,36 @@ function Scouting({ s, setState }: { s: GameState; setState: (s: GameState) => v
             </Badge>
           }
         />
-        {targets.map((p) => {
-          const overall = Math.round(Object.values(p.ratings).reduce((a, b) => a + b, 0) / 6)
-          return (
-            <div className="scout-row" key={p.id}>
-              <div className="player-name">
-                <strong>{p.name}</strong>
-                <span>
-                  {p.teamId ? (s.teams[p.teamId]?.name ?? 'Tier 2') : 'Free agent'} ·{' '}
-                  {p.primaryRole}
-                </span>
-              </div>
-              <div className="reveal">
-                <strong>{p.scoutProgress >= 60 ? `${overall} OVR` : 'Unknown rating'}</strong>
-                <div className="bar">
-                  <i style={{ width: `${p.scoutProgress}%` }} />
+        <div className="scout-list">
+          {targets.map((p) => {
+            const overall = Math.round(Object.values(p.ratings).reduce((a, b) => a + b, 0) / 6)
+            return (
+              <div className="scout-row" key={p.id}>
+                <div className="player-name">
+                  <strong>{p.name}</strong>
+                  <span>
+                    {p.teamId ? (s.teams[p.teamId]?.name ?? 'Tier 2') : 'Free agent'} ·{' '}
+                    {p.primaryRole}
+                  </span>
                 </div>
-                <small>{Math.round(p.scoutProgress)}% scouted</small>
+                <div className="reveal">
+                  <strong>{p.scoutProgress >= 60 ? `${overall} OVR` : 'Unknown rating'}</strong>
+                  <div className="bar">
+                    <i style={{ width: `${p.scoutProgress}%` }} />
+                  </div>
+                  <small>{Math.round(p.scoutProgress)}% scouted</small>
+                </div>
+                <input
+                  type="number"
+                  min="0"
+                  max="40"
+                  value={s.scoutingHours[p.id] ?? 0}
+                  onChange={(e) => setH(p.id, Number(e.target.value))}
+                />
               </div>
-              <input
-                type="number"
-                min="0"
-                max="40"
-                value={s.scoutingHours[p.id] ?? 0}
-                onChange={(e) => setH(p.id, Number(e.target.value))}
-              />
-            </div>
-          )
-        })}
+            )
+          })}
+        </div>
       </section>
     </Page>
   )
@@ -713,6 +741,7 @@ export default function App() {
   const [view, setView] = useState<View>('dashboard')
   const [matchId, setMatchId] = useState<string>()
   const [report, setReport] = useState<ContinueReport | null>(null)
+  const [previewId, setPreviewId] = useState<string>()
   const [attack, setAttack] = useState('Measured defaults')
   const [defense, setDefense] = useState('Disciplined retakes')
   const start = (name: string, team: string) => {
@@ -754,6 +783,7 @@ export default function App() {
     setMatchId(id)
     setView('matches')
     setReport(null)
+    setPreviewId(undefined)
   }
   const go = (next: View) => {
     setView(next)
@@ -762,7 +792,13 @@ export default function App() {
   }
   const content =
     view === 'dashboard' ? (
-      <DashboardV2 s={s} setState={setS} setView={go} setMatchId={setMatchId} />
+      <DashboardV2
+        s={s}
+        setState={setS}
+        setView={go}
+        setMatchId={setMatchId}
+        onPreview={setPreviewId}
+      />
     ) : view === 'roster' ? (
       <Roster s={s} setState={setS} />
     ) : view === 'training' ? (
@@ -785,7 +821,7 @@ export default function App() {
         s={s}
         onSimMatch={simMatch}
         onSimulateRound={() => commit(simulateTournamentRound(s, attack, defense))}
-        onOpenMatch={openMatch}
+        onOpenMatch={setPreviewId}
       />
     ) : view === 'finances' ? (
       <Finances s={s} />
@@ -876,7 +912,7 @@ export default function App() {
           <ResultBanner
             s={s}
             report={report}
-            onOpen={openMatch}
+            onOpen={setPreviewId}
             onCompetition={() => {
               go('competition')
               setReport(null)
@@ -886,6 +922,14 @@ export default function App() {
         )}
         {content}
       </main>
+      {previewId && (
+        <MatchPreview
+          s={s}
+          matchId={previewId}
+          onClose={() => setPreviewId(undefined)}
+          onOpenFull={openMatch}
+        />
+      )}
     </div>
   )
 }

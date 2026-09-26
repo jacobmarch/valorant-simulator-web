@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react'
+import { useEffect, type ReactNode } from 'react'
+import { X } from 'lucide-react'
 import { activePhaseForWeek, phaseForWeek, type GameState } from './game'
 import type { Region } from './seed'
 
@@ -95,7 +96,7 @@ export const Page = ({
 }: {
   eyebrow: string
   title: string
-  subtitle: string
+  subtitle?: string
   actions?: ReactNode
   children: ReactNode
 }) => (
@@ -104,7 +105,7 @@ export const Page = ({
       <div>
         <div className="eyebrow">{eyebrow}</div>
         <h1>{title}</h1>
-        <p>{subtitle}</p>
+        {subtitle && <p>{subtitle}</p>}
       </div>
       {actions && <div className="page-actions">{actions}</div>}
     </div>
@@ -136,3 +137,48 @@ export const Empty = ({ title, body }: { title: string; body: string }) => (
     <p>{body}</p>
   </section>
 )
+
+/** Centered pop-up for detail that should not push the page into scrolling. */
+export function Modal({
+  title,
+  eyebrow,
+  onClose,
+  wide = false,
+  children,
+}: {
+  title: string
+  eyebrow?: string
+  onClose: () => void
+  wide?: boolean
+  children: ReactNode
+}) {
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+  return (
+    <div className="modal-backdrop" onClick={onClose} role="presentation">
+      <div
+        className={`modal ${wide ? 'wide' : ''}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header>
+          <div>
+            {eyebrow && <div className="eyebrow">{eyebrow}</div>}
+            <h2>{title}</h2>
+          </div>
+          <button className="icon-button" onClick={onClose} aria-label="Close">
+            <X size={18} />
+          </button>
+        </header>
+        <div className="modal-body">{children}</div>
+      </div>
+    </div>
+  )
+}

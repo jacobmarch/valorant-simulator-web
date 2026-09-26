@@ -1,4 +1,4 @@
-import { createContext, useContext, useState } from 'react'
+import { createContext, useContext, useState, type ReactNode } from 'react'
 import {
   activePhaseForWeek,
   competitionRecord,
@@ -16,7 +16,8 @@ import {
   type GameState,
 } from './game'
 import { type Region } from './seed'
-import { Badge, PanelTitle, regionColors as colors, tone } from './ui'
+import { Info } from 'lucide-react'
+import { Badge, Modal, PanelTitle, regionColors as colors, tone } from './ui'
 
 type PlayablePhase = Exclude<CompetitionPhase, 'Break' | 'Offseason'>
 type EventInfo = {
@@ -112,11 +113,13 @@ function FixtureCard({
   s,
   fixture,
   featured = false,
+  compact = false,
   onOpenMatch,
 }: {
   s: GameState
   fixture: Fixture
   featured?: boolean
+  compact?: boolean
   onOpenMatch?: (matchId: string) => void
 }) {
   const result = fixture.resultId
@@ -143,7 +146,8 @@ function FixtureCard({
           : undefined
       }
       tabIndex={result && onOpenMatch ? 0 : undefined}
-      className={`matchup-card ${fixture.status} ${managed ? 'managed' : ''} ${featured ? 'featured' : ''}`}
+      className={`matchup-card ${fixture.status} ${managed ? 'managed' : ''} ${featured ? 'featured' : ''} ${compact ? 'compact' : ''}`}
+      title={`${fixture.label} · Week ${fixture.week} · Bo${fixture.bestOf}`}
     >
       <header>
         <span>{fixture.label}</span>
@@ -177,8 +181,14 @@ function FixtureCard({
         </div>
       </div>
       {canSim && (
-        <button className="sim-match" onClick={() => onSimMatch(fixture.id)}>
-          Sim match
+        <button
+          className="sim-match"
+          onClick={(event) => {
+            event.stopPropagation()
+            onSimMatch(fixture.id)
+          }}
+        >
+          {compact ? 'Sim' : 'Sim match'}
         </button>
       )}
     </article>
@@ -305,22 +315,24 @@ function Schedule({
   title,
   empty,
   onOpenMatch,
+  controls,
 }: {
   s: GameState
   fixtures: Fixture[]
   title: string
   empty?: string
   onOpenMatch?: (matchId: string) => void
+  controls?: ReactNode
 }) {
   return (
     <section className="panel schedule-panel">
       <PanelTitle
         eyebrow="MATCH DESK"
         title={title}
-        right={<Badge>{fixtures.length} matches</Badge>}
+        right={controls ?? <Badge>{fixtures.length} matches</Badge>}
       />
       {fixtures.length ? (
-        <div className="matchup-list">
+        <div className="matchup-grid">
           {fixtures.map((fixture) => (
             <FixtureCard
               s={s}
@@ -353,14 +365,15 @@ function Matchday({
 }) {
   return (
     <div className="matchday-control">
-      <button onClick={() => setWeek(Math.max(min, week - 1))}>←</button>
-      <span>
-        <small>SELECTED MATCHDAY</small>
-        <strong>
-          Week {week} · {dateForWeek(week)}
-        </strong>
-      </span>
-      <button onClick={() => setWeek(Math.min(max, week + 1))}>→</button>
+      <button onClick={() => setWeek(Math.max(min, week - 1))} aria-label="Previous week">
+        ←
+      </button>
+      <strong>
+        Week {week} · {dateForWeek(week)}
+      </strong>
+      <button onClick={() => setWeek(Math.min(max, week + 1))} aria-label="Next week">
+        →
+      </button>
     </div>
   )
 }
@@ -474,16 +487,6 @@ function KickoffBracket({
   ]
   return (
     <section className="kickoff-bracket">
-      <div className="bracket-legend">
-        <span>
-          <i />
-          Winner advances right
-        </span>
-        <span>
-          <i />
-          Loss drops to the next path
-        </span>
-      </div>
       {paths.map((path) => {
         const laneCapacity = Math.max(...path.rounds.map((round) => round.expected))
         return (
@@ -502,15 +505,14 @@ function KickoffBracket({
                   const centerFor = (index: number) => ((index + 0.5) / round.expected) * 100
                   return (
                     <div className="kickoff-bracket-column" key={round.label}>
-                      <h3>
-                        <span>{round.label}</span>
+                      <h3 title={round.source}>
+                        <span>{round.label.replace(/^(Upper|Middle|Lower) /, '')}</span>
                         <small>
                           {matches.length
                             ? matches.length + ' / ' + round.expected
-                            : round.expected + ' matches'}
+                            : round.expected + (round.expected === 1 ? ' match' : ' matches')}
                         </small>
                       </h3>
-                      <p className="round-source">{round.source}</p>
                       <div className="kickoff-round-track">
                         {slots.map((fixture, slotIndex) => (
                           <div
@@ -519,10 +521,15 @@ function KickoffBracket({
                             style={{ top: centerFor(slotIndex) + '%' }}
                           >
                             {fixture ? (
-                              <FixtureCard s={s} fixture={fixture} onOpenMatch={onOpenMatch} />
+                              <FixtureCard
+                                s={s}
+                                fixture={fixture}
+                                compact
+                                onOpenMatch={onOpenMatch}
+                              />
                             ) : (
-                              <div className="bracket-placeholder">
-                                <strong>Awaiting teams</strong>
+                              <div className="bracket-placeholder" title={round.source}>
+                                <strong>TBD</strong>
                                 <span>{round.source}</span>
                               </div>
                             )}
@@ -572,42 +579,45 @@ function KickoffBracket({
     </section>
   )
 }
-function KickoffView({
+type CompetitionTab = 'bracket' | 'opening' | 'standings' | 'matches'
+function StandingsPanel({
   s,
   region,
-  week,
-  setWeek,
-  onOpenMatch,
+  phase,
 }: {
   s: GameState
   region: Region
-  week: number
-  setWeek: (week: number) => void
-  onOpenMatch?: (matchId: string) => void
+  phase: 'Kickoff' | 'Stage 1' | 'Stage 2'
 }) {
-  const ids = Object.values(s.teams)
-    .filter((team) => team.region === region)
-    .map((team) => team.id)
-  const openingByes = ids.filter((id) => s.kickoff[id].openingBye)
-  const allFixtures = s.fixtures.filter(
-    (fixture) =>
-      fixture.season === s.season && fixture.phase === 'Kickoff' && fixture.region === region,
+  return (
+    <section className="panel standings-panel">
+      <PanelTitle
+        eyebrow={`${region} · ${phase}`}
+        title={phase === 'Kickoff' ? 'Kickoff standings' : 'League table'}
+        right={
+          <Badge color={colors[region]}>
+            {phase === 'Kickoff'
+              ? '3 qualify'
+              : `Top 8 playoffs · ${phase === 'Stage 1' ? 3 : 4} qualify`}
+          </Badge>
+        }
+      />
+      <TeamTable s={s} region={region} phase={phase} />
+    </section>
   )
-  const fixtures = fixturesForWeek(s, week).filter(
-    (fixture) => fixture.phase === 'Kickoff' && fixture.region === region,
+}
+function KickoffInfo({ s, region }: { s: GameState; region: Region }) {
+  const byes = Object.values(s.teams).filter(
+    (team) => team.region === region && s.kickoff[team.id].openingBye,
   )
   return (
     <>
-      <section className="panel format-explainer">
-        <div>
-          <div className="eyebrow">HOW THE BRACKET WORKS</div>
-          <h2>Three paths. Three qualifiers.</h2>
-          <p>
-            Win to move right. A first loss drops a team to the middle bracket, a second loss drops
-            it to the lower bracket, and a third loss eliminates it. The winner of each path
-            qualifies for Masters 1.
-          </p>
-        </div>
+      <div className="format-explainer">
+        <p>
+          Win to move right. A first loss drops a team to the middle bracket, a second loss drops it
+          to the lower bracket, and a third loss eliminates it. The winner of each path qualifies
+          for Masters 1.
+        </p>
         <div className="life-key">
           <span>Upper</span>
           <b>↓</b>
@@ -617,134 +627,17 @@ function KickoffView({
           <b>×</b>
           <span>Out</span>
         </div>
-      </section>
-      <section className="panel kickoff-byes">
-        <PanelTitle
-          eyebrow="OPENING ROUND"
-          title="Returning Champions receive byes"
-          right={<Badge>4 byes</Badge>}
-        />
-        <div className="bye-list">
-          {openingByes.map((id) => {
-            const team = s.teams[id]
-            return (
-              <article key={id}>
-                <i style={{ background: team.color }} />
-                <strong>{team.name}</strong>
-                <small>Enters Upper Round 2</small>
-              </article>
-            )
-          })}
-        </div>
-      </section>
-      <KickoffBracket s={s} fixtures={allFixtures} onOpenMatch={onOpenMatch} />
-      <div className="competition-split">
-        <section className="panel">
-          <PanelTitle
-            eyebrow={region.toUpperCase() + ' QUALIFICATION RACE'}
-            title="Kickoff standings"
-            right={<Badge color={colors[region]}>3 qualify</Badge>}
-          />
-          <TeamTable s={s} region={region} phase="Kickoff" />
-        </section>
-        <div>
-          <Matchday week={week} setWeek={setWeek} min={1} max={6} />
-          <Schedule
-            onOpenMatch={onOpenMatch}
-            s={s}
-            fixtures={fixtures}
-            title={'Week ' + week + ' matchups'}
-          />
-        </div>
       </div>
-    </>
-  )
-}
-function LeagueView({
-  s,
-  phase,
-  region,
-  week,
-  setWeek,
-  stage,
-  setStage,
-  onOpenMatch,
-}: {
-  s: GameState
-  phase: 'Stage 1' | 'Stage 2'
-  region: Region
-  week: number
-  setWeek: (week: number) => void
-  stage: 'opening' | 'playoffs'
-  setStage: (stage: 'opening' | 'playoffs') => void
-  onOpenMatch?: (matchId: string) => void
-}) {
-  const info = events[phase],
-    fixtures = fixturesForWeek(s, week).filter(
-      (fixture) => fixture.phase === phase && fixture.region === region,
-    ),
-    current = fixtures.filter(
-      (fixture) => stageFor(fixture) === (stage === 'opening' ? 'League' : 'Playoffs'),
-    )
-  const playoffFixtures = s.fixtures.filter(
-    (fixture) =>
-      fixture.season === s.season &&
-      fixture.phase === phase &&
-      fixture.region === region &&
-      stageFor(fixture) === 'Playoffs',
-  )
-  const qualificationCount = phase === 'Stage 1' ? 3 : 4
-  return (
-    <>
-      <div className="stage-tabs">
-        <button className={stage === 'opening' ? 'active' : ''} onClick={() => setStage('opening')}>
-          <small>01</small>League stage
-        </button>
-        <button
-          className={stage === 'playoffs' ? 'active' : ''}
-          onClick={() => setStage('playoffs')}
-        >
-          <small>02</small>Regional playoffs
-        </button>
+      <h3 className="modal-subhead">Opening-round byes · {region}</h3>
+      <div className="bye-list">
+        {byes.map((team) => (
+          <article key={team.id}>
+            <i style={{ background: team.color }} />
+            <strong>{team.name}</strong>
+            <small>Enters Upper Round 2</small>
+          </article>
+        ))}
       </div>
-      {stage === 'opening' ? (
-        <div className="competition-split">
-          <section className="panel">
-            <PanelTitle
-              eyebrow={region.toUpperCase() + ' / ' + phase.toUpperCase()}
-              title="League table"
-              right={
-                <Badge color={colors[region]}>
-                  {'Top 8 playoffs · ' + qualificationCount + ' qualify'}
-                </Badge>
-              }
-            />
-            <TeamTable s={s} region={region} phase={phase} />
-          </section>
-          <div>
-            <Matchday week={week} setWeek={setWeek} min={info.start} max={info.end} />
-            <Schedule
-              onOpenMatch={onOpenMatch}
-              s={s}
-              fixtures={current}
-              title={region + ' league fixtures'}
-              empty="The league schedule begins when this split starts."
-            />
-          </div>
-        </div>
-      ) : (
-        <>
-          <PlayoffBracket onOpenMatch={onOpenMatch} s={s} fixtures={playoffFixtures} />
-          <Matchday week={week} setWeek={setWeek} min={info.start} max={info.end} />
-          <Schedule
-            onOpenMatch={onOpenMatch}
-            s={s}
-            fixtures={current}
-            title={region + ' playoff matchups'}
-            empty="The regional playoff bracket fills after league play concludes."
-          />
-        </>
-      )}
     </>
   )
 }
@@ -878,7 +771,7 @@ function SwissView({
                     <FixtureCard
                       s={s}
                       fixture={fixture}
-                      featured
+                      compact
                       onOpenMatch={onOpenMatch}
                       key={fixture.id}
                     />
@@ -941,7 +834,7 @@ function PlayoffBracket({
                 </h3>
                 {matches.length ? (
                   matches.map((f) => (
-                    <FixtureCard s={s} fixture={f} onOpenMatch={onOpenMatch} key={f.id} />
+                    <FixtureCard s={s} fixture={f} compact onOpenMatch={onOpenMatch} key={f.id} />
                   ))
                 ) : (
                   <div className="bracket-placeholder">
@@ -1068,7 +961,13 @@ function ChampionsGroups({
                         const slotMatches = matches.filter((f) => f.label.endsWith(slot.label))
                         return slotMatches.length ? (
                           slotMatches.map((f) => (
-                            <FixtureCard s={s} fixture={f} onOpenMatch={onOpenMatch} key={f.id} />
+                            <FixtureCard
+                              s={s}
+                              fixture={f}
+                              compact
+                              onOpenMatch={onOpenMatch}
+                              key={f.id}
+                            />
                           ))
                         ) : (
                           <div className="bracket-placeholder" key={slot.label}>
@@ -1088,74 +987,45 @@ function ChampionsGroups({
     </section>
   )
 }
-function InternationalView({
-  s,
-  phase,
-  stage,
-  setStage,
-  onOpenMatch,
-}: {
-  s: GameState
-  phase: 'Masters 1' | 'Masters 2' | 'Champions'
-  stage: 'opening' | 'playoffs'
-  setStage: (stage: 'opening' | 'playoffs') => void
-  onOpenMatch?: (matchId: string) => void
-}) {
-  const fixtures = s.fixtures.filter(
-      (f) => f.season === s.season && f.phase === phase && f.scope === 'international',
-    ),
-    current = currentTournamentDeskFixtures(s, phase)
-  return (
-    <>
-      <div className="stage-tabs">
-        <button className={stage === 'opening' ? 'active' : ''} onClick={() => setStage('opening')}>
-          <small>01</small>
-          {phase === 'Champions' ? 'Group stage' : 'Swiss stage'}
-        </button>
-        <button
-          className={stage === 'playoffs' ? 'active' : ''}
-          onClick={() => setStage('playoffs')}
-        >
-          <small>02</small>Playoff bracket
-        </button>
-      </div>
-      {stage === 'opening' ? (
-        phase === 'Champions' ? (
-          <ChampionsGroups
-            onOpenMatch={onOpenMatch}
-            s={s}
-            fixtures={fixtures.filter((f) => stageFor(f) === 'Groups')}
-          />
-        ) : (
-          <SwissView onOpenMatch={onOpenMatch} s={s} phase={phase} fixtures={fixtures} />
-        )
-      ) : (
-        <PlayoffBracket onOpenMatch={onOpenMatch} s={s} fixtures={fixtures} />
-      )}
-      <Schedule
-        onOpenMatch={onOpenMatch}
-        s={s}
-        fixtures={current}
-        title={`${phase} · current matchups`}
-        empty={
-          s.week < events[phase].start
-            ? 'The qualified field appears when the event begins.'
-            : 'This round is complete. Advance when you are ready for the next round.'
-        }
-      />
-    </>
-  )
-}
+const tabsFor = (phase: PlayablePhase): Array<[CompetitionTab, string]> =>
+  phase === 'Kickoff'
+    ? [
+        ['bracket', 'Bracket'],
+        ['standings', 'Standings'],
+        ['matches', 'Matches'],
+      ]
+    : phase === 'Stage 1' || phase === 'Stage 2'
+      ? [
+          ['standings', 'League table'],
+          ['bracket', 'Regional playoffs'],
+          ['matches', 'Matches'],
+        ]
+      : [
+          ['opening', phase === 'Champions' ? 'Group stage' : 'Swiss stage'],
+          ['bracket', 'Playoff bracket'],
+          ['matches', 'Matches'],
+        ]
+const defaultTab = (s: GameState, phase: PlayablePhase): CompetitionTab =>
+  phase === 'Kickoff'
+    ? 'bracket'
+    : s.week >= playoffStartFor(phase)
+      ? 'bracket'
+      : phase === 'Stage 1' || phase === 'Stage 2'
+        ? 'standings'
+        : 'opening'
+
 export function CompetitionV2({
   s,
   onOpenMatch,
   onSimMatch,
   onSimulateRound,
+  initialTab,
 }: {
   s: GameState
   onOpenMatch?: (matchId: string) => void
   onSimMatch?: (fixtureId: string) => void
   onSimulateRound?: () => void
+  initialTab?: CompetitionTab
 }) {
   const active = activePhaseForWeek(s.week),
     initial = (active === 'Offseason' ? 'Champions' : active) as PlayablePhase
@@ -1164,18 +1034,13 @@ export function CompetitionV2({
     [week, setWeek] = useState(
       Math.max(events[initial].start, Math.min(events[initial].end, s.week)),
     ),
-    [stage, setStage] = useState<'opening' | 'playoffs'>(
-      s.week >= playoffStartFor(initial) ? 'playoffs' : 'opening',
-    )
+    [tab, setTab] = useState<CompetitionTab>(initialTab ?? defaultTab(s, initial)),
+    [showInfo, setShowInfo] = useState(false)
   const info = events[phase],
     status = statusFor(s, phase),
-    currentPhase = activePhaseForWeek(s.week),
-    isCurrentEvent = phase === currentPhase && phaseForWeek(s.week) !== 'Break',
-    currentRoundFixtures = liveTournamentRoundFixtures(
-      s,
-      phase,
-      info.type === 'regional' ? region : undefined,
-    ),
+    isCurrentEvent = phase === activePhaseForWeek(s.week) && phaseForWeek(s.week) !== 'Break',
+    regional = info.type === 'regional',
+    currentRoundFixtures = liveTournamentRoundFixtures(s, phase, regional ? region : undefined),
     simMatch = {
       playable: new Set(isCurrentEvent ? playableTournamentFixtureIds(s) : []),
       onSimMatch,
@@ -1183,110 +1048,142 @@ export function CompetitionV2({
     selectEvent = (next: PlayablePhase) => {
       setPhase(next)
       setWeek(Math.max(events[next].start, Math.min(events[next].end, s.week)))
-      setStage(s.week >= playoffStartFor(next) ? 'playoffs' : 'opening')
+      setTab(defaultTab(s, next))
     }
-  const page = (
-    <div className="page competition-hub">
-      <div className="page-head">
-        <div>
-          <div className="eyebrow">MATCHDAY / WEEK {s.week}</div>
-          <h1>Competition</h1>
-          <p>
-            Move event by event through the season. Every format has its own standings, rules, and
-            match path.
-          </p>
-        </div>
-      </div>
-      <nav className="event-rail">
-        {eventOrder.map((event, index) => (
-          <button
-            className={phase === event ? 'active' : ''}
-            onClick={() => selectEvent(event)}
-            key={event}
-          >
-            <small>{String(index + 1).padStart(2, '0')}</small>
-            <span>
-              <strong>{event}</strong>
-              <em>{events[event].location}</em>
-            </span>
-            <i className={statusFor(s, event).toLowerCase().replace(' ', '-')} />
-          </button>
-        ))}
-      </nav>
-      <section className="event-hero">
-        <div>
-          <div className="event-kicker">
-            <span className={`event-status ${status.toLowerCase().replace(' ', '-')}`}>
-              {status}
-            </span>
-            <span>{info.type === 'international' ? 'Global event' : region}</span>
-            <span>
-              Weeks {info.start}–{info.end}
-            </span>
-          </div>
-          <h2>
-            {phase}
-            <em> · {info.type === 'international' ? info.location : region}</em>
-          </h2>
-          <p>{info.format}</p>
-        </div>
-        <aside>
-          <small>WHAT IS AT STAKE</small>
-          <strong>{info.stakes}</strong>
-          <span>
-            {dateForWeek(info.start)} — {dateForWeek(info.end)}
-          </span>
-        </aside>
-      </section>
-      {isCurrentEvent && (
-        <section className="tournament-controls">
-          <div>
-            <div className="eyebrow">LIVE TOURNAMENT CONTROL</div>
-            <strong>
-              {[...new Set(currentRoundFixtures.map((fixture) => fixture.label))].join(' · ') ||
-                'Round complete'}
-            </strong>
-            <span>
-              {currentRoundFixtures.length
-                ? currentRoundFixtures.length + ' matches remain in this round.'
-                : 'All scheduled matches are complete. Advance to move on.'}
-            </span>
-          </div>
-          <div>
-            <button className="primary" onClick={onSimulateRound}>
-              Simulate round <b>→</b>
-            </button>
-          </div>
-        </section>
-      )}
-      {info.type === 'regional' && <RegionPicker region={region} setRegion={setRegion} />}
-      {phase === 'Kickoff' ? (
-        <KickoffView
-          s={s}
-          region={region}
-          week={week}
-          setWeek={setWeek}
+  const eventFixtures = s.fixtures.filter(
+    (fixture) =>
+      fixture.season === s.season &&
+      fixture.phase === phase &&
+      (regional ? fixture.region === region : fixture.scope === 'international'),
+  )
+  const weekFixtures = fixturesForWeek(s, week).filter(
+    (fixture) =>
+      fixture.phase === phase &&
+      (regional ? fixture.region === region : fixture.scope === 'international'),
+  )
+  const matchday = <Matchday week={week} setWeek={setWeek} min={info.start} max={info.end} />
+  const body =
+    tab === 'matches' ? (
+      regional ? (
+        <Schedule
           onOpenMatch={onOpenMatch}
-        />
-      ) : phase === 'Stage 1' || phase === 'Stage 2' ? (
-        <LeagueView
           s={s}
-          phase={phase}
-          region={region}
-          week={week}
-          setWeek={setWeek}
-          stage={stage}
-          setStage={setStage}
-          onOpenMatch={onOpenMatch}
+          fixtures={weekFixtures}
+          title={`${region} · week ${week} matchups`}
+          controls={matchday}
+          empty="No series for this region in the selected week."
         />
       ) : (
-        <InternationalView
-          s={s}
-          phase={phase}
-          stage={stage}
-          setStage={setStage}
+        <Schedule
           onOpenMatch={onOpenMatch}
+          s={s}
+          fixtures={currentTournamentDeskFixtures(s, phase)}
+          title={`${phase} · current matchups`}
+          empty={
+            s.week < info.start
+              ? 'The qualified field appears when the event begins.'
+              : 'This round is complete. Advance when you are ready for the next round.'
+          }
         />
+      )
+    ) : tab === 'standings' &&
+      phase !== 'Masters 1' &&
+      phase !== 'Masters 2' &&
+      phase !== 'Champions' ? (
+      <StandingsPanel s={s} region={region} phase={phase} />
+    ) : tab === 'opening' && phase === 'Champions' ? (
+      <ChampionsGroups
+        onOpenMatch={onOpenMatch}
+        s={s}
+        fixtures={eventFixtures.filter((f) => stageFor(f) === 'Groups')}
+      />
+    ) : tab === 'opening' && (phase === 'Masters 1' || phase === 'Masters 2') ? (
+      <SwissView onOpenMatch={onOpenMatch} s={s} phase={phase} fixtures={eventFixtures} />
+    ) : phase === 'Kickoff' ? (
+      <KickoffBracket s={s} fixtures={eventFixtures} onOpenMatch={onOpenMatch} />
+    ) : (
+      <PlayoffBracket onOpenMatch={onOpenMatch} s={s} fixtures={eventFixtures} />
+    )
+  const page = (
+    <div className="page competition-hub">
+      <div className="comp-head">
+        <h1>Competition</h1>
+        <nav className="event-rail">
+          {eventOrder.map((event) => (
+            <button
+              className={phase === event ? 'active' : ''}
+              onClick={() => selectEvent(event)}
+              key={event}
+              title={`${events[event].location} · ${statusFor(s, event)}`}
+            >
+              <i className={statusFor(s, event).toLowerCase().replace(' ', '-')} />
+              {event}
+            </button>
+          ))}
+        </nav>
+      </div>
+      <div className="comp-toolbar">
+        <div className="event-summary">
+          <strong title={status}>
+            {phase} · {regional ? region : info.location}
+          </strong>
+          <button className="link" onClick={() => setShowInfo(true)}>
+            <Info size={14} /> Info
+          </button>
+        </div>
+        {regional && <RegionPicker region={region} setRegion={setRegion} />}
+        <div className="tabs comp-tabs">
+          {tabsFor(phase).map(([key, label]) => (
+            <button className={tab === key ? 'active' : ''} onClick={() => setTab(key)} key={key}>
+              {label}
+            </button>
+          ))}
+        </div>
+        {isCurrentEvent && (
+          <div className="live-round">
+            <span
+              title={
+                [...new Set(currentRoundFixtures.map((fixture) => fixture.label))].join(' · ') ||
+                'Round complete'
+              }
+            >
+              <strong>
+                {currentRoundFixtures.length
+                  ? `${currentRoundFixtures.length} left this round`
+                  : 'Round complete'}
+              </strong>
+            </span>
+            <button className="primary compact" onClick={onSimulateRound}>
+              Simulate round
+            </button>
+          </div>
+        )}
+      </div>
+      <div className="comp-body">{body}</div>
+      {showInfo && (
+        <Modal
+          eyebrow={`${info.type === 'international' ? info.location : region} · ${dateForWeek(info.start)} – ${dateForWeek(info.end)}`}
+          title={`${phase}: ${info.format}`}
+          onClose={() => setShowInfo(false)}
+        >
+          <p className="modal-lead">
+            <strong>At stake:</strong> {info.stakes}.
+          </p>
+          {phase === 'Kickoff' ? (
+            <KickoffInfo s={s} region={region} />
+          ) : regional ? (
+            <p className="muted">
+              A round-robin league stage sets the table. The top eight reach a double-elimination
+              playoff, and the best finishers qualify for the next international event.
+            </p>
+          ) : (
+            <p className="muted">
+              {phase === 'Champions'
+                ? 'Four double-elimination groups of four. The top two from each group reach the playoff bracket.'
+                : 'The four regional champions go straight to the playoffs. Eight more teams play a Swiss stage: two wins advance, two losses eliminate.'}
+            </p>
+          )}
+        </Modal>
       )}
     </div>
   )

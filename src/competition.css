@@ -153,27 +153,6 @@
   border-color: color-mix(in srgb, var(--accent) 24%, transparent);
   color: var(--accent);
 }
-.prep-opponent {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 26px;
-  background: linear-gradient(135deg, var(--surface-3), var(--surface-3));
-}
-.prep-opponent > div {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.prep-opponent > span {
-  color: var(--text-3);
-  font-family: var(--font-display);
-}
-.prep-opponent .mark {
-  width: 36px;
-  height: 36px;
-  font-size: 13px;
-}
 .match-picker {
   padding: 13px 18px;
 }
@@ -1668,4 +1647,529 @@
   z-index: auto;
   top: auto;
   height: auto;
+}
+
+/* ---- One-screen competition layout ---- */
+.competition-hub {
+  padding-top: 14px;
+}
+.comp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 8px;
+}
+.comp-head h1 {
+  font-family: var(--font-display);
+  font-size: 28px;
+  line-height: 1;
+  margin: 0;
+}
+.competition-hub .event-rail {
+  display: flex;
+  gap: 4px;
+  margin: 0;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  overflow-x: auto;
+  grid-template-columns: none;
+}
+.competition-hub .event-rail button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 0;
+  padding: 7px 12px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-3);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  box-shadow: none;
+}
+.competition-hub .event-rail button:hover {
+  color: var(--text);
+}
+.competition-hub .event-rail button.active {
+  background: var(--surface-4);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: none;
+}
+.competition-hub .event-rail button > i {
+  position: static;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-4);
+}
+.competition-hub .event-rail button > i.in-progress {
+  background: var(--accent);
+}
+.competition-hub .event-rail button > i.complete {
+  background: var(--text-3);
+}
+.comp-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-3);
+}
+.event-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  font-size: 13px;
+}
+.event-summary strong {
+  font-size: 14px;
+  white-space: nowrap;
+}
+.event-summary .muted {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.competition-hub .event-status {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.competition-hub .region-picker {
+  display: flex;
+  gap: 2px;
+  margin: 0;
+}
+.competition-hub .region-picker button {
+  padding: 5px 9px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+.comp-tabs {
+  margin: 0;
+}
+.live-round {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+.live-round strong,
+.live-round small {
+  display: block;
+  text-align: right;
+  line-height: 1.25;
+}
+.live-round strong {
+  font-size: 13px;
+}
+.live-round small {
+  font-size: 12px;
+  color: var(--text-3);
+}
+.comp-body > .panel,
+.comp-body > section {
+  margin-bottom: 0;
+}
+
+/* Compact match cards used inside brackets */
+.matchup-card {
+  border-radius: var(--radius-sm);
+}
+.matchup-card.compact {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto;
+  flex-direction: row;
+  padding: 0;
+  overflow: hidden;
+}
+.matchup-card.compact > header {
+  display: none;
+}
+.matchup-card.compact .matchup-teams > div {
+  grid-template-columns: 7px minmax(0, 1fr) 16px;
+  gap: 6px;
+  padding: 0 7px;
+  height: 19px;
+  border-top: 0;
+}
+.matchup-card.compact .matchup-teams > div + div {
+  border-top: 1px solid var(--line);
+}
+.matchup-card.compact .matchup-teams > div strong {
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.matchup-card.compact .matchup-teams > div small {
+  display: none;
+}
+.matchup-card.compact .matchup-teams > div b {
+  font-size: 15px;
+}
+.matchup-card.compact .sim-match {
+  width: auto;
+  margin: 0;
+  padding: 0 7px;
+  border: 0;
+  border-left: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 0;
+  font-size: 11px;
+  letter-spacing: 0;
+}
+.matchup-card.managed.compact {
+  box-shadow: inset 2px 0 var(--accent);
+}
+.matchup-card .sim-match {
+  border-radius: var(--radius-sm);
+}
+.bracket-placeholder {
+  border-radius: var(--radius-sm);
+}
+.matchup-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 10px;
+}
+
+/* Kickoff: all three paths on one screen */
+.kickoff-bracket {
+  margin: 0;
+  padding: 8px;
+  border-radius: var(--radius);
+}
+.kickoff-bracket > .bracket-legend {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 2px 8px;
+  font-size: 12px;
+}
+.kickoff-bracket > .bracket-legend strong {
+  font-size: 13px;
+  margin-right: auto;
+}
+.kickoff-bracket-lane {
+  margin-bottom: 8px;
+  border-radius: var(--radius-sm);
+  border-top-width: 2px;
+}
+.kickoff-bracket-lane:last-child {
+  margin-bottom: 0;
+}
+.kickoff-bracket-lane > header {
+  padding: 3px 10px;
+}
+.kickoff-bracket-lane > header div {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.kickoff-bracket-lane > header b {
+  font-size: 13px;
+}
+.kickoff-bracket-lane > header span {
+  margin: 0;
+  font-size: 12px;
+}
+.kickoff-bracket-scroll {
+  padding: 4px 10px 6px;
+}
+.kickoff-bracket-rounds {
+  --kickoff-match-slot: 46px;
+  --kickoff-column-gap: 26px;
+  --kickoff-connector-half-gap: 13px;
+  grid-auto-columns: 148px;
+}
+.kickoff-bracket-column {
+  width: 148px;
+}
+.kickoff-bracket-column h3 {
+  min-height: 0;
+  margin: 0 0 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.kickoff-bracket-column h3 small {
+  font-size: 11px;
+}
+.kickoff-round-track {
+  height: calc(var(--slots, 4) * var(--kickoff-match-slot, 46px));
+}
+.placeholder-node .bracket-placeholder,
+.kickoff-match-node .bracket-placeholder {
+  min-height: 0;
+  height: 38px;
+  padding: 4px 8px;
+  display: flex;
+  align-items: center;
+}
+.kickoff-match-node .bracket-placeholder strong {
+  font-size: 12px;
+  color: var(--text-4);
+}
+.kickoff-match-node .bracket-placeholder span {
+  display: none;
+}
+
+/* Regional and international playoffs: lanes left, grand final right */
+.playoff-board {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 10px;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+.playoff-board > .bracket-legend {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.playoff-board > .bracket-lane {
+  grid-column: 1;
+  margin: 0;
+  border-radius: var(--radius-sm);
+}
+.playoff-board > .grand-final {
+  grid-column: 2;
+  grid-row: 2 / 4;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+  margin: 0;
+  border-radius: var(--radius-sm);
+}
+.bracket-lane > header {
+  padding: 6px 10px;
+}
+.bracket-lane > header div {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+.bracket-lane > header span {
+  margin: 0;
+  font-size: 12px;
+}
+.bracket-path {
+  gap: 14px;
+  padding: 8px 10px 10px;
+}
+.bracket-step {
+  gap: 6px;
+  min-width: 140px;
+}
+.bracket-step h3 {
+  margin: 0 0 2px;
+  font-size: 12px;
+}
+.bracket-step .matchup-card + .matchup-card {
+  margin-top: 0;
+}
+.bracket-step .bracket-placeholder {
+  padding: 8px;
+}
+
+/* Swiss: seeds, table and results side by side */
+.tournament-stage-grid {
+  display: grid;
+  grid-template-columns: 230px minmax(0, 1fr) minmax(0, 1.25fr);
+  gap: 12px;
+  align-items: start;
+}
+.tournament-stage-grid > .panel {
+  margin: 0;
+}
+.tournament-stage-grid > .swiss-results {
+  grid-column: auto;
+  max-height: calc(100vh - 230px);
+  overflow: auto;
+}
+.tournament-stage-grid .panel-title h2 {
+  font-size: 16px;
+}
+.swiss-table article {
+  padding: 5px 0;
+}
+.swiss-table article span small {
+  display: none;
+}
+.swiss-result-round .matchup-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.swiss-table article,
+.direct-seeds article {
+  padding: 8px 0;
+}
+
+/* Champions groups: a 2 x 2 grid */
+.group-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.group-card {
+  border-radius: var(--radius-sm);
+}
+.group-layout {
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 10px;
+}
+.group-bracket .bracket-step {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.group-bracket.bracket-path {
+  gap: 8px;
+  overflow: visible;
+}
+.group-card > header {
+  padding-bottom: 6px;
+}
+.group-standings > div {
+  padding: 6px 4px;
+}
+.bracket-step h3 small {
+  display: none;
+}
+.bracket-step .bracket-placeholder {
+  font-size: 12px;
+}
+.bracket-step .bracket-placeholder span {
+  display: none;
+}
+
+/* Standings panels get compact rows */
+.standings-panel td {
+  padding-top: 7px;
+  padding-bottom: 7px;
+}
+.competition-hub .matchday-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.competition-hub .matchday-control strong {
+  font-size: 13px;
+}
+.competition-hub .matchday-control button {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+}
+.modal-lead {
+  margin: 0 0 14px;
+  color: var(--text-2);
+}
+.modal-subhead {
+  margin: 18px 0 8px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.modal .format-explainer {
+  display: block;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: none;
+}
+.modal .format-explainer p {
+  color: var(--text-2);
+  margin: 0 0 12px;
+}
+.modal .bye-list {
+  grid-template-columns: repeat(2, 1fr);
+}
+@media (max-width: 1100px) {
+  .comp-head {
+    display: block;
+  }
+  .comp-head .event-rail {
+    margin-top: 10px;
+  }
+  .live-round {
+    margin-left: 0;
+  }
+  .tournament-stage-grid,
+  .group-grid,
+  .playoff-board {
+    grid-template-columns: 1fr;
+  }
+  .playoff-board > .grand-final {
+    grid-column: 1;
+    grid-row: auto;
+  }
+}
+
+/* Match center compact box score */
+.scoreboard-toolbar {
+  margin: 8px 0 8px;
+}
+.scoreboard-toolbar .eyebrow,
+.scoreboard-toolbar > .muted {
+  display: none;
+}
+.scoreboard-teams {
+  gap: 10px;
+}
+.scoreboard-team-head {
+  padding: 6px 12px;
+}
+.scoreboard-table td {
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+.scoreboard-table th {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+.scoreboard-table .scoreboard-player strong,
+.scoreboard-table .scoreboard-player small {
+  display: inline;
+}
+.scoreboard-table .scoreboard-player small {
+  margin-left: 8px;
+}
+.match-box {
+  position: relative;
+  padding-top: 12px;
+}
+.match-box .scoreboard-toolbar {
+  position: absolute;
+  top: 12px;
+  right: 22px;
+  margin: 0;
+}
+.match-box .view-tabs {
+  margin-bottom: 10px;
+}
+.scoreboard-team-kicker {
+  display: none;
+}
+.scoreboard-team-head strong {
+  font-size: 14px;
+}
+.scoreboard-team-score b {
+  font-size: 20px;
 }

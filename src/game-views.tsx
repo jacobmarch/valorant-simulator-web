@@ -24,6 +24,7 @@ import { playerOverall } from './transfers'
 import {
   Badge,
   Empty,
+  Modal,
   PanelTitle,
   Page,
   Stat,
@@ -130,11 +131,13 @@ export function DashboardV2({
   setState,
   setView,
   setMatchId,
+  onPreview,
 }: {
   s: GameState
   setState?: (state: GameState) => void
   setView: (view: View) => void
   setMatchId?: (id: string) => void
+  onPreview?: (id: string) => void
 }) {
   const team = currentTeam(s),
     fixture = nextFixtureForTeam(s, team.id, s.week),
@@ -171,29 +174,7 @@ export function DashboardV2({
           : `${phaseName(s.week)} is under way. Check the to-do list, then press Continue in the top bar.`
       }
     >
-      <div className="stats">
-        <Stat
-          label="Season record"
-          value={`${team.wins}–${team.losses}`}
-          detail={`${team.mapWins}–${team.mapLosses} maps`}
-        />
-        <Stat
-          label="Championship points"
-          value={String(team.championshipPoints)}
-          detail={team.playoffStage || 'Champions qualification race'}
-        />
-        <Stat
-          label="Cash balance"
-          value={money(team.cash)}
-          detail={`${money(team.salaryBudget)} salary budget`}
-        />
-        <Stat
-          label="Starting five"
-          value={squadRating ? `${squadRating} OVR` : '—'}
-          detail={`${starters.length}/5 starters set`}
-        />
-      </div>
-      <div className="desk-grid">
+      <div className="home-grid">
         <section className="panel spotlight">
           <PanelTitle
             eyebrow={opponent ? 'NEXT SERIES' : 'SCHEDULE'}
@@ -311,8 +292,7 @@ export function DashboardV2({
             </div>
           )}
         </section>
-      </div>
-      <div className="desk-grid even">
+        <MiniStandings s={s} onView={setView} />
         <section className="panel recent-results-panel">
           <PanelTitle
             eyebrow="RESULTS"
@@ -334,8 +314,11 @@ export function DashboardV2({
                     className="recent-result"
                     key={match.id}
                     onClick={() => {
-                      setMatchId?.(match.id)
-                      setView('matches')
+                      if (onPreview) onPreview(match.id)
+                      else {
+                        setMatchId?.(match.id)
+                        setView('matches')
+                      }
                     }}
                   >
                     <span className={`result-tag ${won ? 'w' : 'l'}`}>{won ? 'W' : 'L'}</span>
@@ -361,19 +344,43 @@ export function DashboardV2({
             )}
           </div>
         </section>
-        <MiniStandings s={s} onView={setView} />
+        <section className="panel inbox-panel">
+          <PanelTitle eyebrow="INBOX" title="Around the league" />
+          <div className="inbox-list">
+            {s.inbox.slice(0, 8).map((message, index) => (
+              <div className="inbox" key={`${message}-${index}`}>
+                <i />
+                {message}
+              </div>
+            ))}
+          </div>
+        </section>
+        <section className="panel snapshot">
+          <PanelTitle eyebrow="CLUB" title="Snapshot" />
+          <div className="stats">
+            <Stat
+              label="Season record"
+              value={`${team.wins}–${team.losses}`}
+              detail={`${team.mapWins}–${team.mapLosses} maps`}
+            />
+            <Stat
+              label="Champ. points"
+              value={String(team.championshipPoints)}
+              detail={team.playoffStage || 'Champions qualification race'}
+            />
+            <Stat
+              label="Cash balance"
+              value={money(team.cash)}
+              detail={`${money(team.salaryBudget)} salary budget`}
+            />
+            <Stat
+              label="Starting five"
+              value={squadRating ? `${squadRating} OVR` : '—'}
+              detail={`${starters.length}/5 starters set`}
+            />
+          </div>
+        </section>
       </div>
-      <section className="panel">
-        <PanelTitle eyebrow="INBOX" title="News around the league" />
-        <div className="inbox-list">
-          {s.inbox.slice(0, 8).map((message, index) => (
-            <div className="inbox" key={`${message}-${index}`}>
-              <i />
-              {message}
-            </div>
-          ))}
-        </div>
-      </section>
     </Page>
   )
 }
@@ -409,26 +416,13 @@ export function TacticsV2({
   return (
     <Page
       eyebrow={`MATCH PREP / ${phaseName(s.week)}`}
-      title={opponent ? `${team.short} vs ${opponent.short}` : 'No match to prepare'}
+      title={opponent ? `${team.name} vs ${opponent.name}` : 'No match to prepare'}
       subtitle={
         opponent
           ? `${fixture?.label} · ${dateForWeek(fixture?.week ?? s.week)} · BO${fixture?.bestOf}`
           : 'Open Competition to review the current bracket and upcoming schedule.'
       }
     >
-      {opponent && (
-        <section className="panel prep-opponent">
-          <div>
-            <TeamMark s={s} id={team.id} />
-            <strong>{team.name}</strong>
-          </div>
-          <span>VS</span>
-          <div>
-            <TeamMark s={s} id={opponent.id} />
-            <strong>{opponent.name}</strong>
-          </div>
-        </section>
-      )}
       <div className="columns">
         <section className="panel">
           <PanelTitle
@@ -904,6 +898,7 @@ export function MatchesV2({ s, initialMatchId }: { s: GameState; initialMatchId?
   const [scoreboardMode, setScoreboardMode] = useState<ScoreboardMode>('teams')
   const [sortKey, setSortKey] = useState<ScoreSortKey>('acs')
   const [sortDirection, setSortDirection] = useState<ScoreDirection>('desc')
+  const [showNotes, setShowNotes] = useState(false)
   const match = matches.find((candidate) => candidate.id === selectedId) ?? matches[0]
   const stats = useMemo(() => (match ? aggregateStats(match, tab) : {}), [match, tab])
   const setScoreSort = (key: ScoreSortKey) => {
@@ -936,12 +931,11 @@ export function MatchesV2({ s, initialMatchId }: { s: GameState; initialMatchId?
     <Page
       eyebrow="MATCHDAY / RESULTS"
       title="Match center"
-      subtitle="Review the entire series or isolate any map. Every box-score event comes from the round simulation."
-    >
-      <section className="panel match-picker">
-        <label>
-          Series
+      actions={
+        <>
           <select
+            className="series-select"
+            aria-label="Series"
             value={match.id}
             onChange={(event) => {
               setSelectedId(event.target.value)
@@ -955,8 +949,12 @@ export function MatchesV2({ s, initialMatchId }: { s: GameState; initialMatchId?
               </option>
             ))}
           </select>
-        </label>
-      </section>
+          <button className="secondary" onClick={() => setShowNotes(true)}>
+            {tab === 'series' ? 'Highlights' : 'Key rounds'}
+          </button>
+        </>
+      }
+    >
       <section className="broadcast">
         <div>
           <span>{match.phase}</span>
@@ -986,7 +984,7 @@ export function MatchesV2({ s, initialMatchId }: { s: GameState; initialMatchId?
           ))}
         </div>
       </section>
-      <section className="panel">
+      <section className="panel match-box">
         <div className="view-tabs">
           <button className={tab === 'series' ? 'active' : ''} onClick={() => setTab('series')}>
             Entire series
@@ -1001,17 +999,6 @@ export function MatchesV2({ s, initialMatchId }: { s: GameState; initialMatchId?
             </button>
           ))}
         </div>
-        <PanelTitle
-          eyebrow={
-            tab === 'series'
-              ? 'SERIES BOX SCORE'
-              : 'MAP BOX SCORE / ' + match.maps[tab as number].map
-          }
-          title={
-            tab === 'series' ? 'Series statistics' : match.maps[tab as number].map + ' statistics'
-          }
-          right={<span className="muted">ACS · ADR / damage per round · K/D</span>}
-        />
         {hasMatchDetail(match) ? (
           <Scoreboard
             s={s}
@@ -1030,27 +1017,113 @@ export function MatchesV2({ s, initialMatchId }: { s: GameState; initialMatchId?
           </p>
         )}
       </section>
-      <section className="panel">
-        <PanelTitle
+      {showNotes && (
+        <Modal
           eyebrow={tab === 'series' ? 'SERIES NOTES' : 'ROUND REPLAY'}
           title={
             tab === 'series' ? 'Match highlights' : match.maps[tab as number].map + ' key rounds'
           }
-        />
-        {(tab === 'series'
-          ? [
-              ...match.highlights,
-              ...(match.vetoLog?.length ? [`Veto: ${match.vetoLog.join(', ')}.`] : []),
-            ]
-          : keyRounds.length
-            ? keyRounds
-            : selectedMaps[0].rounds.slice(-6)
-        ).map((text, index) => (
-          <div className="highlight" key={text + '-' + index}>
-            ✦ {text}
+          onClose={() => setShowNotes(false)}
+        >
+          {(tab === 'series'
+            ? [
+                ...match.highlights,
+                ...(match.vetoLog?.length ? [`Veto: ${match.vetoLog.join(', ')}.`] : []),
+              ]
+            : keyRounds.length
+              ? keyRounds
+              : selectedMaps[0].rounds.slice(-6)
+          ).map((text, index) => (
+            <div className="highlight" key={text + '-' + index}>
+              ✦ {text}
+            </div>
+          ))}
+        </Modal>
+      )}
+    </Page>
+  )
+}
+
+/** Quick look at a series without leaving the current page. */
+export function MatchPreview({
+  s,
+  matchId,
+  onClose,
+  onOpenFull,
+}: {
+  s: GameState
+  matchId: string
+  onClose: () => void
+  onOpenFull: (id: string) => void
+}) {
+  const match = s.matches.find((candidate) => candidate.id === matchId)
+  if (!match) return null
+  const a = s.teams[match.aId],
+    b = s.teams[match.bId]
+  const stats = hasMatchDetail(match) ? aggregateStats(match, 'series') : {}
+  const top = Object.entries(stats)
+    .sort(([, left], [, right]) => right.acs - left.acs)
+    .slice(0, 3)
+  return (
+    <Modal
+      eyebrow={`${match.phase} · Week ${match.week} · Bo${match.bestOf}`}
+      title={`${a.name} vs ${b.name}`}
+      onClose={onClose}
+    >
+      <div className="preview-score">
+        <span className={match.winnerId === a.id ? 'winner' : ''}>
+          <TeamMark s={s} id={a.id} />
+          {a.short}
+        </span>
+        <b>
+          {match.aScore} – {match.bScore}
+        </b>
+        <span className={match.winnerId === b.id ? 'winner' : ''}>
+          {b.short}
+          <TeamMark s={s} id={b.id} />
+        </span>
+      </div>
+      <div className="preview-maps">
+        {match.maps.map((map, index) => (
+          <div key={`${map.map}-${index}`}>
+            <small>{map.map}</small>
+            <strong>
+              {map.aScore}–{map.bScore}
+            </strong>
+            <em>{s.teams[map.winnerId]?.short}</em>
           </div>
         ))}
-      </section>
-    </Page>
+      </div>
+      {top.length > 0 && (
+        <>
+          <h3 className="modal-subhead">Top performers</h3>
+          {top.map(([id, stat]) => (
+            <div className="preview-player" key={id}>
+              <strong>{s.players[id]?.name}</strong>
+              <span className="muted">{s.teams[matchSide(s, match, id) ?? '']?.short}</span>
+              <span>{stat.acs} ACS</span>
+              <span className="muted">
+                {stat.kills}/{stat.deaths}
+              </span>
+            </div>
+          ))}
+        </>
+      )}
+      {match.highlights.length > 0 && (
+        <>
+          <h3 className="modal-subhead">Highlights</h3>
+          <ul className="preview-notes">
+            {match.highlights.slice(0, 3).map((text) => (
+              <li key={text}>{text}</li>
+            ))}
+          </ul>
+        </>
+      )}
+      <div className="modal-actions">
+        <button className="primary" onClick={() => onOpenFull(match.id)}>
+          Full box score <ArrowRight size={15} />
+        </button>
+      </div>
+    </Modal>
   )
 }
