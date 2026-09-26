@@ -8,9 +8,9 @@ The calendar starts on 2026-01-01. The player advances in weekly increments. Eve
 
 Use the official 2026 sequence: regional Kickoff, Masters 1 (officially Masters Santiago), regional Stage 1, Masters 2 (officially Masters London), regional Stage 2, and Champions (officially Champions Shanghai). The 2026 configuration contains 48 teams across Americas, EMEA, Pacific, and China.
 
-Kickoff is a 12-team triple-elimination event in each territory. The top three teams from each territory qualify for Masters 1 and receive configured Championship Points. Stage 1 uses a 12-team regional league in weeks 12–15. The top eight teams by regional standings advance to an eight-team double-elimination playoff in weeks 16–18. The lower final and grand final are Bo5. The top three Stage 1 finishers from each territory qualify for Masters 2 and receive configured Championship Points.
+Kickoff is a 12-team triple-elimination event in each territory. The top three teams from each territory qualify for Masters 1 and receive configured Championship Points. Stage 1 draws two groups of six per region in weeks 11–15, one team from each Kickoff seeding tier of two, and each team plays its group once. The top four of each group advance to an eight-team double-elimination playoff in weeks 16–18. The lower final and grand final are Bo5. The top three Stage 1 finishers from each territory qualify for Masters 2 and receive configured Championship Points.
 
-Stage 2 uses a 12-team regional league in weeks 24–31. The top eight teams in each region advance to an eight-team double-elimination playoff in weeks 32–34; the top four regional playoff finishers qualify for Champions.
+Stage 2 redraws two groups of six in weeks 24–28 from the Stage 1 playoff finish. The top four of each group advance to an eight-team double-elimination playoff in weeks 29–31; the top four regional playoff finishers qualify for Champions.
 
 International events use fictional host-city assignments selected from major real cities in different global regions. Within one season, Masters 1, Masters 2, and Champions must not repeat the same host region. City assignment is configuration, not random at runtime, so a save is reproducible. The official event names and real-world host cities are not required to be used as the game's venue assignments.
 

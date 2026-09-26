@@ -40,7 +40,7 @@ describe('competition fixtures', () => {
     legacy.version = 1
     localStorage.setItem(SAVE_KEY, JSON.stringify(legacy))
     const migrated = loadGame()!
-    expect(migrated.version).toBe(11)
+    expect(migrated.version).toBe(12)
     expect(nextFixtureForTeam(migrated, 'c9', migrated.week)).toBeDefined()
   })
   test('an in-progress legacy international save restarts on the corrected bracket', () => {
@@ -56,7 +56,7 @@ describe('competition fixtures', () => {
       })
     localStorage.setItem(SAVE_KEY, JSON.stringify(legacy))
     const migrated = loadGame()!
-    expect(migrated.version).toBe(11)
+    expect(migrated.version).toBe(12)
     expect(migrated.week).toBe(8)
     expect(migrated.fixtures.filter((fixture) => fixture.phase === 'Masters 1')).toHaveLength(4)
     expect(
@@ -75,7 +75,7 @@ describe('competition fixtures', () => {
 
     const migrated = loadGame()!
     const kickoff = migrated.fixtures.filter((fixture) => fixture.phase === 'Kickoff')
-    expect(migrated.version).toBe(11)
+    expect(migrated.version).toBe(12)
     expect(migrated.week).toBe(1)
     expect(kickoff).toHaveLength(16)
     expect(kickoff.every((fixture) => fixture.label === 'Upper Round 1' && fixture.bId)).toBeTrue()

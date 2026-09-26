@@ -25,7 +25,7 @@ export function isRoundWeek(s: GameState) {
     phase === 'Kickoff' ||
     isInternationalPhase(phase) ||
     (phase === 'Stage 1' && s.week >= 16) ||
-    (phase === 'Stage 2' && s.week >= 32)
+    (phase === 'Stage 2' && s.week >= 29)
   )
 }
 
