@@ -27,8 +27,7 @@ const rematches = (
   region?: string,
 ) => {
   const event = state.fixtures.filter(
-    (fixture) =>
-      fixture.phase === phase && fixture.bId && (!region || fixture.region === region),
+    (fixture) => fixture.phase === phase && fixture.bId && (!region || fixture.region === region),
   )
   const met = new Set(
     event
