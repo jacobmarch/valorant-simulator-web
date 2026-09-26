@@ -1,10 +1,11 @@
-import { currentTeam, saveGame, type GameState } from './game'
+import { currentTeam, saveGame, type GameState, type Team } from './game'
 import {
   SPONSOR_SETTLE_WEEK,
   goalLabels,
   goalPhrase,
   goalMet,
   levelReason,
+  missPenalty,
   payroll,
   pendingSponsorOffers,
   signSponsor,
@@ -28,6 +29,28 @@ function contractStatus(s: GameState, teamId: string, contract: SponsorContract)
   return goalMet(s, teamId, contract.goal, contract.season)
     ? { text: `Goal met · pays week ${SPONSOR_SETTLE_WEEK}`, color: tone.pos }
     : { text: 'Goal in progress', color: tone.warn }
+}
+
+function sponsorRisk(team: Team) {
+  const contract = team.sponsor
+  if (!contract) return null
+  if (contract.settled) {
+    if (contract.bonusPaid) return 'Goal met.'
+    const penalty = team.history?.find(
+      (season) => season.season === contract.season,
+    )?.sponsorPenalty
+    return penalty ? (
+      <span className="negative">Missed: cost {penalty} prestige.</span>
+    ) : (
+      'Missed: bonus lost.'
+    )
+  }
+  const penalty = missPenalty[contract.tier]
+  return penalty ? (
+    <span className="negative">Missing it costs {penalty} prestige.</span>
+  ) : (
+    'Missing it only loses the bonus.'
+  )
 }
 
 export function Finances({ s, setState }: { s: GameState; setState: (s: GameState) => void }) {
@@ -65,7 +88,7 @@ export function Finances({ s, setState }: { s: GameState; setState: (s: GameStat
         <div className="stat">
           <small>Weekly net</small>
           <strong className={net >= 0 ? 'positive' : 'negative'}>{signed(net)}</strong>
-          <span>before match winnings</span>
+          <span>before match money ($25k a win)</span>
         </div>
       </div>
       {market && (
@@ -98,10 +121,15 @@ export function Finances({ s, setState }: { s: GameState; setState: (s: GameStat
                     <dd className={offerNet >= 0 ? 'positive' : 'negative'}>
                       {signed(offerNet)} / wk
                     </dd>
+                    <dt>If goal missed</dt>
+                    <dd className={missPenalty[offer.tier] ? 'negative' : 'muted'}>
+                      {missPenalty[offer.tier]
+                        ? `No bonus, − ${missPenalty[offer.tier]} prestige`
+                        : 'No bonus, no penalty'}
+                    </dd>
                   </dl>
                   <p>
-                    <strong>Bonus goal</strong>
-                    {goalLabels[offer.goal]} in {offer.season}
+                    <strong>Goal:</strong> {goalLabels[offer.goal]} in {offer.season}
                   </p>
                   <button className="primary" onClick={() => sign(offer.id)}>
                     Sign {offer.sponsor.split(' ')[0]}
@@ -142,8 +170,7 @@ export function Finances({ s, setState }: { s: GameState; setState: (s: GameStat
                 </span>
               </div>
               <p className="muted sponsor-reason">
-                {t.sponsor.season} goal: {goalPhrase(t.sponsor.goal)}. Match wins add $25,000 and
-                losses $5,000 on top.
+                {t.sponsor.season} goal: {goalPhrase(t.sponsor.goal)}. {sponsorRisk(t)}
               </p>
             </>
           ) : (
@@ -172,7 +199,12 @@ export function Finances({ s, setState }: { s: GameState; setState: (s: GameStat
               .map((season) => (
                 <li key={season.season}>
                   <span>{season.season}</span>
-                  <strong>{season.best}</strong>
+                  <strong>
+                    {season.best}
+                    {season.sponsorPenalty ? (
+                      <em className="negative"> · − {season.sponsorPenalty} missed sponsor goal</em>
+                    ) : null}
+                  </strong>
                 </li>
               ))}
           </ul>

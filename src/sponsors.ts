@@ -38,6 +38,8 @@ export type SeasonSummary = {
   score: number
   titles: string[]
   best: string
+  /** Prestige lost for missing the sponsor goal this season. */
+  sponsorPenalty?: number
 }
 
 /** Week the competitive season is over: bonuses pay out and next year's offers arrive. */
@@ -71,6 +73,8 @@ const levelValue: Record<SponsorLevel, number> = {
 }
 const baseScale: Record<SponsorTier, number> = { easy: 0.8, medium: 1, high: 1.25 }
 const bonusScale: Record<SponsorTier, number> = { easy: 0.15, medium: 0.35, high: 0.7 }
+/** Prestige lost when a team misses its sponsor's goal. Easy deals carry no risk. */
+export const missPenalty: Record<SponsorTier, number> = { easy: 0, medium: 5, high: 12 }
 const sponsorNames: Record<SponsorLevel, string[]> = {
   Regional: [
     'Northgate Mobile',
@@ -333,12 +337,20 @@ export function settleSponsorSeason(state: GameState) {
         state.inbox.unshift(
           contract.bonusPaid
             ? `Sponsor bonus earned: ${contract.sponsor} paid $${contract.bonus.toLocaleString('en-US')} for meeting the goal (${goalPhrase(contract.goal)}).`
-            : `Sponsor bonus missed: ${contract.sponsor} wanted the team to ${goalPhrase(contract.goal)}.`,
+            : `Sponsor goal missed: ${contract.sponsor} wanted the team to ${goalPhrase(contract.goal)}. No bonus${missPenalty[contract.tier] ? `, and the organization loses ${missPenalty[contract.tier]} prestige` : ''}.`,
         )
     }
     const summary = summarizeSeason(state, team.id)
+    const penalty =
+      contract?.settled && contract.season === state.season && !contract.bonusPaid
+        ? missPenalty[contract.tier]
+        : 0
+    if (penalty) summary.sponsorPenalty = penalty
     team.history = [...(team.history ?? []), summary].slice(-HISTORY_LIMIT)
-    team.prestige = Math.round(teamPrestige(team) * 0.5 + summary.score * 0.5)
+    team.prestige = Math.max(
+      0,
+      Math.round(teamPrestige(team) * 0.5 + summary.score * 0.5) - penalty,
+    )
   })
   openSponsorMarket(state, state.season + 1, { season: state.season, week: 52 })
   const market = pendingSponsorOffers(state)

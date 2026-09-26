@@ -3,6 +3,7 @@ import { advanceWeek, createGame, loadGame, SAVE_KEY, type GameState } from '../
 import { attentionItems } from '../src/flow'
 import {
   enforceSponsorDeadline,
+  missPenalty,
   pendingSponsorOffers,
   settleSponsorSeason,
   signSponsor,
@@ -92,6 +93,23 @@ describe('sponsors', () => {
     expect(pendingSponsorOffers(state)?.deadlineWeek).toBe(52)
     settleSponsorSeason(state)
     expect(state.teams.c9.cash - c9Cash).toBe(offers[0].bonus)
+  })
+
+  test('missing a High goal costs prestige, missing an Easy goal does not', () => {
+    const state = createGame('Manager', 'c9')
+    const offers = pendingSponsorOffers(state)!.offers
+    state.teams.c9.sponsor = { ...offers[2], goal: 'international-title' }
+    state.teams.nrg.sponsor = { ...offers[0], goal: 'international-title' }
+    state.teams.c9.prestige = state.teams.nrg.prestige = 40
+    state.week = 43
+    settleSponsorSeason(state)
+    expect(state.teams.nrg.prestige).toBe(28)
+    expect(state.teams.c9.prestige).toBe(28 - missPenalty.high)
+    expect(state.teams.c9.history?.at(-1)?.sponsorPenalty).toBe(missPenalty.high)
+    expect(state.teams.nrg.history?.at(-1)?.sponsorPenalty).toBeUndefined()
+    expect(
+      state.inbox.some((line) => line.includes(`loses ${missPenalty.high} prestige`)),
+    ).toBeTrue()
   })
 
   test('an international title opens Champions-level offers; a weak season does not', () => {

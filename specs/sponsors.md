@@ -10,6 +10,7 @@ Give every organization a yearly income that scales with how good it is, so cash
 - The weekly base is paid in the same weekly step as salaries, so the Finances page can show weekly net (sponsor base minus salaries).
 - The manager is offered three tiers. Easy has the lowest base and bonus and the easiest goal; High has the highest base and bonus and the hardest goal.
 - The competitive season ends when week 43 begins. Then each contract's goal is checked against that season's fixtures, bonuses are paid, the season is added to the team's history, and prestige updates.
+- Missing the goal forfeits the bonus. It also costs prestige, taken off after the yearly update: Easy 0, Medium 5, High 12. The offer cards and the current deal show this, and the season history marks it.
 - Prestige (0-100) is half the previous prestige plus half the season score: base 15, +15 for a Stage playoff bracket, +15 for each Masters, +20 for Champions, +10 for the Champions playoffs, and +25 for each international title.
 - Offer level: Champions if the team won Masters or Champions in either of the last two seasons, or has prestige of 70+. Contender at prestige 45+. Otherwise Regional.
 - Goals by level (Easy / Medium / High):
