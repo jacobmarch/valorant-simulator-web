@@ -50,7 +50,7 @@ Stage 1 and Stage 2 each expose two explicit tabs:
 1. League stage. The table shows all 12 regional organizations, their series and map records, and whether they sit in the top-eight playoff line. The selected matchday browser shows only the regional league fixtures for the selected week.
 2. Regional playoffs. The screen shows the eight-team upper/lower double-elimination bracket and the selected week's playoff fixtures. The Grand Final is displayed separately as the title match.
 
-Stage 1 runs weeks 12–18, with league play in weeks 12–15 and playoffs in weeks 16–18. The top three playoff finishers are labeled as Masters 2 qualifiers. Stage 2 runs weeks 24–34, with league play in weeks 24–31 and playoffs in weeks 32–34. The top four playoff finishers are labeled as Champions qualifiers. The user's organization is visually marked in both the table and bracket.
+Stage 1 runs weeks 11–18, with group play in weeks 11–15 and playoffs in weeks 16–18. The standings tab shows one table per group. The top three playoff finishers are labeled as Masters 2 qualifiers. Stage 2 runs weeks 24–31, with group play in weeks 24–28 and playoffs in weeks 29–31. The top four playoff finishers are labeled as Champions qualifiers. The user's organization is visually marked in both the table and bracket.
 
 ## Masters view
 

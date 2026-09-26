@@ -3,8 +3,8 @@ import {
   advanceWeek,
   createGame,
   fixturesForWeek,
-  rankedTeams,
   regionalPlayoffQualifiers,
+  stagePlayoffSeeds,
 } from '../src/game'
 
 const memory = new Map<string, string>()
@@ -135,10 +135,7 @@ describe('regional split playoffs', () => {
     expect(playoffs.filter((fixture) => fixture.status === 'completed')).toHaveLength(48)
     expect(playoffs.filter((fixture) => fixture.label === 'Grand Final')).toHaveLength(4)
     ;(['Americas', 'EMEA', 'Pacific', 'China'] as const).forEach((region) => {
-      const ids = Object.values(state.teams)
-        .filter((team) => team.region === region)
-        .map((team) => team.id)
-      const seeds = rankedTeams(seeded, ids, 'Stage 1')
+      const seeds = stagePlayoffSeeds(seeded, 'Stage 1', region)
       const upperQf = playoffs.filter(
         (fixture) => fixture.region === region && fixture.label === 'Upper Quarterfinal',
       )

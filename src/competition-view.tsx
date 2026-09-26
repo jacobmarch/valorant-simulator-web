@@ -11,6 +11,7 @@ import {
   playableTournamentFixtureIds,
   rankedTeams,
   regionalPlayoffQualifiers,
+  stageGroups,
   type CompetitionPhase,
   type Fixture,
   type GameState,
@@ -53,12 +54,12 @@ const events: Record<PlayablePhase, EventInfo> = {
     stakes: 'International title and Championship Points',
   },
   'Stage 1': {
-    start: 12,
+    start: 11,
     end: 18,
     playoffStart: 16,
     type: 'regional',
     location: 'Regional leagues',
-    format: 'League stage and playoffs',
+    format: 'Two groups of six and playoffs',
     stakes: 'Three Masters 2 places per region',
   },
   'Masters 2': {
@@ -72,11 +73,11 @@ const events: Record<PlayablePhase, EventInfo> = {
   },
   'Stage 2': {
     start: 24,
-    end: 34,
-    playoffStart: 32,
+    end: 31,
+    playoffStart: 29,
     type: 'regional',
     location: 'Regional roadshows',
-    format: 'League stage and playoffs',
+    format: 'Two groups of six and playoffs',
     stakes: 'Champions qualification',
   },
   Champions: {
@@ -194,10 +195,24 @@ function FixtureCard({
     </article>
   )
 }
-function TeamTable({ s, region, phase }: { s: GameState; region: Region; phase: PlayablePhase }) {
-  const ids = Object.values(s.teams)
-    .filter((team) => team.region === region)
-    .map((team) => team.id)
+function TeamTable({
+  s,
+  region,
+  phase,
+  teamIds,
+  playoffLine = 8,
+}: {
+  s: GameState
+  region: Region
+  phase: PlayablePhase
+  teamIds?: string[]
+  playoffLine?: number
+}) {
+  const ids =
+    teamIds ??
+    Object.values(s.teams)
+      .filter((team) => team.region === region)
+      .map((team) => team.id)
   const ordered =
     phase === 'Kickoff'
       ? [...ids].sort(
@@ -248,9 +263,9 @@ function TeamTable({ s, region, phase }: { s: GameState; region: Region; phase: 
                   : s.kickoff[id].status
                 : qualification >= 0
                   ? (phase === 'Stage 1' ? 'Masters 2 #' : 'Champions #') + (qualification + 1)
-                  : index < 8
+                  : index < playoffLine
                     ? 'Playoff line'
-                    : 'Outside top 8'
+                    : `Outside top ${playoffLine}`
             return (
               <tr className={id === s.currentTeamId ? 'current' : ''} key={id}>
                 <td>{String(index + 1).padStart(2, '0')}</td>
@@ -589,20 +604,36 @@ function StandingsPanel({
   region: Region
   phase: 'Kickoff' | 'Stage 1' | 'Stage 2'
 }) {
+  const groups = phase === 'Kickoff' ? null : stageGroups(s, phase, region)
   return (
     <section className="panel standings-panel">
       <PanelTitle
         eyebrow={`${region} · ${phase}`}
-        title={phase === 'Kickoff' ? 'Kickoff standings' : 'League table'}
+        title={phase === 'Kickoff' ? 'Kickoff standings' : groups ? 'Group tables' : 'League table'}
         right={
           <Badge color={colors[region]}>
             {phase === 'Kickoff'
               ? '3 qualify'
-              : `Top 8 playoffs · ${phase === 'Stage 1' ? 3 : 4} qualify`}
+              : `${groups ? 'Top 4 per group' : 'Top 8'} playoffs · ${phase === 'Stage 1' ? 3 : 4} qualify`}
           </Badge>
         }
       />
-      <TeamTable s={s} region={region} phase={phase} />
+      {groups ? (
+        (['A', 'B'] as const).map((group) => (
+          <div key={group}>
+            <h3 className="modal-subhead">Group {group}</h3>
+            <TeamTable
+              s={s}
+              region={region}
+              phase={phase}
+              teamIds={groups[group]}
+              playoffLine={4}
+            />
+          </div>
+        ))
+      ) : (
+        <TeamTable s={s} region={region} phase={phase} />
+      )}
     </section>
   )
 }
@@ -970,7 +1001,7 @@ const tabsFor = (phase: PlayablePhase): Array<[CompetitionTab, string]> =>
       ]
     : phase === 'Stage 1' || phase === 'Stage 2'
       ? [
-          ['standings', 'League table'],
+          ['standings', 'Groups'],
           ['bracket', 'Regional playoffs'],
           ['matches', 'Matches'],
         ]
@@ -1147,8 +1178,10 @@ export function CompetitionV2({
             <KickoffInfo s={s} region={region} />
           ) : regional ? (
             <p className="muted">
-              A round-robin league stage sets the table. The top eight reach a double-elimination
-              playoff, and the best finishers qualify for the next international event.
+              Teams are drawn into two groups of six, one from each seeding tier of two (Kickoff
+              finish for Stage 1, Stage 1 playoff finish for Stage 2). Each team plays its group
+              once. The top four of each group reach a double-elimination playoff, and the best
+              finishers qualify for the next international event.
             </p>
           ) : (
             <p className="muted">

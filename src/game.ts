@@ -160,7 +160,7 @@ export type TransferRecord = {
   note?: string
 }
 export type GameState = {
-  version: 11
+  version: 12
   season: number
   week: number
   managerName: string
@@ -185,9 +185,11 @@ const regions: Region[] = ['Americas', 'EMEA', 'Pacific', 'China']
 const openingKickoffByes = new Set(Object.values(previousChampionsByRegion).flat())
 const breakWeeks: Record<number, string> = {
   7: 'Masters 1',
-  11: 'Stage 1',
   19: 'Masters 2',
   23: 'Stage 2',
+  32: 'Champions',
+  33: 'Champions',
+  34: 'Champions',
   35: 'Champions',
   43: 'Offseason',
 }
@@ -241,13 +243,15 @@ export function phaseForWeek(week: number): CompetitionPhase {
   if (week <= 10) return 'Masters 1'
   if (week <= 18) return 'Stage 1'
   if (week <= 22) return 'Masters 2'
-  if (week <= 34) return 'Stage 2'
+  if (week <= 31) return 'Stage 2'
   if (week <= 42) return 'Champions'
   return 'Offseason'
 }
 export function activePhaseForWeek(week: number): Exclude<CompetitionPhase, 'Break'> {
   if (breakWeeks[week]) {
-    const nextPhase = phaseForWeek(week + 1)
+    let next = week + 1
+    while (breakWeeks[next] && breakWeeks[next] === breakWeeks[week]) next++
+    const nextPhase = phaseForWeek(next)
     return nextPhase === 'Break' ? 'Offseason' : nextPhase
   }
   return phaseForWeek(week) as Exclude<CompetitionPhase, 'Break'>
@@ -361,7 +365,7 @@ export function createGame(managerName: string, currentTeamId: string): GameStat
     )
   })
   const state: GameState = {
-    version: 11,
+    version: 12,
     season: 2026,
     week: 1,
     managerName: managerName || 'Manager',
@@ -565,10 +569,54 @@ function migrateGame(raw: unknown): GameState | null {
   }
   state.transfers ??= []
   if (previousVersion < 11) replenishFreeAgents(state)
-  state.version = 11
+  if (previousVersion < 12) {
+    const stage1 = regionalPlayoffConfig('Stage 1'),
+      stage2 = regionalPlayoffConfig('Stage 2')
+    if (state.week > stage1.regularStart && state.week <= stage1.regularEnd)
+      restartStage(state, 'Stage 1')
+    if (
+      state.week >= stage2.regularStart &&
+      state.week <= 34 &&
+      !Object.values(state.teams).some((team) =>
+        team.playoffStage.startsWith('Champions qualifier'),
+      )
+    )
+      restartStage(state, 'Stage 2')
+  }
+  state.version = 12
   pruneHistory(state)
   ensureWeekScheduled(state, state.week)
   return state
+}
+/** Drops a legacy round-robin Stage and restarts it with the group format. */
+function restartStage(state: GameState, phase: 'Stage 1' | 'Stage 2') {
+  const dropped = new Set(
+    state.fixtures
+      .filter((fixture) => fixture.season === state.season && fixture.phase === phase)
+      .map((fixture) => fixture.id),
+  )
+  state.matches
+    .filter((match) => match.fixtureId && dropped.has(match.fixtureId))
+    .forEach((match) => {
+      const a = state.teams[match.aId],
+        b = state.teams[match.bId]
+      if (!a || !b) return
+      a.wins -= match.winnerId === a.id ? 1 : 0
+      a.losses -= match.winnerId === a.id ? 0 : 1
+      b.wins -= match.winnerId === b.id ? 1 : 0
+      b.losses -= match.winnerId === b.id ? 0 : 1
+      a.mapWins -= match.aScore
+      a.mapLosses -= match.bScore
+      b.mapWins -= match.bScore
+      b.mapLosses -= match.aScore
+      if (state.teams[match.winnerId]) state.teams[match.winnerId].championshipPoints--
+    })
+  state.fixtures = state.fixtures.filter((fixture) => !dropped.has(fixture.id))
+  state.matches = state.matches.filter((match) => !match.fixtureId || !dropped.has(match.fixtureId))
+  state.week = regionalPlayoffConfig(phase).regularStart
+  state.inbox.unshift(
+    `${phase} was restarted with the new format: two groups of six, five group matches each.`,
+  )
 }
 // Browsers cap localStorage at about 5 MB per site, and a full box score costs
 // about 5 KB per series, so only recent and managed-team matches keep round logs
@@ -666,7 +714,7 @@ function phaseRound(week: number, phase: CompetitionPhase) {
   const starts: Partial<Record<CompetitionPhase, number>> = {
     Kickoff: 1,
     'Masters 1': 8,
-    'Stage 1': 12,
+    'Stage 1': 11,
     'Masters 2': 20,
     'Stage 2': 24,
     Champions: 36,
@@ -712,6 +760,7 @@ function regionalRoundRobin(teamIds: string[], round: number) {
   return pairs
 }
 type RegionalPlayoffConfig = {
+  regularStart: number
   regularEnd: number
   playoffStart: number
   playoffEnd: number
@@ -720,8 +769,22 @@ type RegionalPlayoffConfig = {
 }
 function regionalPlayoffConfig(phase: 'Stage 1' | 'Stage 2'): RegionalPlayoffConfig {
   return phase === 'Stage 1'
-    ? { regularEnd: 15, playoffStart: 16, playoffEnd: 18, playoffTeams: 8, qualifiers: 3 }
-    : { regularEnd: 31, playoffStart: 32, playoffEnd: 34, playoffTeams: 8, qualifiers: 4 }
+    ? {
+        regularStart: 11,
+        regularEnd: 15,
+        playoffStart: 16,
+        playoffEnd: 18,
+        playoffTeams: 8,
+        qualifiers: 3,
+      }
+    : {
+        regularStart: 24,
+        regularEnd: 28,
+        playoffStart: 29,
+        playoffEnd: 31,
+        playoffTeams: 8,
+        qualifiers: 4,
+      }
 }
 function regionalPlayoffPhase(phase: string) {
   return phase === 'Stage 1' || phase === 'Stage 2'
@@ -764,7 +827,11 @@ export function rankedTeams(state: GameState, teamIds: string[], phase: string) 
     )
   })
 }
-function regionalPlayoffOrder(state: GameState, phase: 'Stage 1' | 'Stage 2', region: Region) {
+export function regionalPlayoffOrder(
+  state: GameState,
+  phase: 'Stage 1' | 'Stage 2',
+  region: Region,
+) {
   const ids = Object.values(state.teams)
     .filter((team) => team.region === region)
     .map((team) => team.id)
@@ -789,9 +856,139 @@ function regionalPlayoffOrder(state: GameState, phase: 'Stage 1' | 'Stage 2', re
     push(lowerFinal.winnerId)
     push(resultLoser(lowerFinal))
   }
-  return [...ordered, ...rankedTeams(state, ids, phase)].filter(
-    (id, index, list) => list.indexOf(id) === index,
+  // Earlier lower-bracket exits finish below the lower final, latest round first.
+  if (ordered.length === 4)
+    for (const label of ['Lower Round 3', 'Lower Round 2', 'Lower Round 1']) {
+      const losers = playoff
+        .filter((fixture) => fixture.label === label && fixture.status === 'completed')
+        .map(resultLoser)
+        .filter((id): id is string => Boolean(id))
+      rankedTeams(state, losers, phase).forEach(push)
+    }
+  return [
+    ...ordered,
+    ...stagePlayoffSeeds(state, phase, region),
+    ...rankedTeams(state, ids, phase),
+  ].filter((id, index, list) => list.indexOf(id) === index)
+}
+/** Kickoff finishing order: the three qualifiers, then teams by how late they were knocked out. */
+export function kickoffStandings(state: GameState, region: Region) {
+  const ids = Object.values(state.teams)
+    .filter((team) => team.region === region)
+    .map((team) => team.id)
+  const lastMatch = (id: string) =>
+    Math.max(
+      0,
+      ...state.fixtures
+        .filter(
+          (fixture) =>
+            fixture.season === state.season &&
+            fixture.phase === 'Kickoff' &&
+            fixture.bId &&
+            fixture.status === 'completed' &&
+            (fixture.aId === id || fixture.bId === id),
+        )
+        .map((fixture) => fixture.week * 10 + fixture.round),
+    )
+  const qualified = (id: string) => (state.kickoff[id]?.status === 'qualified' ? 1 : 0)
+  return [...ids].sort(
+    (a, b) =>
+      qualified(b) - qualified(a) ||
+      (qualified(a) ? 0 : lastMatch(b) - lastMatch(a)) ||
+      (state.kickoff[b]?.wins ?? 0) - (state.kickoff[a]?.wins ?? 0) ||
+      (state.kickoff[a]?.losses ?? 0) - (state.kickoff[b]?.losses ?? 0) ||
+      state.teams[b].championshipPoints - state.teams[a].championshipPoints,
   )
+}
+/**
+ * Stage groups are drawn in tiers of two from the previous event's finishing
+ * order (Kickoff for Stage 1, Stage 1 playoffs for Stage 2): one team from
+ * each tier goes to each group at random.
+ */
+function drawStageGroups(state: GameState, phase: 'Stage 1' | 'Stage 2', region: Region) {
+  const seeding =
+    phase === 'Stage 1'
+      ? kickoffStandings(state, region)
+      : regionalPlayoffOrder(state, 'Stage 1', region)
+  const groups: Record<'A' | 'B', string[]> = { A: [], B: [] }
+  for (let index = 0; index < seeding.length; index += 2) {
+    const tier = seeding.slice(index, index + 2)
+    if (tier.length === 2 && random(state) < 0.5) tier.reverse()
+    groups.A.push(tier[0])
+    if (tier[1]) groups.B.push(tier[1])
+  }
+  return groups
+}
+/** The drawn Stage groups for a region, or null before the draw (or for legacy leagues). */
+export function stageGroups(state: GameState, phase: 'Stage 1' | 'Stage 2', region: Region) {
+  const league = state.fixtures.filter(
+    (fixture) =>
+      fixture.season === state.season &&
+      fixture.phase === phase &&
+      fixture.region === region &&
+      fixture.stage === 'League' &&
+      fixture.group,
+  )
+  if (!league.length) return null
+  const members = (group: 'A' | 'B') => [
+    ...new Set(
+      league
+        .filter((fixture) => fixture.group === group)
+        .flatMap((fixture) => [fixture.aId, fixture.bId!]),
+    ),
+  ]
+  return { A: members('A'), B: members('B') }
+}
+/**
+ * Playoff seeds from the groups: the top four of each group advance. The
+ * better group winner is seed 1, and seeds alternate groups so quarterfinals
+ * are always cross-group (A2 v B3, B2 v A3).
+ */
+export function stagePlayoffSeeds(state: GameState, phase: 'Stage 1' | 'Stage 2', region: Region) {
+  const groups = stageGroups(state, phase, region)
+  if (!groups)
+    return rankedTeams(
+      state,
+      Object.values(state.teams)
+        .filter((team) => team.region === region)
+        .map((team) => team.id),
+      phase,
+    ).slice(0, regionalPlayoffConfig(phase).playoffTeams)
+  let first = rankedTeams(state, groups.A, phase),
+    second = rankedTeams(state, groups.B, phase)
+  if (rankedTeams(state, [first[0], second[0]], phase)[0] !== first[0])
+    [first, second] = [second, first]
+  return [0, 1, 2, 3].flatMap((place) => [first[place], second[place]]).filter(Boolean)
+}
+function scheduleStageGroups(state: GameState, phase: 'Stage 1' | 'Stage 2') {
+  const config = regionalPlayoffConfig(phase)
+  regions.forEach((region) => {
+    const groups = drawStageGroups(state, phase, region)
+    ;(['A', 'B'] as const).forEach((group, groupIndex) => {
+      const ids = groups[group]
+      for (let round = 1; round < ids.length + (ids.length % 2); round++) {
+        const week = config.regularStart + round - 1
+        regionalRoundRobin(ids, round).forEach(([aId, bId], index) => {
+          state.fixtures.push({
+            id: `${state.season}-${fixtureId(phase, week, region, groupIndex * 10 + index)}`,
+            season: state.season,
+            week,
+            phase,
+            scope: 'regional',
+            region,
+            round,
+            label: `Week ${round}`,
+            aId,
+            bId,
+            bestOf: 3,
+            status: 'scheduled',
+            stage: 'League',
+            group,
+          })
+        })
+      }
+    })
+  })
 }
 export function regionalPlayoffQualifiers(
   state: GameState,
@@ -1190,13 +1387,7 @@ function regionalFixtures(
 function scheduleRegionalPlayoffWeek(state: GameState, phase: 'Stage 1' | 'Stage 2', week: number) {
   const config = regionalPlayoffConfig(phase)
   regions.forEach((region) => {
-    const ids = rankedTeams(
-      state,
-      Object.values(state.teams)
-        .filter((team) => team.region === region)
-        .map((team) => team.id),
-      phase,
-    ).slice(0, config.playoffTeams)
+    const ids = stagePlayoffSeeds(state, phase, region)
     if (ids.length < config.playoffTeams) return
     if (week === config.playoffStart) {
       addRegionalFixtures(
@@ -1576,29 +1767,8 @@ export function ensureWeekScheduled(state: GameState, week = state.week) {
 
   if (phase === 'Stage 1' || phase === 'Stage 2') {
     const config = regionalPlayoffConfig(phase)
-    if (week <= config.regularEnd)
-      regions.forEach((region) => {
-        const ids = Object.values(state.teams)
-          .filter((team) => team.region === region)
-          .map((team) => team.id)
-        regionalRoundRobin(ids, round).forEach(([aId, bId], index) => {
-          state.fixtures.push({
-            id: `${state.season}-${fixtureId(phase, week, region, index)}`,
-            season: state.season,
-            week,
-            phase,
-            scope: 'regional',
-            region,
-            round,
-            label: `Week ${round}`,
-            aId,
-            bId,
-            bestOf: 3,
-            status: 'scheduled',
-            stage: 'League',
-          })
-        })
-      })
+    // The whole group stage is drawn and scheduled on its first week.
+    if (week === config.regularStart) scheduleStageGroups(state, phase)
     if (week > config.regularEnd) scheduleRegionalPlayoffWeek(state, phase, week)
     return
   }

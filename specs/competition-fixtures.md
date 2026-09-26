@@ -37,8 +37,8 @@ The competition screen must show regional Kickoff standings; wins, losses, and t
 
 Each territory has one 12-team league table in each split. The split schedule is deliberately divided into league play and a persisted playoff event:
 
-- Stage 1 league play runs in weeks 12–15. The top eight teams by the league table enter the Stage 1 regional playoffs in weeks 16–18.
-- Stage 2 league play runs in weeks 24–31. The top eight teams enter the Stage 2 regional playoffs in weeks 32–34.
+- Stage 1 group play runs in weeks 11–15: two groups of six per region, drawn one team per Kickoff seeding tier (1–2, 3–4, …) at random, single round robin. The top four of each group enter the Stage 1 regional playoffs in weeks 16–18: group winners take the upper semifinal byes, 2nd and 3rd meet cross-group in the quarterfinals, and 4th start in the lower bracket.
+- Stage 2 group play runs in weeks 24–28, drawn the same way from the Stage 1 playoff finish. The top four of each group enter the Stage 2 regional playoffs in weeks 29–31.
 - Each regional playoff is an eight-team double-elimination bracket. Seeds 1 and 2 enter the upper semifinals; seeds 3–6 play the upper quarterfinals, while seeds 7–8 start in Lower Round 1 against the Upper Quarterfinal losers.
 - The bracket contains Upper Quarterfinal, Upper Semifinal, Lower Round 1, Upper Final, Lower Round 2, Lower Round 3, Lower Final, and Grand Final fixtures.
 - Stage 1 playoff finishers 1–3 qualify for Masters 2. Stage 2 playoff finishers 1–4 qualify for Champions.
@@ -53,7 +53,7 @@ Regular series are best-of-three. Regional Lower Final and Grand Final fixtures 
 - The dashboard opponent, tactics opponent, simulated opponent, and fixture board are identical.
 - Each territory produces exactly three Kickoff qualifiers.
 - Each region creates 12 Stage 1 playoff fixtures, all completed by week 19, and exactly three Stage 1 qualifiers.
-- Each region creates 12 Stage 2 playoff fixtures, all completed by week 35, and exactly four Stage 2 qualifiers.
+- Each region creates 12 Stage 2 playoff fixtures, all completed by week 32, and exactly four Stage 2 qualifiers.
 - Masters 2 contains only the Stage 1 playoff qualifiers, and Champions contains only the Stage 2 playoff qualifiers.
 - Every eliminated Kickoff team has three losses.
 - Every region creates exactly 30 Kickoff fixtures: 11 upper, 10 middle, and 9 lower. None is a bye fixture.
