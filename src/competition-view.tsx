@@ -1,7 +1,6 @@
-import { useState, type ReactNode } from 'react'
+import { createContext, useContext, useState, type ReactNode } from 'react'
 import {
   activePhaseForWeek,
-  canPlayNextTournamentMatch,
   competitionRecord,
   currentTeam,
   dateForWeek,
@@ -9,6 +8,7 @@ import {
   currentTournamentDeskFixtures,
   liveTournamentRoundFixtures,
   phaseForWeek,
+  playableTournamentFixtureIds,
   rankedTeams,
   regionalPlayoffQualifiers,
   type CompetitionPhase,
@@ -28,6 +28,10 @@ type EventInfo = {
   playoffStart?: number
 }
 const regions: Region[] = ['Americas', 'EMEA', 'Pacific', 'China']
+const SimMatchContext = createContext<{
+  playable: Set<string>
+  onSimMatch?: (fixtureId: string) => void
+}>({ playable: new Set() })
 const colors: Record<Region, string> = {
   Americas: '#62a0ff',
   EMEA: '#ff9b62',
@@ -149,6 +153,8 @@ function FixtureCard({
     b = fixture.bId ? s.teams[fixture.bId] : undefined,
     managed = fixture.aId === s.currentTeamId || fixture.bId === s.currentTeamId
   const score = (id: string) => (result ? (result.aId === id ? result.aScore : result.bScore) : '—')
+  const { playable, onSimMatch } = useContext(SimMatchContext)
+  const canSim = !!onSimMatch && fixture.status === 'scheduled' && playable.has(fixture.id)
   return (
     <article
       onClick={result && onOpenMatch ? () => onOpenMatch(result.id) : undefined}
@@ -197,6 +203,11 @@ function FixtureCard({
           )}
         </div>
       </div>
+      {canSim && (
+        <button className="sim-match" onClick={() => onSimMatch(fixture.id)}>
+          Sim match
+        </button>
+      )}
     </article>
   )
 }
@@ -1165,12 +1176,12 @@ function InternationalView({
 export function CompetitionV2({
   s,
   onOpenMatch,
-  onPlayNextMatch,
+  onSimMatch,
   onSimulateRound,
 }: {
   s: GameState
   onOpenMatch?: (matchId: string) => void
-  onPlayNextMatch?: (phase: PlayablePhase, region?: Region) => void
+  onSimMatch?: (fixtureId: string) => void
   onSimulateRound?: () => void
 }) {
   const active = activePhaseForWeek(s.week),
@@ -1192,17 +1203,16 @@ export function CompetitionV2({
       phase,
       info.type === 'regional' ? region : undefined,
     ),
-    canPlayNextMatch = canPlayNextTournamentMatch(
-      s,
-      phase,
-      info.type === 'regional' ? region : undefined,
-    ),
+    simMatch = {
+      playable: new Set(isCurrentEvent ? playableTournamentFixtureIds(s) : []),
+      onSimMatch,
+    },
     selectEvent = (next: PlayablePhase) => {
       setPhase(next)
       setWeek(Math.max(events[next].start, Math.min(events[next].end, s.week)))
       setStage(s.week >= playoffStartFor(next) ? 'playoffs' : 'opening')
     }
-  return (
+  const page = (
     <div className="page competition-hub">
       <div className="page-head">
         <div>
@@ -1266,21 +1276,10 @@ export function CompetitionV2({
             <span>
               {currentRoundFixtures.length
                 ? currentRoundFixtures.length + ' matches remain in this round.'
-                : canPlayNextMatch
-                  ? 'This round is complete. Play next match to start the next round.'
-                  : 'All scheduled matches are complete. Advance to build the next round.'}
+                : 'All scheduled matches are complete. Advance to move on.'}
             </span>
           </div>
           <div>
-            <button
-              className="secondary"
-              disabled={!canPlayNextMatch}
-              onClick={() =>
-                onPlayNextMatch?.(phase, info.type === 'regional' ? region : undefined)
-              }
-            >
-              Play next match
-            </button>
             <button className="primary" onClick={onSimulateRound}>
               Simulate round <b>→</b>
             </button>
@@ -1318,4 +1317,5 @@ export function CompetitionV2({
       )}
     </div>
   )
+  return <SimMatchContext.Provider value={simMatch}>{page}</SimMatchContext.Provider>
 }

@@ -16,14 +16,17 @@ beforeEach(() => memory.clear())
 
 describe('competition center', () => {
   test('Kickoff renders its three lives as named bracket lanes', () => {
-    const html = renderToStaticMarkup(<CompetitionV2 s={createGame('Manager', 'sen')} />)
+    const html = renderToStaticMarkup(
+      <CompetitionV2 s={createGame('Manager', 'sen')} onSimMatch={() => {}} />,
+    )
     expect(html).toContain('Upper bracket')
     expect(html).toContain('Middle bracket')
     expect(html).toContain('Lower bracket')
     expect(html).toContain('Three qualifiers')
     expect(html).toContain('Kickoff standings')
-    expect(html).toContain('Play next match')
+    expect(html).not.toContain('Play next match')
     expect(html).toContain('Simulate round')
+    expect((html.match(/class="sim-match"/g) ?? []).length).toBeGreaterThan(0)
     expect((html.match(/class="kickoff-round-track"/g) ?? []).length).toBe(15)
     expect((html.match(/class="kickoff-merge-connector"/g) ?? []).length).toBeGreaterThan(0)
     expect((html.match(/class="kickoff-out-connector"/g) ?? []).length).toBeGreaterThan(0)

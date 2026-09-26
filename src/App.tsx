@@ -3,7 +3,6 @@ import {
   acceptJob,
   activePhaseForWeek,
   advanceWeek,
-  canPlayNextTournamentMatch,
   createGame,
   currentTeam,
   dateForWeek,
@@ -12,10 +11,9 @@ import {
   phaseForWeek,
   resetGame,
   saveGame,
-  simulateNextTournamentMatch,
+  simulateTournamentFixture,
   simulateTournamentRound,
   teamPlayers,
-  type CompetitionPhase,
   type DelegationMode,
   type GameState,
   type MatchResult,
@@ -1266,26 +1264,16 @@ export default function App() {
   const advanceTournamentRound = () => {
     setS(simulateTournamentRound(s, attack, defense))
   }
-  const playNextTournamentMatch = (
-    competitionPhase: Exclude<CompetitionPhase, 'Break' | 'Offseason'>,
-    region?: Region,
-  ) => {
-    setS(simulateNextTournamentMatch(s, attack, defense, competitionPhase, region))
+  const simMatch = (fixtureId: string) => {
+    setS(simulateTournamentFixture(s, fixtureId, attack, defense))
   }
   const activeCompetition = phaseForWeek(s.week)
-  const tournamentLive =
-    activeCompetition === 'Kickoff' ||
-    isInternationalPhase(activeCompetition) ||
-    (activeCompetition === 'Stage 1' && s.week >= 16) ||
-    (activeCompetition === 'Stage 2' && s.week >= 32)
-  const roundMode = view === 'competition' && tournamentLive
-  const headerGamePhase = tournamentLive
-    ? (activeCompetition as Exclude<CompetitionPhase, 'Break' | 'Offseason'>)
-    : undefined
-  const headerGameRegion =
-    headerGamePhase && !isInternationalPhase(headerGamePhase) ? t.region : undefined
-  const canPlayHeaderGame =
-    !!headerGamePhase && canPlayNextTournamentMatch(s, headerGamePhase, headerGameRegion)
+  const roundMode =
+    view === 'competition' &&
+    (activeCompetition === 'Kickoff' ||
+      isInternationalPhase(activeCompetition) ||
+      (activeCompetition === 'Stage 1' && s.week >= 16) ||
+      (activeCompetition === 'Stage 2' && s.week >= 32))
   const content =
     view === 'dashboard' ? (
       <DashboardV2 s={s} setView={setView} setMatchId={setMatchId} />
@@ -1309,7 +1297,7 @@ export default function App() {
     ) : view === 'competition' ? (
       <CompetitionV2
         s={s}
-        onPlayNextMatch={playNextTournamentMatch}
+        onSimMatch={simMatch}
         onSimulateRound={advanceTournamentRound}
         onOpenMatch={(id) => {
           setMatchId(id)
@@ -1356,16 +1344,6 @@ export default function App() {
             <i style={{ background: t.color }} /> {t.name} <em>/</em> {phase(s.week)}
           </span>
           <span className="cash">{money(t.cash)}</span>
-          <button
-            className="secondary next-game"
-            disabled={!canPlayHeaderGame}
-            title={canPlayHeaderGame ? undefined : 'No tournament game to play right now'}
-            onClick={() =>
-              headerGamePhase && playNextTournamentMatch(headerGamePhase, headerGameRegion)
-            }
-          >
-            Simulate next game
-          </button>
           <button className="advance" onClick={roundMode ? advanceTournamentRound : advance}>
             {roundMode ? 'Advance round' : 'Advance week'} <b>→</b>
           </button>
