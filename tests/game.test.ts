@@ -6,9 +6,11 @@ import {
   fixturesForWeek,
   loadGame,
   nextFixtureForTeam,
+  playableTournamentFixtureIds,
   SAVE_KEY,
   simulateNextTournamentMatch,
   simulateSeries,
+  simulateTournamentFixture,
   simulateTournamentRound,
 } from '../src/game'
 
@@ -299,6 +301,38 @@ describe('competition fixtures', () => {
       ),
     ).toBeTrue()
     expect(nextRound.every((fixture) => fixture.status === 'scheduled')).toBeTrue()
+  })
+
+  test('Sim match plays one series and rounds auto-advance through the event', {
+    timeout: 30000,
+  }, () => {
+    let state = createGame('Manager', 'c9')
+    for (let week = 0; week < 9; week++)
+      state = advanceWeek(state, 'Measured defaults', 'Disciplined retakes')
+    const firstRound = playableTournamentFixtureIds(state)
+    expect(firstRound).toHaveLength(4)
+    state = simulateTournamentFixture(
+      state,
+      firstRound[0],
+      'Measured defaults',
+      'Disciplined retakes',
+    )
+    expect(playableTournamentFixtureIds(state)).toEqual(firstRound.slice(1))
+    const mastersEnd = state.week
+    for (let guard = 0; guard < 200 && state.week <= mastersEnd; guard++) {
+      const [next] = playableTournamentFixtureIds(state)
+      expect(next).toBeDefined()
+      state = simulateTournamentFixture(state, next, 'Measured defaults', 'Disciplined retakes')
+    }
+    expect(state.week).toBe(mastersEnd + 1)
+    expect(
+      state.fixtures.some(
+        (fixture) =>
+          fixture.phase === 'Masters 1' &&
+          fixture.label === 'Grand Final' &&
+          fixture.status === 'completed',
+      ),
+    ).toBeTrue()
   })
 
   test('Stage 1 playoffs do not dump the remaining bracket on Advance round', {

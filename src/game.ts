@@ -2291,6 +2291,70 @@ export function simulateNextTournamentMatch(
   saveGame(state)
   return state
 }
+export function playableTournamentFixtureIds(state: GameState) {
+  const phase = phaseForWeek(state.week)
+  if (phase === 'Break' || phase === 'Offseason') return []
+  return liveStepFixtures(
+    fixturesForWeek(state, state.week).filter(
+      (fixture) => fixture.status === 'scheduled' && fixture.bId,
+    ),
+  ).map((fixture) => fixture.id)
+}
+function reportTournamentResult(state: GameState, fixture: Fixture, result: MatchResult) {
+  const winner = state.teams[result.winnerId]
+  const loserId = result.winnerId === result.aId ? result.bId : result.aId
+  const winnerScore = result.winnerId === result.aId ? result.aScore : result.bScore
+  const loserScore = result.winnerId === result.aId ? result.bScore : result.aScore
+  state.inbox.unshift(
+    `${winner.name} defeated ${state.teams[loserId].name} ${winnerScore}-${loserScore} in ${fixture.label}.`,
+  )
+}
+/** Plays one fixture from the live round; once the round is finished, the rest of the
+ * round (other regions) is played and the event moves on to the next round or week. */
+export function simulateTournamentFixture(
+  input: GameState,
+  fixtureId: string,
+  attackStyle: string,
+  defenseStyle: string,
+): GameState {
+  const phase = phaseForWeek(input.week)
+  if (phase === 'Break' || phase === 'Offseason') return input
+  const state: GameState = structuredClone(input)
+  ensureWeekScheduled(state, state.week)
+  buildIntraWeekRounds(state, attackStyle, defenseStyle, false)
+  const step = liveStepFixtures(
+    fixturesForWeek(state, state.week).filter((fixture) => fixture.status === 'scheduled'),
+  )
+  const fixture = step.find((candidate) => candidate.id === fixtureId)
+  if (!fixture) return input
+  const result = playFixture(state, fixture, attackStyle, defenseStyle)
+  if (result) reportTournamentResult(state, fixture, result)
+  const roundDone = step
+    .filter(
+      (candidate) =>
+        candidate.phase === fixture.phase &&
+        (fixture.scope === 'international' || candidate.region === fixture.region),
+    )
+    .every((candidate) => candidate.status === 'completed' || !candidate.bId)
+  if (roundDone) {
+    step.forEach((candidate) => {
+      if (candidate.status === 'scheduled') playFixture(state, candidate, attackStyle, defenseStyle)
+    })
+    state.inbox.unshift(`${phase} ${fixture.label} completed. The bracket has been updated.`)
+  }
+  buildIntraWeekRounds(state, attackStyle, defenseStyle, false)
+  const remaining = fixturesForWeek(state, state.week).some(
+    (candidate) => candidate.status === 'scheduled' && candidate.bId,
+  )
+  if (roundDone && !remaining) {
+    updateDevelopmentAndFinances(state)
+    finalizeCalendarWeek(state)
+    return state
+  }
+  state.saveTimestamp = new Date().toISOString()
+  saveGame(state)
+  return state
+}
 function playScheduledByLabel(
   state: GameState,
   phase: 'Masters 1' | 'Masters 2' | 'Champions',
