@@ -87,18 +87,73 @@ export function mapFit(state: GameState, teamId: string, mapName: string, league
   )
 }
 
-/** 1 = the team's strongest map, 7 = its weakest, recomputed from the current lineup. */
-export function mapTiers(state: GameState, teamId: string, league?: MapProfile) {
+/** The pool ordered by how well the current lineup fits each map, best first. */
+export function suggestedMapOrder(state: GameState, teamId: string, league?: MapProfile) {
   const team = state.teams[teamId]
   const reference = league ?? leagueProfile(state)
   const profile = team ? mapProfile(state, team) : undefined
-  const ranked = mapPool
+  return mapPool
     .map((map) => ({ name: map.name, fit: profile ? fitFromProfile(profile, reference, map) : 0 }))
     .sort((a, b) => b.fit - a.fit || a.name.localeCompare(b.name))
-  const span = Math.max(1, ranked.length - 1)
+    .map((entry) => entry.name)
+}
+
+/** The manager's own order, cleaned against the current pool; undefined when not set. */
+export function managerMapOrder(state: GameState, teamId: string) {
+  const saved = state.teams[teamId]?.mapOrder
+  if (teamId !== state.currentTeamId || !saved?.length) return undefined
+  const pool = mapPool.map((map) => map.name)
+  const kept = saved.filter((name, index) => pool.includes(name) && saved.indexOf(name) === index)
+  const missing = suggestedMapOrder(state, teamId).filter((name) => !kept.includes(name))
+  return [...kept, ...missing]
+}
+
+/** Best map first: the manager's order for their own team, the computed order for everyone else. */
+export function mapOrder(state: GameState, teamId: string, league?: MapProfile) {
+  return managerMapOrder(state, teamId) ?? suggestedMapOrder(state, teamId, league)
+}
+
+const tiersFromOrder = (order: string[]) => {
+  const span = Math.max(1, order.length - 1)
   return Object.fromEntries(
-    ranked.map((entry, index) => [entry.name, 1 + Math.round((index * 6) / span)]),
+    order.map((name, index) => [name, 1 + Math.round((index * 6) / span)]),
   ) as Record<string, number>
+}
+
+/** 1 = the team's strongest map, 7 = its weakest. */
+export function mapTiers(state: GameState, teamId: string, league?: MapProfile) {
+  return tiersFromOrder(mapOrder(state, teamId, league))
+}
+
+/** Tiers computed from the lineup alone, ignoring any manager order. */
+export function suggestedMapTiers(state: GameState, teamId: string, league?: MapProfile) {
+  return tiersFromOrder(suggestedMapOrder(state, teamId, league))
+}
+
+/** Moves a map one place up (-1) or down (+1) in an order. */
+export function moveMap(order: string[], map: string, delta: -1 | 1) {
+  const next = [...order],
+    from = next.indexOf(map),
+    to = from + delta
+  if (from < 0 || to < 0 || to >= next.length) return next
+  ;[next[from], next[to]] = [next[to], next[from]]
+  return next
+}
+
+/** This season's map wins and losses for a team, by map name. */
+export function seasonMapRecords(state: GameState, teamId: string) {
+  const records: Record<string, { wins: number; losses: number }> = Object.fromEntries(
+    mapPool.map((map) => [map.name, { wins: 0, losses: 0 }]),
+  )
+  for (const match of state.matches) {
+    if (match.season !== state.season || (match.aId !== teamId && match.bId !== teamId)) continue
+    for (const map of match.maps) {
+      const record = (records[map.map] ??= { wins: 0, losses: 0 })
+      if (map.winnerId === teamId) record.wins++
+      else record.losses++
+    }
+  }
+  return records
 }
 
 /** Per-round probability shift for the attacking side on this map. */
@@ -110,8 +165,10 @@ export function attackerEdge(mapName: string) {
 /**
  * VCT-style veto. BO3: ban, ban, pick, pick, ban, ban, decider.
  * BO5: ban, ban, pick, pick, pick, pick, decider. Team A (the higher seed) starts.
- * Each team values a map by how much better its tier is than the opponent's,
- * leaning toward its own comfort picks. `noise` (0-1 rolls) adds variety.
+ * AI teams value a map by how much better its tier is than the opponent's,
+ * leaning toward their own comfort picks; `noise` (0-1 rolls) adds variety.
+ * A manager who has set their own order bans from the bottom of it and picks
+ * the highest map still available.
  */
 export function runVeto(
   state: GameState,
@@ -128,7 +185,10 @@ export function runVeto(
       : ['ban', 'ban', 'pick', 'pick', 'ban', 'ban']
   const remaining = mapPool.map((map) => map.name)
   const steps: VetoStep[] = []
+  const manual = { [aId]: managerMapOrder(state, aId), [bId]: managerMapOrder(state, bId) }
   const value = (teamId: string, map: string) => {
+    const manualOrder = manual[teamId]
+    if (manualOrder) return -manualOrder.indexOf(map)
     const own = tiers[teamId][map],
       opponent = tiers[teamId === aId ? bId : aId][map]
     return opponent - own + (4 - own) * 0.5 + (noise ? (noise() - 0.5) * 1.5 : 0)

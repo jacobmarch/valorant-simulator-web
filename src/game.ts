@@ -69,6 +69,8 @@ export type Team = {
   mapLosses: number
   championshipPoints: number
   playoffStage: string
+  /** The manager's map order, best first. Only read for the managed team. */
+  mapOrder?: string[]
 }
 export type PlayerStat = {
   kills: number
