@@ -19,7 +19,7 @@
 .map-plan .map-plan-legend,
 .map-plan .map-plan-row {
   display: grid;
-  grid-template-columns: 22px minmax(0, 1fr) 52px 36px 56px;
+  grid-template-columns: 22px minmax(0, 1fr) 52px 96px 56px;
   align-items: center;
   gap: 10px;
 }
@@ -46,6 +46,15 @@
 .map-plan-opp {
   font-variant-numeric: tabular-nums;
   color: var(--text-2);
+}
+.map-plan .map-plan-opp {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.map-plan .map-plan-opp b {
+  color: var(--text);
+  font-weight: 600;
 }
 .map-plan-move {
   display: flex;
