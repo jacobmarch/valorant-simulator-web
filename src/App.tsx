@@ -1,14 +1,25 @@
 import { useState, type ReactNode } from 'react'
 import {
-  acceptJob,
-  activePhaseForWeek,
+  ArrowRight,
+  Binoculars,
+  Crosshair,
+  Dumbbell,
+  FastForward,
+  LayoutDashboard,
+  MonitorPlay,
+  Play,
+  Settings as SettingsIcon,
+  Trophy,
+  Users,
+  Wallet,
+  X,
+} from 'lucide-react'
+import {
   advanceWeek,
   createGame,
   currentTeam,
   dateForWeek,
-  isInternationalPhase,
   loadGame,
-  phaseForWeek,
   resetGame,
   saveGame,
   simulateTournamentFixture,
@@ -16,9 +27,6 @@ import {
   teamPlayers,
   type DelegationMode,
   type GameState,
-  type MatchResult,
-  type Player,
-  type PlayerStat,
   type Skill,
   type TransferRecord,
 } from './game'
@@ -43,67 +51,58 @@ import {
 } from './transfers'
 import { DashboardV2, MatchesV2, TacticsV2 } from './game-views'
 import { CompetitionV2 } from './competition-view'
-import { maps, roles, seedTeams, skills, type Region, type Role } from './seed'
+import { DEFAULT_TRAINING } from './development'
+import {
+  SCOUTING_HOURS,
+  TRAINING_HOURS,
+  attentionItems,
+  continueReport,
+  nextAction,
+  trainingGaps,
+  type ContinueReport,
+} from './flow'
+import { seedTeams, skills, type Region } from './seed'
+import {
+  Badge,
+  PanelTitle,
+  Page,
+  Stat,
+  money,
+  phaseName,
+  regionColors,
+  tone,
+  type View,
+} from './ui'
 
-type View =
-  | 'dashboard'
-  | 'roster'
-  | 'training'
-  | 'scouting'
-  | 'tactics'
-  | 'matches'
-  | 'competition'
-  | 'finances'
-  | 'settings'
-const labels: Record<View, string> = {
-  dashboard: 'Dashboard',
-  roster: 'Roster',
-  training: 'Training',
-  scouting: 'Scouting',
-  tactics: 'Tactics',
-  matches: 'Match Center',
-  competition: 'Competition',
-  finances: 'Finances',
-  settings: 'Settings',
-}
-const money = (n: number) => `$${Math.max(0, Math.round(n)).toLocaleString()}`
-const phase = (w: number) =>
-  phaseForWeek(w) === 'Break' ? `Break before ${activePhaseForWeek(w)}` : phaseForWeek(w)
-const colors: Record<Region, string> = {
-  Americas: '#62a0ff',
-  EMEA: '#ff9b62',
-  Pacific: '#7fe1c6',
-  China: '#f1c75b',
-}
-const Stat = ({
-  label,
-  value,
-  detail,
-  accent = false,
-}: {
-  label: string
-  value: string
-  detail: string
-  accent?: boolean
-}) => (
-  <div className={`stat ${accent ? 'accent' : ''}`}>
-    <small>{label}</small>
-    <strong>{value}</strong>
-    <span>{detail}</span>
-  </div>
-)
-const Badge = ({ children, color }: { children: ReactNode; color?: string }) => (
-  <span className="badge" style={color ? { color, borderColor: `${color}55` } : undefined}>
-    {children}
-  </span>
-)
-const Empty = ({ title, body }: { title: string; body: string }) => (
-  <div className="panel empty">
-    <span>◌</span>
-    <h2>{title}</h2>
-    <p>{body}</p>
-  </div>
-)
+const navGroups: Array<{ label: string; items: Array<[View, string, ReactNode]> }> = [
+  {
+    label: 'Club',
+    items: [['dashboard', 'Home', <LayoutDashboard size={17} key="i" />]],
+  },
+  {
+    label: 'Squad',
+    items: [
+      ['roster', 'Roster & transfers', <Users size={17} key="i" />],
+      ['training', 'Training', <Dumbbell size={17} key="i" />],
+      ['scouting', 'Scouting', <Binoculars size={17} key="i" />],
+    ],
+  },
+  {
+    label: 'Matchday',
+    items: [
+      ['tactics', 'Match prep', <Crosshair size={17} key="i" />],
+      ['matches', 'Match center', <MonitorPlay size={17} key="i" />],
+      ['competition', 'Competition', <Trophy size={17} key="i" />],
+    ],
+  },
+  {
+    label: 'Office',
+    items: [
+      ['finances', 'Finances', <Wallet size={17} key="i" />],
+      ['settings', 'Settings', <SettingsIcon size={17} key="i" />],
+    ],
+  },
+]
 function Start({ start }: { start: (name: string, team: string) => void }) {
   const [name, setName] = useState('Alex Mercer')
   const [region, setRegion] = useState<Region | 'All'>('All')
@@ -111,11 +110,15 @@ function Start({ start }: { start: (name: string, team: string) => void }) {
   return (
     <main className="start">
       <div className="hero">
-        <div className="eyebrow lime">VCT MANAGER // 2026 SEASON</div>
+        <div className="brand">
+          <b>V</b>
+          <span>
+            <strong>VCT Manager</strong>
+            <small>2026 season</small>
+          </span>
+        </div>
         <h1>
-          Build the next
-          <br />
-          <em>world champion.</em>
+          Build the next <em>world champion.</em>
         </h1>
         <p>
           Run a real VCT organization through the 2026 season. Shape the roster, set the plan, and
@@ -124,14 +127,14 @@ function Start({ start }: { start: (name: string, team: string) => void }) {
         <div className="hero-meta">
           <span>48 organizations</span>
           <span>4 territories</span>
-          <span>Masters × 2</span>
+          <span>2 Masters events</span>
           <span>Champions</span>
         </div>
       </div>
       <section className="panel picker">
         <div className="picker-head">
           <div>
-            <div className="eyebrow">NEW CAREER</div>
+            <div className="eyebrow">New career</div>
             <h2>Choose your organization</h2>
           </div>
           <label>
@@ -152,257 +155,17 @@ function Start({ start }: { start: (name: string, team: string) => void }) {
               <b style={{ background: t.color }}>{t.short.slice(0, 3)}</b>
               <span>
                 <strong>{t.name}</strong>
-                <small>{t.region}</small>
+                <small>
+                  <i style={{ background: regionColors[t.region] }} />
+                  {t.region}
+                </small>
               </span>
-              <i>→</i>
+              <ArrowRight size={16} />
             </button>
           ))}
         </div>
       </section>
     </main>
-  )
-}
-function PanelTitle({
-  eyebrow,
-  title,
-  right,
-}: {
-  eyebrow: string
-  title: string
-  right?: ReactNode
-}) {
-  return (
-    <div className="panel-title">
-      <div>
-        <div className="eyebrow">{eyebrow}</div>
-        <h2>{title}</h2>
-      </div>
-      {right}
-    </div>
-  )
-}
-function Page({
-  eyebrow,
-  title,
-  subtitle,
-  children,
-}: {
-  eyebrow: string
-  title: string
-  subtitle: string
-  children: ReactNode
-}) {
-  return (
-    <div className="page">
-      <div className="page-head">
-        <div>
-          <div className="eyebrow">{eyebrow}</div>
-          <h1>{title}</h1>
-          <p>{subtitle}</p>
-        </div>
-        <div className="season">
-          <small>SEASON 2026</small>
-          <strong>{phase(1)}</strong>
-        </div>
-      </div>
-      {children}
-    </div>
-  )
-}
-function MiniStandings({ s, onView }: { s: GameState; onView: (v: View) => void }) {
-  const t = currentTeam(s)
-  const international = isInternationalPhase(phaseForWeek(s.week))
-  const rows = Object.values(s.teams)
-    .filter((x) => international || x.region === t.region)
-    .sort((a, b) => b.wins - a.wins || b.championshipPoints - a.championshipPoints)
-    .slice(0, 5)
-  return (
-    <section className="panel mini-standings">
-      <PanelTitle
-        eyebrow={international ? 'INTERNATIONAL PULSE' : `${t.region.toUpperCase()} STANDINGS`}
-        title={international ? 'Tournament field' : 'Your region'}
-        right={
-          <button className="link" onClick={() => onView('competition')}>
-            Open competition →
-          </button>
-        }
-      />
-      {rows.map((team, i) => (
-        <div className="mini-row" key={team.id}>
-          <b>{String(i + 1).padStart(2, '0')}</b>
-          <span className="mini" style={{ background: team.color }}>
-            {team.short.slice(0, 2)}
-          </span>
-          <strong>{team.name}</strong>
-          <span>
-            {team.wins}–{team.losses}
-          </span>
-          <small>{team.championshipPoints} CP</small>
-        </div>
-      ))}
-    </section>
-  )
-}
-function _Dashboard({ s, setView }: { s: GameState; setView: (v: View) => void }) {
-  const t = currentTeam(s)
-  const last = s.matches[0]
-  const job = s.jobs.find((j) => j.status === 'pending' && j.expiresWeek >= s.week)
-  return (
-    <Page
-      eyebrow={`MANAGER DESK / WEEK ${s.week}`}
-      title={`${s.managerName}, your next move matters.`}
-      subtitle={
-        s.week <= 6
-          ? 'Kickoff is here. Every map is a chance to establish your season.'
-          : phaseForWeek(s.week) === 'Break'
-            ? 'The calendar has a clear transition week. Review the table and prepare for the next stage.'
-            : 'The VCT calendar is moving. Keep the organization ahead of the next pressure point.'
-      }
-    >
-      <div className="stats">
-        <Stat label="Organization" value={t.short} detail={t.name} accent />
-        <Stat
-          label="Record"
-          value={`${t.wins}–${t.losses}`}
-          detail={`${t.mapWins}–${t.mapLosses} maps`}
-        />
-        <Stat
-          label="Cash balance"
-          value={money(t.cash)}
-          detail={`${money(t.salaryBudget)} salary budget`}
-        />
-        <Stat
-          label="Championship points"
-          value={String(t.championshipPoints)}
-          detail="performance points"
-        />
-      </div>
-      <div className="dashboard-grid">
-        <section className="panel spotlight">
-          <PanelTitle
-            eyebrow="NEXT EVENT"
-            title={phase(s.week)}
-            right={
-              <Badge color={colors[t.region]}>
-                {isInternationalPhase(phaseForWeek(s.week)) ? 'INTERNATIONAL' : t.region}
-              </Badge>
-            }
-          />
-          <div className="versus">
-            <div>
-              <b className="mark big" style={{ background: t.color }}>
-                {t.short.slice(0, 3)}
-              </b>
-              <strong>{t.name}</strong>
-              <small>YOUR ORGANIZATION</small>
-            </div>
-            <em>{phaseForWeek(s.week) === 'Break' ? '—' : 'VS'}</em>
-            <div>
-              <b className="mark big opponent">
-                {isInternationalPhase(phaseForWeek(s.week)) ? 'GLB' : 'VCT'}
-              </b>
-              <strong>
-                {phaseForWeek(s.week) === 'Break' ? 'Calendar transition' : 'Current matchup'}
-              </strong>
-              <small>{dateForWeek(s.week)}</small>
-            </div>
-          </div>
-          <button
-            className="primary full"
-            onClick={() => setView(phaseForWeek(s.week) === 'Break' ? 'competition' : 'tactics')}
-          >
-            {phaseForWeek(s.week) === 'Break' ? 'Review competition' : 'Prepare match'} <b>→</b>
-          </button>
-        </section>
-        <section className="panel">
-          <PanelTitle
-            eyebrow="INBOX"
-            title="Latest signals"
-            right={
-              <button className="link" onClick={() => setView('settings')}>
-                Settings
-              </button>
-            }
-          />
-          {s.inbox.slice(0, 5).map((x, i) => (
-            <div className="inbox" key={`${x}-${i}`}>
-              <i /> {x}
-              <small>W{Math.max(1, s.week - i)}</small>
-            </div>
-          ))}
-        </section>
-      </div>
-      <MiniStandings s={s} onView={setView} />
-      {job && (
-        <section className="panel offer">
-          <PanelTitle
-            eyebrow="CAREER MARKET"
-            title="Offer on the table"
-            right={<Badge color="#d7ff56">NEW</Badge>}
-          />
-          <div>
-            <span>
-              <strong>{s.teams[job.teamId].name}</strong>
-              <small>{job.reason}</small>
-            </span>
-            <span className="offer-action">
-              {money(job.salary)} / year
-              <button className="primary compact" onClick={() => setView('settings')}>
-                Review in Settings
-              </button>
-            </span>
-          </div>
-        </section>
-      )}
-      <section className="panel">
-        <PanelTitle eyebrow="CONTROL ROOM" title="What needs your attention?" />
-        <div className="actions">
-          {[
-            ['roster', '01', 'Shape the roster', 'Starters, substitutes, and available talent.'],
-            [
-              'training',
-              '02',
-              'Set player training',
-              'Protect ratings with the 40-hour weekly plan.',
-            ],
-            [
-              'scouting',
-              '03',
-              'Scout the market',
-              'Turn unknown prospects into an actionable list.',
-            ],
-            ['tactics', '04', 'Set the game plan', 'Pick your maps and dictate the style.'],
-          ].map(([v, n, h, d]) => (
-            <button onClick={() => setView(v as View)} key={v}>
-              <b>{n}</b>
-              <strong>{h}</strong>
-              <small>{d}</small>
-            </button>
-          ))}
-        </div>
-      </section>
-      {last && (
-        <section className="panel result">
-          <PanelTitle
-            eyebrow={`LAST RESULT / ${last.phase}`}
-            title={last.winnerId === s.currentTeamId ? 'Series win' : 'Series loss'}
-            right={
-              <button className="link" onClick={() => setView('matches')}>
-                Open match center →
-              </button>
-            }
-          />
-          <div>
-            <strong>{s.teams[last.aId].short}</strong>
-            <b className={last.winnerId === last.aId ? 'win' : ''}>{last.aScore}</b>
-            <span>–</span>
-            <b className={last.winnerId === last.bId ? 'win' : ''}>{last.bScore}</b>
-            <strong>{s.teams[last.bId].short}</strong>
-            <small>BO{last.bestOf}</small>
-          </div>
-        </section>
-      )}
-    </Page>
   )
 }
 function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => void }) {
@@ -439,8 +202,8 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
   }
   return (
     <Page
-      eyebrow={`ROSTER ROOM / ${t.short}`}
-      title="Make the hard calls."
+      eyebrow={`SQUAD / ${t.short}`}
+      title="Roster & transfers"
       subtitle={`${ps.length} players on contract · ${t.lineup.length}/5 starters assigned · ${
         openWindow
           ? `${openWindow.label} open through week ${openWindow.end}`
@@ -474,9 +237,11 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
                 <div className="player-name">
                   <strong>{p.name}</strong>
                   <span>
-                    <Badge color={p.status === 'starter' ? '#d7ff56' : '#94a3b8'}>{p.status}</Badge>
+                    <Badge color={p.status === 'starter' ? tone.accent : tone.muted}>
+                      {p.status}
+                    </Badge>
                     <Badge>{p.primaryRole}</Badge>
-                    <Badge color={p.years <= 1 ? '#fbbf24' : '#94a3b8'}>
+                    <Badge color={p.years <= 1 ? tone.warn : tone.muted}>
                       {`Age ${p.age} · ${p.years}y left`}
                     </Badge>
                     {p.isImport && <Badge>Import</Badge>}
@@ -622,17 +387,39 @@ function Training({ s, setState }: { s: GameState; setState: (s: GameState) => v
     saveGame(n)
     setState(n)
   }
+  const gaps = trainingGaps(s)
+  const applyBalanced = (ids: string[]) => {
+    const n = structuredClone(s)
+    ids.forEach((id) => {
+      n.training[id] = { ...DEFAULT_TRAINING }
+    })
+    saveGame(n)
+    setState(n)
+  }
   return (
     <Page
-      eyebrow="PLAYER DEVELOPMENT / 40 HOURS"
-      title="Build the weekly edge."
-      subtitle="Five hours maintains a skill. Growth is faster for young players and slows once they reach potential."
+      eyebrow={`SQUAD / WEEK ${s.week}`}
+      title="Training"
+      subtitle="Each player has 40 hours a week. Five hours maintains a skill; less than that and it can slip. Growth is faster for young players and slows near potential."
+      actions={
+        <button
+          className="primary"
+          disabled={!gaps.length}
+          onClick={() => applyBalanced(gaps.map((p) => p.id))}
+        >
+          {gaps.length ? `Balanced plan for ${gaps.length} unset` : 'Everyone is planned'}
+        </button>
+      }
     >
       <section className="panel training">
         <PanelTitle
-          eyebrow={`WEEK ${s.week}`}
+          eyebrow="INDIVIDUAL PLANS"
           title="Training allocations"
-          right={<Badge color="#7fe1c6">INDIVIDUAL ONLY</Badge>}
+          right={
+            <Badge color={gaps.length ? tone.warn : tone.accent}>
+              {gaps.length ? `${gaps.length} with free hours` : 'All 40h assigned'}
+            </Badge>
+          }
         />
         {ps.map((p) => {
           const a = s.training[p.id] ?? {}
@@ -648,13 +435,16 @@ function Training({ s, setState }: { s: GameState; setState: (s: GameState) => v
                 </span>
               </div>
               <div className="hours">
-                <b>
+                <b className={total < TRAINING_HOURS ? 'short' : ''}>
                   {total}
-                  <small>/40h</small>
+                  <small>/{TRAINING_HOURS}h</small>
                 </b>
                 <div className="bar">
-                  <i style={{ width: `${(total / 40) * 100}%` }} />
+                  <i style={{ width: `${(total / TRAINING_HOURS) * 100}%` }} />
                 </div>
+                <button className="link" onClick={() => applyBalanced([p.id])}>
+                  Balanced plan
+                </button>
               </div>
               <div className="skills">
                 {skills.map((skill) => (
@@ -667,7 +457,9 @@ function Training({ s, setState }: { s: GameState; setState: (s: GameState) => v
                       value={a[skill] ?? 0}
                       onChange={(e) => setH(p.id, skill, Number(e.target.value))}
                     />
-                    <small>{(a[skill] ?? 0) >= 5 ? 'maintained' : 'at risk'}</small>
+                    <small className={(a[skill] ?? 0) >= 5 ? '' : 'risk'}>
+                      {(a[skill] ?? 0) >= 5 ? 'maintained' : 'at risk'}
+                    </small>
                   </label>
                 ))}
               </div>
@@ -692,17 +484,22 @@ function Scouting({ s, setState }: { s: GameState; setState: (s: GameState) => v
     saveGame(n)
     setState(n)
   }
+  const scoutUsed = Object.values(s.scoutingHours).reduce((sum, x) => sum + x, 0)
   return (
     <Page
-      eyebrow={`SCOUTING NETWORK / WEEK ${s.week}`}
-      title="Find the next piece."
+      eyebrow={`SQUAD / WEEK ${s.week}`}
+      title="Scouting"
       subtitle="Spend the weekly 40-hour scouting pool to turn uncertainty into a recruiting decision."
     >
       <section className="panel">
         <PanelTitle
           eyebrow="PLAYER DATABASE"
           title="Targets & intelligence"
-          right={<Badge color="#f1c75b">40 HOURS AVAILABLE</Badge>}
+          right={
+            <Badge color={scoutUsed >= SCOUTING_HOURS ? tone.accent : tone.warn}>
+              {SCOUTING_HOURS - scoutUsed}h unassigned
+            </Badge>
+          }
         />
         {targets.map((p) => {
           const overall = Math.round(Object.values(p.ratings).reduce((a, b) => a + b, 0) / 6)
@@ -736,380 +533,14 @@ function Scouting({ s, setState }: { s: GameState; setState: (s: GameState) => v
     </Page>
   )
 }
-function _Tactics({
-  s,
-  setState,
-  attack,
-  setAttack,
-  defense,
-  setDefense,
-}: {
-  s: GameState
-  setState: (s: GameState) => void
-  attack: string
-  setAttack: (v: string) => void
-  defense: string
-  setDefense: (v: string) => void
-}) {
-  const t = currentTeam(s)
-  const ps = t.lineup.map((id) => s.players[id]).filter(Boolean)
-  const setRole = (p: Player, r: Role) => {
-    const n = structuredClone(s)
-    n.teams[t.id].roleAssignments[p.id] = r
-    saveGame(n)
-    setState(n)
-  }
-  return (
-    <Page
-      eyebrow={`MATCH PREPARATION / ${phase(s.week)}`}
-      title="Make your plan legible."
-      subtitle="Set the five, choose role assignments, and make the broad call on both sides."
-    >
-      <div className="columns">
-        <section className="panel">
-          <PanelTitle
-            eyebrow="STARTING LINEUP"
-            title="Five for the series"
-            right={<span className="muted">Role fit matters</span>}
-          />
-          {ps.map((p, i) => (
-            <div className="lineup" key={p.id}>
-              <b>0{i + 1}</b>
-              <span>
-                <strong>{p.name}</strong>
-                <small>
-                  Primary {p.primaryRole} · {p.secondaryRoles.join(', ') || 'no secondary'}
-                </small>
-              </span>
-              <select
-                value={t.roleAssignments[p.id] ?? p.primaryRole}
-                onChange={(e) => setRole(p, e.target.value as Role)}
-              >
-                {roles.map((r) => (
-                  <option key={r}>{r}</option>
-                ))}
-              </select>
-            </div>
-          ))}
-        </section>
-        <section className="panel">
-          <PanelTitle eyebrow="SERIES PLAN" title="Broad tactical identity" />
-          <label className="field">
-            Attack style
-            <select value={attack} onChange={(e) => setAttack(e.target.value)}>
-              <option>Measured defaults</option>
-              <option>Fast and explosive</option>
-              <option>Slow information play</option>
-            </select>
-          </label>
-          <label className="field">
-            Defense style
-            <select value={defense} onChange={(e) => setDefense(e.target.value)}>
-              <option>Disciplined retakes</option>
-              <option>Proactive contesting</option>
-              <option>Deep site anchors</option>
-            </select>
-          </label>
-          <div className="maps">
-            <div className="eyebrow">MAP VETO / MVP ORDER</div>
-            {maps.map((m, i) => (
-              <div className={i < 3 ? 'map selected' : 'map'} key={m}>
-                <b>{i + 1}</b>
-                {m}
-                <small>{i < 3 ? 'selected' : 'ban'}</small>
-              </div>
-            ))}
-          </div>
-          <div className="callout">
-            <strong>Later phase</strong>
-            <span>
-              Agent compositions, pistol plans, timeout calls, and between-map adjustments come
-              next.
-            </span>
-          </div>
-        </section>
-      </div>
-    </Page>
-  )
-}
-function aggregateStats(mapsToRead: MatchResult['maps']): Record<string, PlayerStat> {
-  return mapsToRead.reduce(
-    (out, map) => {
-      Object.entries(map.stats).forEach(([id, stat]) => {
-        if (!out[id]) out[id] = { ...stat }
-        else {
-          const x = out[id]
-          x.kills += stat.kills
-          x.deaths += stat.deaths
-          x.assists += stat.assists
-          x.acs = Math.round((x.acs + stat.acs) / 2)
-          x.adr = Math.round((x.adr + stat.adr) / 2)
-          x.kast = Math.round((x.kast + stat.kast) / 2)
-          x.firstKills += stat.firstKills
-          x.firstDeaths += stat.firstDeaths
-          x.clutches += stat.clutches
-          x.plants += stat.plants
-          x.defuses += stat.defuses
-          x.headshots += stat.headshots
-        }
-      })
-      return out
-    },
-    {} as Record<string, PlayerStat>,
-  )
-}
-function _Matches({ s }: { s: GameState }) {
-  const m = s.matches[0]
-  const [tab, setTab] = useState<'series' | number>('series')
-  if (!m)
-    return (
-      <Page
-        eyebrow="BROADCAST CENTER / RESULTS"
-        title="Every round tells a story."
-        subtitle="Advance the week to play your first series."
-      >
-        <Empty title="No matches played yet" body="Your first result will appear here." />
-      </Page>
-    )
-  const read = tab === 'series' ? m.maps : [m.maps[tab]]
-  const stats = aggregateStats(read)
-  return (
-    <Page
-      eyebrow="BROADCAST CENTER / RESULTS"
-      title="Every round tells a story."
-      subtitle="Switch between a series view and each individual map without losing the full box score."
-    >
-      <section className="broadcast">
-        <div>
-          <span>{m.phase}</span>
-          <span>
-            WEEK {m.week} · BO{m.bestOf}
-          </span>
-        </div>
-        <strong>
-          {s.teams[m.aId].short}
-          <b className={m.winnerId === m.aId ? 'win' : ''}>{m.aScore}</b> :{' '}
-          <b className={m.winnerId === m.bId ? 'win' : ''}>{m.bScore}</b>
-          {s.teams[m.bId].short}
-        </strong>
-        <div className="map-results">
-          {m.maps.map((x, i) => (
-            <button className={tab === i ? 'active' : ''} onClick={() => setTab(i)} key={x.map}>
-              <small>{x.map}</small>
-              <b>
-                {x.aScore} — {x.bScore}
-              </b>
-              <em>{s.teams[x.winnerId].short} takes map</em>
-            </button>
-          ))}
-        </div>
-      </section>
-      <section className="panel">
-        <div className="view-tabs">
-          <button className={tab === 'series' ? 'active' : ''} onClick={() => setTab('series')}>
-            Entire series
-          </button>
-          {m.maps.map((x, i) => (
-            <button className={tab === i ? 'active' : ''} onClick={() => setTab(i)} key={x.map}>
-              {x.map}
-            </button>
-          ))}
-        </div>
-        <PanelTitle
-          eyebrow={
-            tab === 'series' ? 'SERIES BOX SCORE' : `MAP BOX SCORE / ${m.maps[tab as number]?.map}`
-          }
-          title={
-            tab === 'series' ? 'Series statistics' : `${m.maps[tab as number]?.map} statistics`
-          }
-          right={<span className="muted">ACS · ADR · KAST · impact</span>}
-        />
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Player</th>
-                <th>ACS</th>
-                <th>ADR</th>
-                <th>K/D</th>
-                <th>KAST</th>
-                <th>FK/FD</th>
-                <th>Clutches</th>
-                <th>HS</th>
-              </tr>
-            </thead>
-            <tbody>
-              {Object.entries(stats).map(([id, x]) => (
-                <tr key={id}>
-                  <td>
-                    <strong>{s.players[id]?.name}</strong>
-                    <small>{s.players[id]?.primaryRole}</small>
-                  </td>
-                  <td>{x.acs}</td>
-                  <td>{x.adr}</td>
-                  <td>
-                    {x.kills}/{x.deaths}
-                  </td>
-                  <td>{x.kast}%</td>
-                  <td>
-                    {x.firstKills}/{x.firstDeaths}
-                  </td>
-                  <td>{x.clutches}</td>
-                  <td>{x.headshots}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-      <section className="panel">
-        <PanelTitle eyebrow="KEY MOMENTS" title="Match highlights" />
-        {m.highlights.map((h) => (
-          <div className="highlight" key={h}>
-            ✦ {h}
-          </div>
-        ))}
-      </section>
-    </Page>
-  )
-}
-function _Competition({ s }: { s: GameState }) {
-  const t = currentTeam(s)
-  const [scope, setScope] = useState<Region | 'International'>(
-    isInternationalPhase(phaseForWeek(s.week)) ? 'International' : t.region,
-  )
-  const [week, setWeek] = useState(Math.max(1, s.week - 1))
-  const teams = Object.values(s.teams)
-    .filter((x) => scope === 'International' || x.region === scope)
-    .sort((a, b) => b.wins - a.wins || b.championshipPoints - a.championshipPoints)
-  const matchups = s.matches.filter(
-    (m) =>
-      m.week === week &&
-      (scope === 'International' ||
-        (s.teams[m.aId]?.region === scope && s.teams[m.bId]?.region === scope)),
-  )
-  const tournament = matchups.filter((m) => isInternationalPhase(m.phase))
-  return (
-    <Page
-      eyebrow={`COMPETITION HUB / WEEK ${s.week}`}
-      title="See the whole field."
-      subtitle="Move between regional tables, weekly matchups, and the current international bracket without losing the season context."
-    >
-      <section className="panel competition-controls">
-        <div className="tabs">
-          {(['Americas', 'EMEA', 'Pacific', 'China', 'International'] as const).map((x) => (
-            <button className={scope === x ? 'active' : ''} onClick={() => setScope(x)} key={x}>
-              {x}
-            </button>
-          ))}
-        </div>
-        <div className="week-control">
-          <button onClick={() => setWeek(Math.max(1, week - 1))}>←</button>
-          <strong>WEEK {week}</strong>
-          <span>{dateForWeek(week)}</span>
-          <button onClick={() => setWeek(Math.min(52, week + 1))}>→</button>
-        </div>
-      </section>
-      <div className="competition-grid">
-        <section className="panel">
-          <PanelTitle
-            eyebrow={`${scope === 'International' ? 'INTERNATIONAL' : scope.toUpperCase()} TABLE`}
-            title={scope === 'International' ? 'Tournament field' : 'Regional standings'}
-            right={
-              <Badge color={scope === 'International' ? '#d7ff56' : colors[scope as Region]}>
-                {scope === 'International' ? 'GLOBAL' : scope}
-              </Badge>
-            }
-          />
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Organization</th>
-                  <th>W</th>
-                  <th>L</th>
-                  <th>Maps</th>
-                  <th>CP</th>
-                </tr>
-              </thead>
-              <tbody>
-                {teams.map((x, i) => (
-                  <tr className={x.id === s.currentTeamId ? 'current' : ''} key={x.id}>
-                    <td>{String(i + 1).padStart(2, '0')}</td>
-                    <td>
-                      <strong>
-                        <span className="mini" style={{ background: x.color }}>
-                          {x.short.slice(0, 2)}
-                        </span>
-                        {x.name}
-                      </strong>
-                    </td>
-                    <td>{x.wins}</td>
-                    <td>{x.losses}</td>
-                    <td>
-                      {x.mapWins}–{x.mapLosses}
-                    </td>
-                    <td>
-                      <strong>{x.championshipPoints}</strong>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-        <section className="panel">
-          <PanelTitle
-            eyebrow={scope === 'International' ? 'CURRENT BRACKET' : 'WEEKLY MATCHUPS'}
-            title={scope === 'International' ? 'Tournament board' : `Week ${week} results`}
-            right={<Badge>{matchups.length} matches</Badge>}
-          />
-          {matchups.length ? (
-            matchups.map((m) => (
-              <div className="fixture" key={m.id}>
-                <span>
-                  {s.teams[m.aId].short}
-                  <b className={m.winnerId === m.aId ? 'win' : ''}>{m.aScore}</b>
-                </span>
-                <em>vs</em>
-                <span>
-                  <b className={m.winnerId === m.bId ? 'win' : ''}>{m.bScore}</b>
-                  {s.teams[m.bId].short}
-                </span>
-                <small>
-                  {m.phase} · BO{m.bestOf}
-                </small>
-              </div>
-            ))
-          ) : (
-            <Empty
-              title="No results in this week"
-              body="Advance the week to populate the matchup board."
-            />
-          )}
-          {scope === 'International' && tournament.length === 0 && (
-            <div className="callout">
-              <strong>International field</strong>
-              <span>
-                When the next global event is active, its completed series will appear here as the
-                bracket board.
-              </span>
-            </div>
-          )}
-        </section>
-      </div>
-    </Page>
-  )
-}
 function Finances({ s }: { s: GameState }) {
   const t = currentTeam(s)
   const payroll = t.playerIds.reduce((sum, id) => sum + s.players[id].salary, 0)
   return (
     <Page
-      eyebrow="ORGANIZATION / FINANCES"
-      title="Win without going broke."
-      subtitle="A simplified financial layer for the MVP. Deeper sponsorships and operating costs come later."
+      eyebrow="OFFICE"
+      title="Finances"
+      subtitle="Cash, payroll, and what moves the number each week."
     >
       <div className="stats">
         <Stat label="Cash balance" value={money(t.cash)} detail="available for buyouts" accent />
@@ -1164,9 +595,9 @@ function Settings({
   }
   return (
     <Page
-      eyebrow="SYSTEM / MANAGER PREFERENCES"
-      title="Choose your workload."
-      subtitle="Delegate immersion systems. The competitive core always stays active."
+      eyebrow="OFFICE"
+      title="Settings"
+      subtitle="Management preferences and your browser save."
     >
       <section className="panel settings">
         <PanelTitle eyebrow="DELEGATION" title="Management modes" />
@@ -1219,30 +650,76 @@ function Settings({
           </button>
         </div>
       </section>
-      {s.jobs
-        .filter((j) => j.status === 'pending')
-        .map((j) => (
-          <section className="panel offer" key={j.id}>
-            <PanelTitle eyebrow="CAREER MARKET" title={s.teams[j.teamId].name} />
-            <p>{j.reason}</p>
-            <button className="primary" onClick={() => setState(acceptJob(s, j.id))}>
-              Accept role · {money(j.salary)} / year
-            </button>
-          </section>
-        ))}
     </Page>
+  )
+}
+function ResultBanner({
+  s,
+  report,
+  onOpen,
+  onCompetition,
+  onClose,
+}: {
+  s: GameState
+  report: ContinueReport
+  onOpen: (id: string) => void
+  onCompetition: () => void
+  onClose: () => void
+}) {
+  const match = report.managed[0]
+  const won = match?.winnerId === s.currentTeamId
+  return (
+    <div className={`result-banner ${match ? (won ? 'win' : 'loss') : ''}`} role="status">
+      {match ? (
+        <>
+          <span className="result-banner-tag">{won ? 'Win' : 'Loss'}</span>
+          <strong>
+            {s.teams[match.aId].short} {match.aScore}–{match.bScore} {s.teams[match.bId].short}
+          </strong>
+          <span className="muted">
+            {match.phase} · Bo{match.bestOf}
+            {report.others ? ` · ${report.others} other series played` : ''}
+          </span>
+          <button className="link" onClick={() => onOpen(match.id)}>
+            Open match <ArrowRight size={14} />
+          </button>
+        </>
+      ) : (
+        <>
+          <span className="result-banner-tag">Week {report.week}</span>
+          <strong>
+            {report.others
+              ? `${report.others} series played around the league`
+              : 'The calendar moved on'}
+          </strong>
+          <span className="muted">
+            {phaseName(report.week)} · {dateForWeek(report.week)}
+          </span>
+          {report.others > 0 && (
+            <button className="link" onClick={onCompetition}>
+              See results <ArrowRight size={14} />
+            </button>
+          )}
+        </>
+      )}
+      <button className="icon-button" onClick={onClose} aria-label="Dismiss">
+        <X size={16} />
+      </button>
+    </div>
   )
 }
 export default function App() {
   const [s, setS] = useState<GameState | null>(() => loadGame())
   const [view, setView] = useState<View>('dashboard')
   const [matchId, setMatchId] = useState<string>()
+  const [report, setReport] = useState<ContinueReport | null>(null)
   const [attack, setAttack] = useState('Measured defaults')
   const [defense, setDefense] = useState('Disciplined retakes')
   const start = (name: string, team: string) => {
     const n = createGame(name, team)
     saveGame(n)
     setS(n)
+    setView('dashboard')
   }
   const newGame = () => {
     if (confirm('Start a new career? Your current local save will be replaced.')) {
@@ -1258,25 +735,34 @@ export default function App() {
   }
   if (!s) return <Start start={start} />
   const t = currentTeam(s)
-  const advance = () => {
-    setS(advanceWeek(s, attack, defense))
+  const step = nextAction(s)
+  const todo = attentionItems(s).filter((item) => item.level !== 'info')
+  const commit = (next: GameState) => {
+    setReport(continueReport(s, next))
+    setS(next)
   }
-  const advanceTournamentRound = () => {
-    setS(simulateTournamentRound(s, attack, defense))
+  const proceed = () =>
+    commit(
+      step.mode === 'round'
+        ? simulateTournamentRound(s, attack, defense)
+        : advanceWeek(s, attack, defense),
+    )
+  const simWeek = () => commit(advanceWeek(s, attack, defense))
+  const simMatch = (fixtureId: string) =>
+    commit(simulateTournamentFixture(s, fixtureId, attack, defense))
+  const openMatch = (id: string) => {
+    setMatchId(id)
+    setView('matches')
+    setReport(null)
   }
-  const simMatch = (fixtureId: string) => {
-    setS(simulateTournamentFixture(s, fixtureId, attack, defense))
+  const go = (next: View) => {
+    setView(next)
+    setReport(null)
+    window.scrollTo?.({ top: 0 })
   }
-  const activeCompetition = phaseForWeek(s.week)
-  const roundMode =
-    view === 'competition' &&
-    (activeCompetition === 'Kickoff' ||
-      isInternationalPhase(activeCompetition) ||
-      (activeCompetition === 'Stage 1' && s.week >= 16) ||
-      (activeCompetition === 'Stage 2' && s.week >= 32))
   const content =
     view === 'dashboard' ? (
-      <DashboardV2 s={s} setView={setView} setMatchId={setMatchId} />
+      <DashboardV2 s={s} setState={setS} setView={go} setMatchId={setMatchId} />
     ) : view === 'roster' ? (
       <Roster s={s} setState={setS} />
     ) : view === 'training' ? (
@@ -1293,16 +779,13 @@ export default function App() {
         setDefense={setDefense}
       />
     ) : view === 'matches' ? (
-      <MatchesV2 s={s} initialMatchId={matchId} />
+      <MatchesV2 s={s} initialMatchId={matchId} key={matchId} />
     ) : view === 'competition' ? (
       <CompetitionV2
         s={s}
         onSimMatch={simMatch}
-        onSimulateRound={advanceTournamentRound}
-        onOpenMatch={(id) => {
-          setMatchId(id)
-          setView('matches')
-        }}
+        onSimulateRound={() => commit(simulateTournamentRound(s, attack, defense))}
+        onOpenMatch={openMatch}
       />
     ) : view === 'finances' ? (
       <Finances s={s} />
@@ -1311,43 +794,96 @@ export default function App() {
     )
   return (
     <div className="shell">
-      <aside>
+      <aside className="sidebar">
         <div className="brand">
           <b>V</b>
           <span>
-            <strong>VCT</strong>
-            <small>MANAGER</small>
+            <strong>VCT Manager</strong>
+            <small>Season {s.season}</small>
           </span>
         </div>
-        <div className="season-chip">
-          ● 2026 SEASON <small>{phase(s.week)}</small>
+        <div className="club-card">
+          <b className="mark md" style={{ background: t.color }}>
+            {t.short.slice(0, 3)}
+          </b>
+          <span>
+            <strong>{t.name}</strong>
+            <small>
+              {t.region} · {t.wins}–{t.losses}
+            </small>
+          </span>
         </div>
-        <nav>
-          {(Object.keys(labels) as View[]).map((v, i) => (
-            <button className={view === v ? 'active' : ''} onClick={() => setView(v)} key={v}>
-              <small>{String(i + 1).padStart(2, '0')}</small>
-              {labels[v]}
-            </button>
+        <nav className="side-nav">
+          {navGroups.map((group) => (
+            <div className="nav-group" key={group.label}>
+              <small>{group.label}</small>
+              {group.items.map(([v, label, icon]) => {
+                const count = todo.filter((item) => item.view === v).length
+                return (
+                  <button
+                    className={view === v ? 'active' : ''}
+                    onClick={() => go(v)}
+                    key={v}
+                    aria-current={view === v ? 'page' : undefined}
+                  >
+                    {icon}
+                    <span>{label}</span>
+                    {count > 0 && <i className="nav-dot" title={`${count} to review`} />}
+                  </button>
+                )
+              })}
+            </div>
           ))}
         </nav>
         <div className="manager">
           <b className="avatar">{s.managerName.slice(0, 2).toUpperCase()}</b>
           <span>
             <strong>{s.managerName}</strong>
-            <small>{t.short} · Manager</small>
+            <small>Manager · {t.short}</small>
           </span>
         </div>
       </aside>
       <main>
-        <header>
-          <span className="context">
-            <i style={{ background: t.color }} /> {t.name} <em>/</em> {phase(s.week)}
+        <header className="topbar">
+          <div className="calendar-chip">
+            <strong>Week {s.week}</strong>
+            <span>{dateForWeek(s.week)}</span>
+            <em>{phaseName(s.week)}</em>
+          </div>
+          <span className="cash" title="Cash balance">
+            {money(t.cash)}
           </span>
-          <span className="cash">{money(t.cash)}</span>
-          <button className="advance" onClick={roundMode ? advanceTournamentRound : advance}>
-            {roundMode ? 'Advance round' : 'Advance week'} <b>→</b>
-          </button>
+          <div className="continue">
+            {step.mode === 'round' && (
+              <button
+                className="secondary"
+                onClick={simWeek}
+                title="Play every remaining series this week"
+              >
+                <FastForward size={15} /> Sim week
+              </button>
+            )}
+            <button className="advance" onClick={proceed}>
+              <span>
+                <strong>{step.label}</strong>
+                <small>{step.detail}</small>
+              </span>
+              <Play size={16} fill="currentColor" />
+            </button>
+          </div>
         </header>
+        {report && (
+          <ResultBanner
+            s={s}
+            report={report}
+            onOpen={openMatch}
+            onCompetition={() => {
+              go('competition')
+              setReport(null)
+            }}
+            onClose={() => setReport(null)}
+          />
+        )}
         {content}
       </main>
     </div>

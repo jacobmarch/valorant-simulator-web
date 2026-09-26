@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, type ReactNode } from 'react'
+import { createContext, useContext, useState } from 'react'
 import {
   activePhaseForWeek,
   competitionRecord,
@@ -16,6 +16,7 @@ import {
   type GameState,
 } from './game'
 import { type Region } from './seed'
+import { Badge, PanelTitle, regionColors as colors, tone } from './ui'
 
 type PlayablePhase = Exclude<CompetitionPhase, 'Break' | 'Offseason'>
 type EventInfo = {
@@ -32,12 +33,6 @@ const SimMatchContext = createContext<{
   playable: Set<string>
   onSimMatch?: (fixtureId: string) => void
 }>({ playable: new Set() })
-const colors: Record<Region, string> = {
-  Americas: '#62a0ff',
-  EMEA: '#ff9b62',
-  Pacific: '#7fe1c6',
-  China: '#f1c75b',
-}
 const events: Record<PlayablePhase, EventInfo> = {
   Kickoff: {
     start: 1,
@@ -94,28 +89,6 @@ const events: Record<PlayablePhase, EventInfo> = {
   },
 }
 const eventOrder = Object.keys(events) as PlayablePhase[]
-const Badge = ({ children, color }: { children: ReactNode; color?: string }) => (
-  <span className="badge" style={color ? { color, borderColor: `${color}55` } : undefined}>
-    {children}
-  </span>
-)
-const PanelTitle = ({
-  eyebrow,
-  title,
-  right,
-}: {
-  eyebrow: string
-  title: string
-  right?: ReactNode
-}) => (
-  <div className="panel-title">
-    <div>
-      <div className="eyebrow">{eyebrow}</div>
-      <h2>{title}</h2>
-    </div>
-    {right}
-  </div>
-)
 const statusFor = (s: GameState, phase: PlayablePhase) =>
   s.week > events[phase].end
     ? 'Complete'
@@ -287,10 +260,10 @@ function TeamTable({ s, region, phase }: { s: GameState; region: Region; phase: 
                   <Badge
                     color={
                       label === 'qualified' || label === 'Playoff line' || label.includes('#')
-                        ? '#d7ff56'
+                        ? tone.accent
                         : label === 'eliminated'
-                          ? '#ff7882'
-                          : '#94a3b8'
+                          ? tone.neg
+                          : tone.muted
                     }
                   >
                     {label}
@@ -855,10 +828,10 @@ function SwissView({
                 <Badge
                   color={
                     state === 'Advanced'
-                      ? '#d7ff56'
+                      ? tone.accent
                       : state === 'Eliminated'
-                        ? '#ff7882'
-                        : '#94a3b8'
+                        ? tone.neg
+                        : tone.muted
                   }
                 >
                   {state}
@@ -1216,8 +1189,8 @@ export function CompetitionV2({
     <div className="page competition-hub">
       <div className="page-head">
         <div>
-          <div className="eyebrow">COMPETITION CENTER / WEEK {s.week}</div>
-          <h1>The road through {s.season}.</h1>
+          <div className="eyebrow">MATCHDAY / WEEK {s.week}</div>
+          <h1>Competition</h1>
           <p>
             Move event by event through the season. Every format has its own standings, rules, and
             match path.
