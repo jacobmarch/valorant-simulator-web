@@ -17,6 +17,7 @@ import {
   type Player,
   type PlayerStat,
 } from './game'
+import { mapTiers, runVeto } from './maps'
 import { maps, roles, type Region, type Role } from './seed'
 
 type View =
@@ -402,6 +403,8 @@ export function TacticsV2({
   const fixture = nextFixtureForTeam(s, team.id, s.week),
     opponentId = fixtureOpponent(fixture, team.id),
     opponent = opponentId ? s.teams[opponentId] : undefined
+  const ownTiers = mapTiers(s, team.id),
+    opponentTiers = opponent ? mapTiers(s, opponent.id) : ownTiers
   const setRole = (player: Player, role: Role) => {
     const next = structuredClone(s)
     next.teams[team.id].roleAssignments[player.id] = role
@@ -478,14 +481,35 @@ export function TacticsV2({
             </select>
           </label>
           <div className="maps">
-            <div className="eyebrow">MAP VETO / MVP ORDER</div>
-            {maps.map((map, index) => (
-              <div className={index < (fixture?.bestOf ?? 3) ? 'map selected' : 'map'} key={map}>
-                <b>{index + 1}</b>
-                {map}
-                <small>{index < (fixture?.bestOf ?? 3) ? 'selected' : 'ban'}</small>
-              </div>
-            ))}
+            <div className="eyebrow">
+              {opponent ? 'PROJECTED VETO / MAP TIERS (1 = BEST)' : 'MAP TIERS (1 = BEST)'}
+            </div>
+            {opponent && fixture
+              ? runVeto(s, fixture.aId, fixture.bId ?? opponent.id, fixture.bestOf).steps.map(
+                  (step, index) => (
+                    <div className={step.action === 'ban' ? 'map' : 'map selected'} key={step.map}>
+                      <b>{index + 1}</b>
+                      {step.map}
+                      <small>
+                        {step.action === 'decider'
+                          ? 'decider'
+                          : `${s.teams[step.teamId].short} ${step.action}`}{' '}
+                        · {team.short} T{ownTiers[step.map]} / {opponent.short} T
+                        {opponentTiers[step.map]}
+                      </small>
+                    </div>
+                  ),
+                )
+              : maps
+                  .slice()
+                  .sort((a, b) => ownTiers[a] - ownTiers[b])
+                  .map((map) => (
+                    <div className="map" key={map}>
+                      <b>{ownTiers[map]}</b>
+                      {map}
+                      <small>tier {ownTiers[map]}</small>
+                    </div>
+                  ))}
           </div>
         </section>
       </div>
@@ -750,6 +774,15 @@ function ScoreTable({
   )
 }
 
+// Stats are recorded team A's lineup first, so the side a player played on
+// survives later transfers.
+function matchSide(s: GameState, match: MatchResult, playerId: string) {
+  const ids = Object.keys(match.maps[0]?.stats ?? {}),
+    index = ids.indexOf(playerId)
+  if (index < 0) return s.players[playerId]?.teamId
+  return index < ids.length / 2 ? match.aId : match.bId
+}
+
 function Scoreboard({
   s,
   match,
@@ -799,7 +832,7 @@ function Scoreboard({
         <div className="scoreboard-teams">
           {teams.map((teamId, index) => {
             const team = s.teams[teamId],
-              teamIds = allIds.filter((id) => s.players[id]?.teamId === teamId)
+              teamIds = allIds.filter((id) => matchSide(s, match, id) === teamId)
             return (
               <section
                 className={
@@ -1014,7 +1047,10 @@ export function MatchesV2({ s, initialMatchId }: { s: GameState; initialMatchId?
           }
         />
         {(tab === 'series'
-          ? match.highlights
+          ? [
+              ...match.highlights,
+              ...(match.vetoLog?.length ? [`Veto: ${match.vetoLog.join(', ')}.`] : []),
+            ]
           : keyRounds.length
             ? keyRounds
             : selectedMaps[0].rounds.slice(-6)

@@ -1,5 +1,4 @@
 import {
-  maps,
   previousChampionsByRegion,
   roles,
   seedTeams,
@@ -19,6 +18,7 @@ import {
   overallRating,
   seedPotential,
 } from './development'
+import { attackerEdge, describeVeto, mapFit, runVeto } from './maps'
 import { recordMove, replenishFreeAgents, runAiTransfers } from './transfers'
 
 export type Skill = (typeof skills)[number]
@@ -107,6 +107,7 @@ export type MatchResult = {
   maps: MapResult[]
   highlights: string[]
   veto: string[]
+  vetoLog?: string[]
   attackStyle: string
   defenseStyle: string
 }
@@ -196,6 +197,32 @@ const emptyRatings = (base: number): Ratings => ({
   Clutch: base - 4,
   Teamplay: base - 2,
 })
+// Seeded players get a role-shaped profile plus a small deterministic spread so
+// teams differ in aim, utility and trading, which is what map tiers read.
+const roleShape: Record<Role, number[]> = {
+  Duelist: [4, -2, -3, 0, 1, 0],
+  Initiator: [-1, 1, 3, -1, -3, 1],
+  Controller: [-3, 3, 4, 0, -2, -2],
+  Sentinel: [-1, 0, 1, 2, 1, -3],
+  Flex: [0, 0, 0, 0, 0, 0],
+}
+const seedRatings = (base: number, role: Role, teamIndex: number, playerIndex: number) => {
+  const flat = emptyRatings(base)
+  const spread = skills.map(
+    (_, skillIndex) => ((teamIndex * 13 + playerIndex * 7 + skillIndex * 11) % 9) - 4,
+  )
+  const offset = spread.reduce((sum, value) => sum + value, 0) / spread.length
+  return Object.fromEntries(
+    skills.map((skill, skillIndex) => [
+      skill,
+      clamp(
+        Math.round(flat[skill] + roleShape[role][skillIndex] + spread[skillIndex] - offset),
+        40,
+        99,
+      ),
+    ]),
+  ) as Ratings
+}
 const random = (state: GameState) => {
   state.rng = (state.rng * 1664525 + 1013904223) >>> 0
   return state.rng / 4294967296
@@ -265,7 +292,7 @@ export function createGame(managerName: string, currentTeamId: string): GameStat
             : playerIndex === 2
               ? [roles[(playerIndex + 1) % roles.length]]
               : [],
-        ratings: emptyRatings(base),
+        ratings: seedRatings(base, primaryRole, teamIndex, playerIndex),
         age: seedAge(teamIndex, playerIndex),
         salary: money(55000 + base * 1400),
         years: 1 + (playerIndex % 3),
@@ -1666,10 +1693,11 @@ function simulateMap(
   map: string,
   attackStyle: string,
   defenseStyle: string,
+  mapEdge = 0,
 ): MapResult {
   const a = state.teams[aId],
     b = state.teams[bId]
-  const aPower = teamStrength(state, aId),
+  const aPower = teamStrength(state, aId) + mapEdge,
     bPower = teamStrength(state, bId)
   const styleBonus =
     (attackStyle === 'Fast and explosive'
@@ -1697,7 +1725,7 @@ function simulateMap(
     round++
     const overtime = round > 24
     const aAttacking = overtime ? round % 2 === 1 : round <= 12
-    const sideBonus = aAttacking ? 0.012 : -0.012
+    const sideBonus = aAttacking ? attackerEdge(map) : -attackerEdge(map)
     const probability = clamp(
       0.5 + (aPower - bPower) / 115 + styleBonus / 100 + sideBonus,
       0.17,
@@ -1824,18 +1852,21 @@ export function simulateSeries(
   fixtureIdValue?: string,
 ): MatchResult {
   const needed = Math.ceil(bestOf / 2),
-    veto = maps.slice(0, bestOf === 5 ? 5 : 3),
+    vetoResult = runVeto(state, aId, bId, bestOf, () => random(state)),
+    veto = vetoResult.maps,
     mapResults: MapResult[] = []
   let aWins = 0,
     bWins = 0
   while (aWins < needed && bWins < needed) {
+    const map = veto[mapResults.length % veto.length]
     const mapResult = simulateMap(
       state,
       aId,
       bId,
-      veto[mapResults.length % veto.length],
+      map,
       attackStyle,
       defenseStyle,
+      mapFit(state, aId, map) - mapFit(state, bId, map),
     )
     mapResults.push(mapResult)
     if (mapResult.winnerId === aId) aWins++
@@ -1889,6 +1920,7 @@ export function simulateSeries(
     maps: mapResults,
     highlights,
     veto,
+    vetoLog: describeVeto(state, vetoResult.steps),
     attackStyle,
     defenseStyle,
   }
