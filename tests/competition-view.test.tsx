@@ -22,8 +22,8 @@ describe('competition center', () => {
     expect(html).toContain('Upper bracket')
     expect(html).toContain('Middle bracket')
     expect(html).toContain('Lower bracket')
-    expect(html).toContain('Three qualifiers')
-    expect(html).toContain('Kickoff standings')
+    expect(html).toContain('>Standings</button>')
+    expect(html).not.toContain('Kickoff standings')
     expect(html).not.toContain('Play next match')
     expect(html).toContain('Simulate round')
     expect((html.match(/class="sim-match"/g) ?? []).length).toBeGreaterThan(0)
@@ -37,8 +37,13 @@ describe('competition center', () => {
     expect(html).toContain('kickoff-bracket-rounds slots-4')
     expect(html).toContain('kickoff-bracket-rounds slots-2')
     expect(html).not.toMatch(/kickoff-round-track"[^>]*--slots/)
-    expect(html).toContain('Upper Round 3')
-    expect(html).toContain('Upper Final')
+    expect(html).toContain('Upper Round 2 winners')
+    expect(html).toContain('Winner qualifies for Masters 1')
+    const standings = renderToStaticMarkup(
+      <CompetitionV2 s={createGame('Manager', 'sen')} initialTab="standings" />,
+    )
+    expect(standings).toContain('Kickoff standings')
+    expect(standings).not.toContain('Upper bracket')
   })
   test('Masters opens on a Swiss view with direct regional seeds', () => {
     let state = createGame('Manager', 'sen')
@@ -48,10 +53,11 @@ describe('competition center', () => {
     expect(html).toContain('Swiss stage')
     expect(html).toContain('Regional champions')
     expect(html).toContain('Two wins advance. Two losses eliminate.')
-    expect(html).toContain('Masters 1 · current matchups')
     expect(html).toContain('SWISS RESULTS')
     expect(html).toContain('Stage games played')
     expect(html).toContain('Opening')
+    const matches = renderToStaticMarkup(<CompetitionV2 s={state} initialTab="matches" />)
+    expect(matches).toContain('Masters 1 · current matchups')
   })
   test('Masters playoff match desk keeps completed series until the round ends', {
     timeout: 15000,
@@ -65,9 +71,9 @@ describe('competition center', () => {
       'Disciplined retakes',
       'Masters 1',
     )
-    const midRound = renderToStaticMarkup(<CompetitionV2 s={state} />)
+    const midRound = renderToStaticMarkup(<CompetitionV2 s={state} initialTab="matches" />)
     const midDesk = midRound.slice(midRound.indexOf('Masters 1 · current matchups'))
-    expect((midDesk.match(/Upper Quarterfinal/g) ?? []).length).toBe(4)
+    expect((midDesk.match(/<span>Upper Quarterfinal<\/span>/g) ?? []).length).toBe(4)
     expect(midDesk).toContain('Final')
     expect(midDesk).toContain('Week 10 · BO')
     expect(midDesk).not.toContain('Upper Semifinal')
@@ -78,7 +84,7 @@ describe('competition center', () => {
         'Disciplined retakes',
         'Masters 1',
       )
-    const nextRound = renderToStaticMarkup(<CompetitionV2 s={state} />)
+    const nextRound = renderToStaticMarkup(<CompetitionV2 s={state} initialTab="matches" />)
     expect(nextRound).toContain('Upper Semifinal')
     expect(nextRound).toContain('Lower Round 1')
     const desk = nextRound.slice(nextRound.indexOf('Masters 1 · current matchups'))

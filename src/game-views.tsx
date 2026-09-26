@@ -1,12 +1,12 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useMemo, useState } from 'react'
+import { ArrowRight, Check, ChevronRight, CircleAlert, Info, TriangleAlert } from 'lucide-react'
 import {
   activePhaseForWeek,
+  acceptJob,
   competitionRecord,
   currentTeam,
   dateForWeek,
-  fixturesForWeek,
   hasMatchDetail,
-  isInternationalPhase,
   nextFixtureForTeam,
   phaseForWeek,
   rankedTeams,
@@ -17,113 +17,47 @@ import {
   type Player,
   type PlayerStat,
 } from './game'
+import { attentionItems, type AttentionItem } from './flow'
 import { mapTiers, runVeto } from './maps'
-import { maps, roles, type Region, type Role } from './seed'
+import { maps, roles, type Role } from './seed'
+import { playerOverall } from './transfers'
+import {
+  Badge,
+  Empty,
+  Modal,
+  PanelTitle,
+  Page,
+  Stat,
+  TeamMark,
+  money,
+  phaseName,
+  regionColors,
+  tone,
+  type View,
+} from './ui'
 
-type View =
-  | 'dashboard'
-  | 'roster'
-  | 'training'
-  | 'scouting'
-  | 'tactics'
-  | 'matches'
-  | 'competition'
-  | 'finances'
-  | 'settings'
-const colors: Record<Region, string> = {
-  Americas: '#62a0ff',
-  EMEA: '#ff9b62',
-  Pacific: '#7fe1c6',
-  China: '#f1c75b',
-}
-const phaseName = (week: number) =>
-  phaseForWeek(week) === 'Break' ? `Break before ${activePhaseForWeek(week)}` : phaseForWeek(week)
-const money = (value: number) => `$${Math.max(0, Math.round(value)).toLocaleString()}`
-const Badge = ({ children, color }: { children: ReactNode; color?: string }) => (
-  <span className="badge" style={color ? { color, borderColor: `${color}55` } : undefined}>
-    {children}
-  </span>
-)
-const Stat = ({
-  label,
-  value,
-  detail,
-  accent = false,
-}: {
-  label: string
-  value: string
-  detail: string
-  accent?: boolean
-}) => (
-  <div className={`stat ${accent ? 'accent' : ''}`}>
-    <small>{label}</small>
-    <strong>{value}</strong>
-    <span>{detail}</span>
-  </div>
-)
-const PanelTitle = ({
-  eyebrow,
-  title,
-  right,
-}: {
-  eyebrow: string
-  title: string
-  right?: ReactNode
-}) => (
-  <div className="panel-title">
-    <div>
-      <div className="eyebrow">{eyebrow}</div>
-      <h2>{title}</h2>
-    </div>
-    {right}
-  </div>
-)
-const Page = ({
-  eyebrow,
-  title,
-  subtitle,
-  children,
-}: {
-  eyebrow: string
-  title: string
-  subtitle: string
-  children: ReactNode
-}) => (
-  <div className="page">
-    <div className="page-head">
-      <div>
-        <div className="eyebrow">{eyebrow}</div>
-        <h1>{title}</h1>
-        <p>{subtitle}</p>
-      </div>
-      <div className="season">
-        <small>SEASON 2026</small>
-        <strong>{phaseName(1)}</strong>
-      </div>
-    </div>
-    {children}
-  </div>
-)
-const TeamMark = ({ s, id, big = false }: { s: GameState; id: string; big?: boolean }) => {
-  const team = s.teams[id]
-  return (
-    <b className={`mark ${big ? 'big' : ''}`} style={{ background: team.color }}>
-      {team.short.slice(0, 3)}
-    </b>
-  )
-}
-
-function recentManagedMatches(s: GameState) {
-  return s.matches
-    .filter((match) => match.aId === s.currentTeamId || match.bId === s.currentTeamId)
-    .slice(0, 5)
-}
-function latestManagedMatch(s: GameState) {
-  return s.matches.find((match) => match.aId === s.currentTeamId || match.bId === s.currentTeamId)
+function recentManagedMatches(s: GameState, teamId = s.currentTeamId) {
+  return s.matches.filter((match) => match.aId === teamId || match.bId === teamId).slice(0, 5)
 }
 function fixtureOpponent(fixture: Fixture | undefined, teamId: string) {
   if (!fixture) return undefined
   return fixture.aId === teamId ? fixture.bId : fixture.aId
+}
+function Form({ s, teamId }: { s: GameState; teamId: string }) {
+  const recent = recentManagedMatches(s, teamId)
+  return (
+    <span className="form" title="Last five series, newest first">
+      {recent.length ? (
+        recent.map((match) => (
+          <i className={match.winnerId === teamId ? 'w' : 'l'} key={match.id}>
+            {match.winnerId === teamId ? 'W' : 'L'}
+          </i>
+        ))
+      ) : (
+        <em>No series yet</em>
+      )}
+    </span>
+  )
 }
 function MiniStandings({ s, onView }: { s: GameState; onView: (view: View) => void }) {
   const team = currentTeam(s),
@@ -133,7 +67,7 @@ function MiniStandings({ s, onView }: { s: GameState; onView: (view: View) => vo
       ? 'Kickoff'
       : active === 'Masters 2'
         ? 'Stage 1'
-        : active === 'Champions'
+        : active === 'Champions' || active === 'Offseason'
           ? 'Stage 2'
           : active
   const ids = Object.values(s.teams)
@@ -146,23 +80,25 @@ function MiniStandings({ s, onView }: { s: GameState; onView: (view: View) => vo
             s.kickoff[b].wins - s.kickoff[a].wins || s.kickoff[a].losses - s.kickoff[b].losses,
         )
       : rankedTeams(s, ids, phase)
+  const own = ordered.indexOf(team.id)
+  const shown = ordered.slice(0, 6).concat(own >= 6 ? [team.id] : [])
   return (
     <section className="panel mini-standings">
       <PanelTitle
-        eyebrow={`${team.region.toUpperCase()} / ${phase}`}
-        title="Regional picture"
+        eyebrow={`${team.region} · ${phase}`}
+        title="Regional table"
         right={
           <button className="link" onClick={() => onView('competition')}>
-            Open competition →
+            Competition <ArrowRight size={14} />
           </button>
         }
       />
-      {ordered.slice(0, 5).map((id, index) => {
+      {shown.map((id) => {
         const candidate = s.teams[id]
         const record = phase === 'Kickoff' ? s.kickoff[id] : competitionRecord(s, id, phase)
         return (
-          <div className="mini-row" key={id}>
-            <b>{String(index + 1).padStart(2, '0')}</b>
+          <div className={`mini-row ${id === team.id ? 'current' : ''}`} key={id}>
+            <b>{ordered.indexOf(id) + 1}</b>
             <span className="mini" style={{ background: candidate.color }}>
               {candidate.short.slice(0, 2)}
             </span>
@@ -181,117 +117,189 @@ function MiniStandings({ s, onView }: { s: GameState; onView: (view: View) => vo
     </section>
   )
 }
+const levelIcon = (item: AttentionItem) =>
+  item.level === 'urgent' ? (
+    <CircleAlert size={18} />
+  ) : item.level === 'warn' ? (
+    <TriangleAlert size={18} />
+  ) : (
+    <Info size={18} />
+  )
 
 export function DashboardV2({
   s,
+  setState,
   setView,
   setMatchId,
+  onPreview,
 }: {
   s: GameState
+  setState?: (state: GameState) => void
   setView: (view: View) => void
   setMatchId?: (id: string) => void
+  onPreview?: (id: string) => void
 }) {
   const team = currentTeam(s),
     fixture = nextFixtureForTeam(s, team.id, s.week),
     opponentId = fixtureOpponent(fixture, team.id)
   const opponent = opponentId ? s.teams[opponentId] : undefined,
-    last = latestManagedMatch(s),
     recentResults = recentManagedMatches(s)
   const job = s.jobs.find(
     (candidate) => candidate.status === 'pending' && candidate.expiresWeek >= s.week,
   )
-  const noMatch = phaseForWeek(s.week) === 'Break' || !fixture
+  const todo = attentionItems(s)
+  const starters = team.lineup.map((id) => s.players[id]).filter(Boolean)
+  const squadRating = starters.length
+    ? Math.round(starters.reduce((sum, player) => sum + playerOverall(player), 0) / starters.length)
+    : 0
+  const respond = (accept: boolean) => {
+    if (!job || !setState) return
+    if (accept) {
+      setState(acceptJob(s, job.id))
+      return
+    }
+    const next = structuredClone(s)
+    const offer = next.jobs.find((candidate) => candidate.id === job.id)
+    if (offer) offer.status = 'declined'
+    saveGame(next)
+    setState(next)
+  }
   return (
     <Page
-      eyebrow={`MANAGER DESK / WEEK ${s.week}`}
-      title={`${s.managerName}, your next move matters.`}
+      eyebrow={`WEEK ${s.week} · ${dateForWeek(s.week)}`}
+      title={team.name}
       subtitle={
         phaseForWeek(s.week) === 'Break'
-          ? 'The calendar is between competitions. Review the field before play resumes.'
-          : 'The fixture, competition state, and match preparation now stay synchronized.'
+          ? `Calendar break before ${activePhaseForWeek(s.week)}. A good week to sort the roster and training.`
+          : `${phaseName(s.week)} is under way. Check the to-do list, then press Continue in the top bar.`
       }
     >
-      <div className="stats">
-        <Stat label="Organization" value={team.short} detail={team.name} accent />
-        <Stat
-          label="Record"
-          value={`${team.wins}–${team.losses}`}
-          detail={`${team.mapWins}–${team.mapLosses} maps`}
-        />
-        <Stat
-          label="Cash balance"
-          value={money(team.cash)}
-          detail={`${money(team.salaryBudget)} salary budget`}
-        />
-        <Stat
-          label="Championship points"
-          value={String(team.championshipPoints)}
-          detail="performance points"
-        />
-      </div>
-      <div className="dashboard-grid">
+      <div className="home-grid">
         <section className="panel spotlight">
           <PanelTitle
-            eyebrow="CURRENT FIXTURE"
-            title={fixture?.phase ?? phaseName(s.week)}
+            eyebrow={opponent ? 'NEXT SERIES' : 'SCHEDULE'}
+            title={
+              opponent && fixture
+                ? `${fixture.phase} · ${fixture.label}`
+                : phaseForWeek(s.week) === 'Break'
+                  ? 'Calendar break'
+                  : 'No series scheduled'
+            }
             right={
               <Badge
-                color={isInternationalPhase(fixture?.phase ?? '') ? '#d7ff56' : colors[team.region]}
+                color={fixture?.scope === 'international' ? tone.accent : regionColors[team.region]}
               >
-                {fixture?.scope === 'international' ? 'INTERNATIONAL' : team.region}
+                {fixture?.scope === 'international' ? 'International' : team.region}
               </Badge>
             }
           />
-          <div className="versus">
-            <div>
-              <TeamMark s={s} id={team.id} big />
-              <strong>{team.name}</strong>
-              <small>YOUR ORGANIZATION</small>
-            </div>
-            <em>{opponent ? 'VS' : '—'}</em>
-            <div>
-              {opponent ? (
-                <>
-                  <TeamMark s={s} id={opponent.id} big />
+          {opponent && fixture ? (
+            <>
+              <div className="versus">
+                <div>
+                  <TeamMark s={s} id={team.id} size="lg" />
+                  <strong>{team.name}</strong>
+                  <Form s={s} teamId={team.id} />
+                </div>
+                <em>vs</em>
+                <div>
+                  <TeamMark s={s} id={opponent.id} size="lg" />
                   <strong>{opponent.name}</strong>
-                  <small>
-                    {fixture?.label.toUpperCase()} · {dateForWeek(fixture?.week ?? s.week)}
-                  </small>
-                </>
-              ) : (
-                <>
-                  <b className="mark big opponent">—</b>
-                  <strong>
-                    {phaseForWeek(s.week) === 'Break'
-                      ? 'Calendar break'
-                      : s.week === 1 && s.kickoff[team.id]?.openingBye
-                        ? 'Opening-round bye'
-                        : 'No scheduled match'}
-                  </strong>
-                  <small>{dateForWeek(s.week)}</small>
-                </>
-              )}
-            </div>
-          </div>
+                  <Form s={s} teamId={opponent.id} />
+                </div>
+              </div>
+              <div className="fixture-meta">
+                <span>
+                  <small>Date</small>
+                  {dateForWeek(fixture.week)}
+                </span>
+                <span>
+                  <small>Format</small>
+                  Best of {fixture.bestOf}
+                </span>
+                <span>
+                  <small>Week</small>
+                  {fixture.week === s.week ? 'This week' : `Week ${fixture.week}`}
+                </span>
+              </div>
+            </>
+          ) : (
+            <p className="muted spotlight-empty">
+              {s.week === 1 && s.kickoff[team.id]?.openingBye
+                ? 'You have an opening-round bye. Your first series is set once round one is played.'
+                : 'Your next opponent is decided by results elsewhere. Continue to move the calendar on.'}
+            </p>
+          )}
           <div className="spotlight-actions">
-            <button
-              className="primary full"
-              onClick={() => setView(noMatch ? 'competition' : 'tactics')}
-            >
-              {noMatch ? 'Open competition' : 'Prepare match'} <b>→</b>
-            </button>
-            <button className="secondary full" onClick={() => setView('competition')}>
-              {fixture?.phase === 'Kickoff' ? 'View Kickoff bracket' : 'View fixtures & standings'}
+            {opponent && (
+              <button className="primary" onClick={() => setView('tactics')}>
+                Match prep <ArrowRight size={15} />
+              </button>
+            )}
+            <button className="secondary" onClick={() => setView('competition')}>
+              {fixture?.phase === 'Kickoff' ? 'Kickoff bracket' : 'Fixtures & standings'}
             </button>
           </div>
         </section>
+        <section className="panel todo">
+          <PanelTitle
+            eyebrow="TO-DO"
+            title="Before you continue"
+            right={
+              <Badge color={todo.some((item) => item.level !== 'info') ? tone.warn : tone.accent}>
+                {todo.filter((item) => item.level !== 'info').length || 'All clear'}
+              </Badge>
+            }
+          />
+          {job && (
+            <div className="todo-offer">
+              <div>
+                <small>Job offer · expires week {job.expiresWeek}</small>
+                <strong>{s.teams[job.teamId].name}</strong>
+                <span>
+                  {money(job.salary)} a year. {job.reason}
+                </span>
+              </div>
+              <div>
+                <button className="primary compact" onClick={() => respond(true)}>
+                  Accept
+                </button>
+                <button className="secondary compact" onClick={() => respond(false)}>
+                  Decline
+                </button>
+              </div>
+            </div>
+          )}
+          {todo.length ? (
+            todo.map((item) => (
+              <button
+                className={`todo-item ${item.level}`}
+                onClick={() => setView(item.view)}
+                key={item.id}
+              >
+                {levelIcon(item)}
+                <span>
+                  <strong>{item.title}</strong>
+                  <small>{item.detail}</small>
+                </span>
+                <ChevronRight size={16} />
+              </button>
+            ))
+          ) : (
+            <div className="todo-clear">
+              <Check size={18} />
+              Nothing needs you right now.
+            </div>
+          )}
+        </section>
+        <MiniStandings s={s} onView={setView} />
         <section className="panel recent-results-panel">
           <PanelTitle
-            eyebrow="RECENT RESULTS"
-            title="Recent results"
+            eyebrow="RESULTS"
+            title="Recent series"
             right={
               <button className="link" onClick={() => setView('matches')}>
-                Match center →
+                Match center <ArrowRight size={14} />
               </button>
             }
           />
@@ -299,20 +307,21 @@ export function DashboardV2({
             {recentResults.length ? (
               recentResults.map((match) => {
                 const home = s.teams[match.aId],
-                  away = s.teams[match.bId]
+                  away = s.teams[match.bId],
+                  won = match.winnerId === team.id
                 return (
                   <button
                     className="recent-result"
                     key={match.id}
                     onClick={() => {
-                      setMatchId?.(match.id)
-                      setView('matches')
+                      if (onPreview) onPreview(match.id)
+                      else {
+                        setMatchId?.(match.id)
+                        setView('matches')
+                      }
                     }}
                   >
-                    <span className="recent-result-context">
-                      <small>WEEK {match.week}</small>
-                      <em>{match.phase}</em>
-                    </span>
+                    <span className={`result-tag ${won ? 'w' : 'l'}`}>{won ? 'W' : 'L'}</span>
                     <span className="recent-result-score">
                       <strong className={match.winnerId === match.aId ? 'winner' : ''}>
                         {home.short}
@@ -325,60 +334,53 @@ export function DashboardV2({
                       </strong>
                     </span>
                     <span className="recent-result-date">
-                      {dateForWeek(match.week)} <b>→</b>
+                      {match.phase} · W{match.week} <ChevronRight size={15} />
                     </span>
                   </button>
                 )
               })
             ) : (
-              <div className="recent-results-empty">No matches played yet.</div>
+              <div className="recent-results-empty">No series played yet.</div>
             )}
           </div>
         </section>
+        <section className="panel inbox-panel">
+          <PanelTitle eyebrow="INBOX" title="Around the league" />
+          <div className="inbox-list">
+            {s.inbox.slice(0, 8).map((message, index) => (
+              <div className="inbox" key={`${message}-${index}`}>
+                <i />
+                {message}
+              </div>
+            ))}
+          </div>
+        </section>
+        <section className="panel snapshot">
+          <PanelTitle eyebrow="CLUB" title="Snapshot" />
+          <div className="stats">
+            <Stat
+              label="Season record"
+              value={`${team.wins}–${team.losses}`}
+              detail={`${team.mapWins}–${team.mapLosses} maps`}
+            />
+            <Stat
+              label="Champ. points"
+              value={String(team.championshipPoints)}
+              detail={team.playoffStage || 'Champions qualification race'}
+            />
+            <Stat
+              label="Cash balance"
+              value={money(team.cash)}
+              detail={`${money(team.salaryBudget)} salary budget`}
+            />
+            <Stat
+              label="Starting five"
+              value={squadRating ? `${squadRating} OVR` : '—'}
+              detail={`${starters.length}/5 starters set`}
+            />
+          </div>
+        </section>
       </div>
-      <MiniStandings s={s} onView={setView} />
-      {job && (
-        <section className="panel offer">
-          <PanelTitle
-            eyebrow="CAREER MARKET"
-            title="Offer on the table"
-            right={<Badge color="#d7ff56">NEW</Badge>}
-          />
-          <div>
-            <span>
-              <strong>{s.teams[job.teamId].name}</strong>
-              <small>{job.reason}</small>
-            </span>
-            <span className="offer-action">
-              {money(job.salary)} / year
-              <button className="primary compact" onClick={() => setView('settings')}>
-                Review offer
-              </button>
-            </span>
-          </div>
-        </section>
-      )}
-      {last && (
-        <section className="panel result">
-          <PanelTitle
-            eyebrow={`LAST RESULT / ${last.phase}`}
-            title={last.winnerId === team.id ? 'Series win' : 'Series loss'}
-            right={
-              <button className="link" onClick={() => setView('matches')}>
-                Open match center →
-              </button>
-            }
-          />
-          <div>
-            <strong>{s.teams[last.aId].short}</strong>
-            <b className={last.winnerId === last.aId ? 'win' : ''}>{last.aScore}</b>
-            <span>–</span>
-            <b className={last.winnerId === last.bId ? 'win' : ''}>{last.bScore}</b>
-            <strong>{s.teams[last.bId].short}</strong>
-            <small>BO{last.bestOf}</small>
-          </div>
-        </section>
-      )}
     </Page>
   )
 }
@@ -413,27 +415,14 @@ export function TacticsV2({
   }
   return (
     <Page
-      eyebrow={`MATCH PREPARATION / ${phaseName(s.week)}`}
-      title={opponent ? `${team.short} vs ${opponent.short}` : 'No match to prepare'}
+      eyebrow={`MATCH PREP / ${phaseName(s.week)}`}
+      title={opponent ? `${team.name} vs ${opponent.name}` : 'No match to prepare'}
       subtitle={
         opponent
           ? `${fixture?.label} · ${dateForWeek(fixture?.week ?? s.week)} · BO${fixture?.bestOf}`
           : 'Open Competition to review the current bracket and upcoming schedule.'
       }
     >
-      {opponent && (
-        <section className="panel prep-opponent">
-          <div>
-            <TeamMark s={s} id={team.id} />
-            <strong>{team.name}</strong>
-          </div>
-          <span>VS</span>
-          <div>
-            <TeamMark s={s} id={opponent.id} />
-            <strong>{opponent.name}</strong>
-          </div>
-        </section>
-      )}
       <div className="columns">
         <section className="panel">
           <PanelTitle
@@ -909,6 +898,7 @@ export function MatchesV2({ s, initialMatchId }: { s: GameState; initialMatchId?
   const [scoreboardMode, setScoreboardMode] = useState<ScoreboardMode>('teams')
   const [sortKey, setSortKey] = useState<ScoreSortKey>('acs')
   const [sortDirection, setSortDirection] = useState<ScoreDirection>('desc')
+  const [showNotes, setShowNotes] = useState(false)
   const match = matches.find((candidate) => candidate.id === selectedId) ?? matches[0]
   const stats = useMemo(() => (match ? aggregateStats(match, tab) : {}), [match, tab])
   const setScoreSort = (key: ScoreSortKey) => {
@@ -921,15 +911,11 @@ export function MatchesV2({ s, initialMatchId }: { s: GameState; initialMatchId?
   if (!match)
     return (
       <Page
-        eyebrow="BROADCAST CENTER / RESULTS"
-        title="Every round tells a story."
+        eyebrow="MATCHDAY / RESULTS"
+        title="Match center"
         subtitle="Advance the week to play your first series."
       >
-        <section className="panel empty">
-          <span>◌</span>
-          <h2>No matches played yet</h2>
-          <p>Your first result will appear here.</p>
-        </section>
+        <Empty title="No matches played yet" body="Your first result will appear here." />
       </Page>
     )
   const selectedMaps = tab === 'series' ? match.maps : [match.maps[tab]]
@@ -943,14 +929,13 @@ export function MatchesV2({ s, initialMatchId }: { s: GameState; initialMatchId?
           .slice(-8)
   return (
     <Page
-      eyebrow="BROADCAST CENTER / RESULTS"
-      title="Every round tells a story."
-      subtitle="Review the entire series or isolate any map. Every box-score event comes from the round simulation."
-    >
-      <section className="panel match-picker">
-        <label>
-          Series
+      eyebrow="MATCHDAY / RESULTS"
+      title="Match center"
+      actions={
+        <>
           <select
+            className="series-select"
+            aria-label="Series"
             value={match.id}
             onChange={(event) => {
               setSelectedId(event.target.value)
@@ -964,8 +949,12 @@ export function MatchesV2({ s, initialMatchId }: { s: GameState; initialMatchId?
               </option>
             ))}
           </select>
-        </label>
-      </section>
+          <button className="secondary" onClick={() => setShowNotes(true)}>
+            {tab === 'series' ? 'Highlights' : 'Key rounds'}
+          </button>
+        </>
+      }
+    >
       <section className="broadcast">
         <div>
           <span>{match.phase}</span>
@@ -995,7 +984,7 @@ export function MatchesV2({ s, initialMatchId }: { s: GameState; initialMatchId?
           ))}
         </div>
       </section>
-      <section className="panel">
+      <section className="panel match-box">
         <div className="view-tabs">
           <button className={tab === 'series' ? 'active' : ''} onClick={() => setTab('series')}>
             Entire series
@@ -1010,17 +999,6 @@ export function MatchesV2({ s, initialMatchId }: { s: GameState; initialMatchId?
             </button>
           ))}
         </div>
-        <PanelTitle
-          eyebrow={
-            tab === 'series'
-              ? 'SERIES BOX SCORE'
-              : 'MAP BOX SCORE / ' + match.maps[tab as number].map
-          }
-          title={
-            tab === 'series' ? 'Series statistics' : match.maps[tab as number].map + ' statistics'
-          }
-          right={<span className="muted">ACS · ADR / damage per round · K/D</span>}
-        />
         {hasMatchDetail(match) ? (
           <Scoreboard
             s={s}
@@ -1039,264 +1017,113 @@ export function MatchesV2({ s, initialMatchId }: { s: GameState; initialMatchId?
           </p>
         )}
       </section>
-      <section className="panel">
-        <PanelTitle
+      {showNotes && (
+        <Modal
           eyebrow={tab === 'series' ? 'SERIES NOTES' : 'ROUND REPLAY'}
           title={
             tab === 'series' ? 'Match highlights' : match.maps[tab as number].map + ' key rounds'
           }
-        />
-        {(tab === 'series'
-          ? [
-              ...match.highlights,
-              ...(match.vetoLog?.length ? [`Veto: ${match.vetoLog.join(', ')}.`] : []),
-            ]
-          : keyRounds.length
-            ? keyRounds
-            : selectedMaps[0].rounds.slice(-6)
-        ).map((text, index) => (
-          <div className="highlight" key={text + '-' + index}>
-            ✦ {text}
+          onClose={() => setShowNotes(false)}
+        >
+          {(tab === 'series'
+            ? [
+                ...match.highlights,
+                ...(match.vetoLog?.length ? [`Veto: ${match.vetoLog.join(', ')}.`] : []),
+              ]
+            : keyRounds.length
+              ? keyRounds
+              : selectedMaps[0].rounds.slice(-6)
+          ).map((text, index) => (
+            <div className="highlight" key={text + '-' + index}>
+              ✦ {text}
+            </div>
+          ))}
+        </Modal>
+      )}
+    </Page>
+  )
+}
+
+/** Quick look at a series without leaving the current page. */
+export function MatchPreview({
+  s,
+  matchId,
+  onClose,
+  onOpenFull,
+}: {
+  s: GameState
+  matchId: string
+  onClose: () => void
+  onOpenFull: (id: string) => void
+}) {
+  const match = s.matches.find((candidate) => candidate.id === matchId)
+  if (!match) return null
+  const a = s.teams[match.aId],
+    b = s.teams[match.bId]
+  const stats = hasMatchDetail(match) ? aggregateStats(match, 'series') : {}
+  const top = Object.entries(stats)
+    .sort(([, left], [, right]) => right.acs - left.acs)
+    .slice(0, 3)
+  return (
+    <Modal
+      eyebrow={`${match.phase} · Week ${match.week} · Bo${match.bestOf}`}
+      title={`${a.name} vs ${b.name}`}
+      onClose={onClose}
+    >
+      <div className="preview-score">
+        <span className={match.winnerId === a.id ? 'winner' : ''}>
+          <TeamMark s={s} id={a.id} />
+          {a.short}
+        </span>
+        <b>
+          {match.aScore} – {match.bScore}
+        </b>
+        <span className={match.winnerId === b.id ? 'winner' : ''}>
+          {b.short}
+          <TeamMark s={s} id={b.id} />
+        </span>
+      </div>
+      <div className="preview-maps">
+        {match.maps.map((map, index) => (
+          <div key={`${map.map}-${index}`}>
+            <small>{map.map}</small>
+            <strong>
+              {map.aScore}–{map.bScore}
+            </strong>
+            <em>{s.teams[map.winnerId]?.short}</em>
           </div>
         ))}
-      </section>
-    </Page>
-  )
-}
-
-function FixtureCard({ s, fixture }: { s: GameState; fixture: Fixture }) {
-  const result = fixture.resultId
-    ? s.matches.find((match) => match.id === fixture.resultId)
-    : undefined
-  const a = s.teams[fixture.aId],
-    b = fixture.bId ? s.teams[fixture.bId] : undefined
-  return (
-    <div className={`bracket-match ${fixture.status}`}>
-      <small>
-        {fixture.label} · BO{fixture.bestOf}
-      </small>
-      <div className={result?.winnerId === a.id ? 'winner' : ''}>
-        <span className="team-dot" style={{ background: a.color }} />
-        {a.short}
-        <b>{result ? (result.aId === a.id ? result.aScore : result.bScore) : '—'}</b>
       </div>
-      <div className={b && result?.winnerId === b.id ? 'winner' : ''}>
-        {b ? (
-          <>
-            <span className="team-dot" style={{ background: b.color }} />
-            {b.short}
-            <b>{result ? (result.aId === b.id ? result.aScore : result.bScore) : '—'}</b>
-          </>
-        ) : (
-          <>
-            <span className="team-dot bye" />
-            BYE<b>—</b>
-          </>
-        )}
-      </div>
-    </div>
-  )
-}
-function StandingsTable({ s, region, phase }: { s: GameState; region: Region; phase: string }) {
-  const ids = Object.values(s.teams)
-    .filter((team) => team.region === region)
-    .map((team) => team.id)
-  const ordered =
-    phase === 'Kickoff'
-      ? [...ids].sort(
-          (a, b) =>
-            s.kickoff[b].wins - s.kickoff[a].wins || s.kickoff[a].losses - s.kickoff[b].losses,
-        )
-      : rankedTeams(s, ids, phase)
-  return (
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Organization</th>
-            <th>W</th>
-            <th>L</th>
-            <th>{phase === 'Kickoff' ? 'Lives' : 'Maps'}</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {ordered.map((id, index) => {
-            const team = s.teams[id],
-              record = phase === 'Kickoff' ? s.kickoff[id] : competitionRecord(s, id, phase)
-            return (
-              <tr className={id === s.currentTeamId ? 'current' : ''} key={id}>
-                <td>{String(index + 1).padStart(2, '0')}</td>
-                <td>
-                  <strong>
-                    <span className="mini" style={{ background: team.color }}>
-                      {team.short.slice(0, 2)}
-                    </span>
-                    {team.name}
-                  </strong>
-                </td>
-                <td>{record.wins}</td>
-                <td>{record.losses}</td>
-                <td>
-                  {phase === 'Kickoff' ? (
-                    <span className="lives">
-                      {[0, 1, 2].map((life) => (
-                        <i className={life < record.losses ? 'lost' : ''} key={life} />
-                      ))}
-                    </span>
-                  ) : (
-                    `${'mapWins' in record ? record.mapWins : 0}–${'mapLosses' in record ? record.mapLosses : 0}`
-                  )}
-                </td>
-                <td>
-                  <Badge
-                    color={
-                      phase === 'Kickoff'
-                        ? s.kickoff[id].status === 'qualified'
-                          ? '#d7ff56'
-                          : s.kickoff[id].status === 'eliminated'
-                            ? '#ff7882'
-                            : '#94a3b8'
-                        : '#94a3b8'
-                    }
-                  >
-                    {phase === 'Kickoff' ? s.kickoff[id].status : team.playoffStage}
-                  </Badge>
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-export function CompetitionV2({ s }: { s: GameState }) {
-  const managed = currentTeam(s),
-    currentPhase = activePhaseForWeek(s.week)
-  const [scope, setScope] = useState<Region | 'International'>(
-    isInternationalPhase(currentPhase) ? 'International' : managed.region,
-  )
-  const [week, setWeek] = useState(s.week)
-  const phase =
-    scope === 'International'
-      ? isInternationalPhase(currentPhase)
-        ? currentPhase
-        : s.week < 20
-          ? 'Masters 1'
-          : s.week < 36
-            ? 'Masters 2'
-            : 'Champions'
-      : week <= 11
-        ? 'Kickoff'
-        : week <= 23
-          ? 'Stage 1'
-          : 'Stage 2'
-  const boardFixtures = s.fixtures.filter(
-    (fixture) =>
-      fixture.season === s.season &&
-      (scope === 'International'
-        ? fixture.scope === 'international' && fixture.phase === phase
-        : fixture.region === scope && fixture.phase === phase),
-  )
-  const grouped = Object.entries(
-    boardFixtures.reduce<Record<string, Fixture[]>>((groups, fixture) => {
-      const key = String(fixture.round)
-      ;(groups[key] ??= []).push(fixture)
-      return groups
-    }, {}),
-  ).sort(([left], [right]) => Number(left) - Number(right))
-  const weekFixtures = fixturesForWeek(s, week).filter((fixture) =>
-    scope === 'International' ? fixture.scope === 'international' : fixture.region === scope,
-  )
-  return (
-    <Page
-      eyebrow={`COMPETITION HUB / WEEK ${s.week}`}
-      title="See the whole field."
-      subtitle="Kickoff uses three lives: a third series loss eliminates a team. Every scheduled and completed matchup is visible here."
-    >
-      <section className="panel competition-controls">
-        <div className="tabs">
-          {(['Americas', 'EMEA', 'Pacific', 'China', 'International'] as const).map((value) => (
-            <button
-              className={scope === value ? 'active' : ''}
-              onClick={() => setScope(value)}
-              key={value}
-            >
-              {value}
-            </button>
+      {top.length > 0 && (
+        <>
+          <h3 className="modal-subhead">Top performers</h3>
+          {top.map(([id, stat]) => (
+            <div className="preview-player" key={id}>
+              <strong>{s.players[id]?.name}</strong>
+              <span className="muted">{s.teams[matchSide(s, match, id) ?? '']?.short}</span>
+              <span>{stat.acs} ACS</span>
+              <span className="muted">
+                {stat.kills}/{stat.deaths}
+              </span>
+            </div>
           ))}
-        </div>
-        <div className="week-control">
-          <button onClick={() => setWeek(Math.max(1, week - 1))}>←</button>
-          <strong>WEEK {week}</strong>
-          <span>{dateForWeek(week)}</span>
-          <button onClick={() => setWeek(Math.min(52, week + 1))}>→</button>
-        </div>
-      </section>
-      {scope !== 'International' && (
-        <section className="panel">
-          <PanelTitle
-            eyebrow={`${scope.toUpperCase()} / ${phase}`}
-            title={phase === 'Kickoff' ? 'Triple-elimination standings' : 'Regional standings'}
-            right={
-              <Badge color={colors[scope]}>{phase === 'Kickoff' ? '3 LOSSES = OUT' : scope}</Badge>
-            }
-          />
-          <StandingsTable s={s} region={scope} phase={phase} />
-        </section>
+        </>
       )}
-      <section className="panel bracket-panel">
-        <PanelTitle
-          eyebrow={
-            scope === 'International'
-              ? `${phase.toUpperCase()} / TOURNAMENT BRACKET`
-              : `${scope.toUpperCase()} / ${String(phase).toUpperCase()} BRACKET`
-          }
-          title={phase === 'Kickoff' ? 'Kickoff bracket' : 'Tournament board'}
-          right={<Badge>{boardFixtures.length} fixtures</Badge>}
-        />
-        {grouped.length ? (
-          <div className="bracket-scroll">
-            {grouped.map(([round, fixtures]) => (
-              <div className="bracket-round" key={round}>
-                <div className="eyebrow">ROUND {round}</div>
-                {fixtures!.map((fixture) => (
-                  <FixtureCard s={s} fixture={fixture} key={fixture.id} />
-                ))}
-              </div>
+      {match.highlights.length > 0 && (
+        <>
+          <h3 className="modal-subhead">Highlights</h3>
+          <ul className="preview-notes">
+            {match.highlights.slice(0, 3).map((text) => (
+              <li key={text}>{text}</li>
             ))}
-          </div>
-        ) : (
-          <div className="competition-empty">
-            <strong>No bracket fixtures yet</strong>
-            <span>
-              This tournament field is populated when its qualification stage is complete.
-            </span>
-          </div>
-        )}
-      </section>
-      <section className="panel">
-        <PanelTitle
-          eyebrow="WEEKLY MATCHUPS"
-          title={`Week ${week} schedule`}
-          right={<Badge>{weekFixtures.length} matches</Badge>}
-        />
-        {weekFixtures.length ? (
-          <div className="fixture-list">
-            {weekFixtures.map((fixture) => (
-              <FixtureCard s={s} fixture={fixture} key={fixture.id} />
-            ))}
-          </div>
-        ) : (
-          <div className="competition-empty">
-            <strong>No matches scheduled</strong>
-            <span>This is a calendar break or the selected field is not active this week.</span>
-          </div>
-        )}
-      </section>
-    </Page>
+          </ul>
+        </>
+      )}
+      <div className="modal-actions">
+        <button className="primary" onClick={() => onOpenFull(match.id)}>
+          Full box score <ArrowRight size={15} />
+        </button>
+      </div>
+    </Modal>
   )
 }
