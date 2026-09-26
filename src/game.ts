@@ -871,7 +871,30 @@ export function regionalPlayoffOrder(
     ...rankedTeams(state, ids, phase),
   ].filter((id, index, list) => list.indexOf(id) === index)
 }
-/** Kickoff finishing order: the three qualifiers, then teams by how late they were knocked out. */
+/**
+ * Kickoff qualifiers in seed order: the Upper Final winner is #1, the Middle
+ * Final winner #2 and the Lower Final winner #3, whatever their records.
+ */
+export function kickoffQualifiers(state: GameState, region: Region) {
+  return ['Upper Final', 'Middle Final', 'Lower Final']
+    .map(
+      (label) =>
+        state.fixtures.find(
+          (fixture) =>
+            fixture.season === state.season &&
+            fixture.phase === 'Kickoff' &&
+            fixture.region === region &&
+            fixture.label === label &&
+            fixture.status === 'completed',
+        )?.winnerId,
+    )
+    .filter((id): id is string => Boolean(id))
+}
+/**
+ * Kickoff finishing order from bracket placement, not win-loss: the qualifiers
+ * in seed order, then teams still alive (upper, middle, lower), then eliminated
+ * teams by how late they were knocked out.
+ */
 export function kickoffStandings(state: GameState, region: Region) {
   const ids = Object.values(state.teams)
     .filter((team) => team.region === region)
@@ -890,13 +913,19 @@ export function kickoffStandings(state: GameState, region: Region) {
         )
         .map((fixture) => fixture.week * 10 + fixture.round),
     )
-  const qualified = (id: string) => (state.kickoff[id]?.status === 'qualified' ? 1 : 0)
+  const seeds = kickoffQualifiers(state, region)
+  const placement = (id: string) => {
+    const seed = seeds.indexOf(id)
+    if (seed >= 0) return seed
+    const status = state.kickoff[id]?.status
+    return status === 'qualified' ? 3 : status === 'active' ? 4 : 5
+  }
   return [...ids].sort(
     (a, b) =>
-      qualified(b) - qualified(a) ||
-      (qualified(a) ? 0 : lastMatch(b) - lastMatch(a)) ||
-      (state.kickoff[b]?.wins ?? 0) - (state.kickoff[a]?.wins ?? 0) ||
+      placement(a) - placement(b) ||
       (state.kickoff[a]?.losses ?? 0) - (state.kickoff[b]?.losses ?? 0) ||
+      lastMatch(b) - lastMatch(a) ||
+      (state.kickoff[b]?.wins ?? 0) - (state.kickoff[a]?.wins ?? 0) ||
       state.teams[b].championshipPoints - state.teams[a].championshipPoints,
   )
 }
@@ -1126,13 +1155,8 @@ function mastersEntrants(state: GameState, phase: 'Masters 1' | 'Masters 2') {
       .filter((team) => team.region === region)
       .map((team) => team.id)
     if (source === 'Kickoff') {
-      const qualified = ids.filter((id) => state.kickoff[id].status === 'qualified')
-      if (qualified.length === 3)
-        return qualified.sort(
-          (a, b) =>
-            state.kickoff[b].wins - state.kickoff[a].wins ||
-            state.kickoff[a].losses - state.kickoff[b].losses,
-        )
+      const qualified = kickoffQualifiers(state, region)
+      if (qualified.length === 3) return qualified
     }
     if (source === 'Stage 1') return regionalPlayoffQualifiers(state, 'Stage 1', region, 3)
     return rankedTeams(state, ids, source).slice(0, 3)

@@ -9,6 +9,8 @@ import {
   liveTournamentRoundFixtures,
   phaseForWeek,
   playableTournamentFixtureIds,
+  kickoffQualifiers,
+  kickoffStandings,
   rankedTeams,
   regionalPlayoffQualifiers,
   stageGroups,
@@ -213,13 +215,7 @@ function TeamTable({
     Object.values(s.teams)
       .filter((team) => team.region === region)
       .map((team) => team.id)
-  const ordered =
-    phase === 'Kickoff'
-      ? [...ids].sort(
-          (a, b) =>
-            s.kickoff[b].wins - s.kickoff[a].wins || s.kickoff[a].losses - s.kickoff[b].losses,
-        )
-      : rankedTeams(s, ids, phase)
+  const ordered = phase === 'Kickoff' ? kickoffStandings(s, region) : rankedTeams(s, ids, phase)
   return (
     <div className="table-wrap competition-table">
       <table>
@@ -250,7 +246,7 @@ function TeamTable({
             const qualifiers =
               phase === 'Stage 1' || phase === 'Stage 2'
                 ? regionalPlayoffQualifiers(s, phase, region)
-                : []
+                : kickoffQualifiers(s, region)
             const qualification = playoffComplete ? qualifiers.indexOf(id) : -1
             const label =
               phase === 'Kickoff'
@@ -260,7 +256,9 @@ function TeamTable({
                     : record.losses === 1
                       ? 'Middle'
                       : 'Lower'
-                  : s.kickoff[id].status
+                  : qualifiers.includes(id)
+                    ? `Masters 1 #${qualifiers.indexOf(id) + 1}`
+                    : s.kickoff[id].status
                 : qualification >= 0
                   ? (phase === 'Stage 1' ? 'Masters 2 #' : 'Champions #') + (qualification + 1)
                   : index < playoffLine
