@@ -221,6 +221,19 @@ nav button small {
   line-height: 1;
   transform: translateY(1px);
 }
+.next-game {
+  padding: 12px 15px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+.next-game:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  border-color: #ffffff1d;
+  color: #d6dfef;
+}
 .page {
   max-width: 1280px;
   margin: 0 auto;
@@ -1178,7 +1191,8 @@ tr.current td:first-child {
   .cash {
     display: none;
   }
-  .advance {
+  .advance,
+  .next-game {
     padding: 10px 11px;
   }
   .page {
