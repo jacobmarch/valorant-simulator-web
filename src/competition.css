@@ -810,8 +810,7 @@
 }
 .life-lane article i,
 .direct-seeds article i,
-.swiss-table article > i,
-.group-standings > div > i {
+.swiss-table article > i {
   width: 7px;
   height: 7px;
   border-radius: 50%;
@@ -830,8 +829,7 @@
   font: 600 16px "Barlow Condensed";
   text-align: right;
 }
-.life-lane p,
-.group-standings p {
+.life-lane p {
   color: var(--text-4);
   font-size: 13px;
   padding: 10px;
@@ -1199,37 +1197,6 @@
   font-size: 12px;
   color: var(--text-3);
 }
-.group-layout {
-  display: grid;
-  grid-template-columns: 190px minmax(0, 1fr);
-  gap: 12px;
-  align-items: start;
-}
-.group-standings > div {
-  display: grid;
-  grid-template-columns: 20px 7px 1fr auto;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 5px;
-  border-top: 1px solid rgb(255 255 255 / 0.035);
-}
-.group-standings > div:nth-child(2) {
-  box-shadow: 0 1px color-mix(in srgb, var(--accent) 25%, transparent);
-}
-.group-standings > div.managed {
-  background: color-mix(in srgb, var(--accent) 4%, transparent);
-}
-.group-standings > div > b {
-  font: 600 14px "Barlow Condensed";
-  color: var(--text-4);
-}
-.group-standings > div > strong {
-  font-size: 13px;
-}
-.group-standings > div > small {
-  font-size: 13px;
-  color: var(--text-3);
-}
 .group-bracket.bracket-path {
   padding: 0;
 }
@@ -1257,9 +1224,6 @@
     font-size: 31px;
   }
   .kickoff-board {
-    grid-template-columns: 1fr;
-  }
-  .group-layout {
     grid-template-columns: 1fr;
   }
   .bye-list {
@@ -2028,10 +1992,6 @@
 .group-card {
   border-radius: var(--radius-sm);
 }
-.group-layout {
-  grid-template-columns: 120px minmax(0, 1fr);
-  gap: 10px;
-}
 .group-bracket .bracket-step {
   flex: 1 1 0;
   min-width: 0;
@@ -2042,9 +2002,6 @@
 }
 .group-card > header {
   padding-bottom: 6px;
-}
-.group-standings > div {
-  padding: 6px 4px;
 }
 .bracket-step h3 small {
   display: none;
