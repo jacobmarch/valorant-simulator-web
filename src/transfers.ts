@@ -1,5 +1,6 @@
 import type { GameState, Player, PlayerStatus, Team, TransferRecord } from './game'
 import { MORALE_DEFAULT, overallRating, seedPotential } from './development'
+import { bestRoleAssignment } from './roles'
 import { roles, type Region } from './seed'
 
 export const MIN_ROSTER = 5
@@ -101,6 +102,8 @@ export function repairLineup(state: GameState, teamId: string) {
   team.roleAssignments = Object.fromEntries(
     team.lineup.map((id) => [id, team.roleAssignments[id] ?? state.players[id].primaryRole]),
   )
+  if (teamId !== state.currentTeamId)
+    team.roleAssignments = bestRoleAssignment(team.lineup.map((id) => state.players[id]))
 }
 
 export function recordMove(

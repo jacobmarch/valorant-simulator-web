@@ -3,6 +3,7 @@ import { ArrowRight, Check, ChevronRight, CircleAlert, Info, TriangleAlert } fro
 import {
   activePhaseForWeek,
   acceptJob,
+  assignedRole,
   competitionRecord,
   currentTeam,
   dateForWeek,
@@ -11,6 +12,7 @@ import {
   phaseForWeek,
   rankedTeams,
   saveGame,
+  teamStrength,
   type Fixture,
   type GameState,
   type MatchResult,
@@ -20,6 +22,7 @@ import {
 import { attentionItems, type AttentionItem } from './flow'
 import { MapPlan } from './map-plan'
 import { roles, type Role } from './seed'
+import { CORE_ROLES, compositionPenalty, missingRoles, rolePenalty } from './roles'
 import { playerOverall } from './transfers'
 import {
   Badge,
@@ -426,28 +429,53 @@ export function TacticsV2({
           <PanelTitle
             eyebrow="STARTING LINEUP"
             title="Five for the series"
-            right={<span className="muted">Role fit matters</span>}
-          />
-          {players.map((player, index) => (
-            <div className="lineup" key={player.id}>
-              <b>0{index + 1}</b>
-              <span>
-                <strong>{player.name}</strong>
-                <small>
-                  Primary {player.primaryRole} ·{' '}
-                  {player.secondaryRoles.join(', ') || 'no secondary'}
-                </small>
+            right={
+              <span className="muted">
+                Team rating <b>{Math.round(teamStrength(s, team.id) * 10) / 10}</b>
               </span>
-              <select
-                value={team.roleAssignments[player.id] ?? player.primaryRole}
-                onChange={(event) => setRole(player, event.target.value as Role)}
-              >
-                {roles.map((role) => (
-                  <option key={role}>{role}</option>
-                ))}
-              </select>
-            </div>
-          ))}
+            }
+          />
+          {players.map((player) => {
+            const role = assignedRole(team, player),
+              penalty = rolePenalty(player, role)
+            return (
+              <div className="lineup" key={player.id}>
+                <b className={`ovr${penalty ? ' off-role' : ''}`}>
+                  {playerOverall(player) + penalty}
+                  <small>OVR</small>
+                </b>
+                <span>
+                  <strong>{player.name}</strong>
+                  <small>
+                    {player.primaryRole}
+                    {player.secondaryRoles.length
+                      ? ` · also ${player.secondaryRoles.join(', ')}`
+                      : ''}
+                    {penalty ? (
+                      <em style={{ color: tone.warn }}>
+                        {' '}
+                        · {penalty} off-role (base {playerOverall(player)})
+                      </em>
+                    ) : null}
+                  </small>
+                </span>
+                <select
+                  value={role}
+                  onChange={(event) => setRole(player, event.target.value as Role)}
+                >
+                  {roles.map((option) => {
+                    const cost = rolePenalty(player, option)
+                    return (
+                      <option key={option} value={option}>
+                        {cost ? `${option} (${cost})` : option}
+                      </option>
+                    )
+                  })}
+                </select>
+              </div>
+            )
+          })}
+          <RoleCoverage assigned={players.map((player) => assignedRole(team, player))} />
         </section>
         <section className="panel">
           <PanelTitle eyebrow="SERIES PLAN" title="Broad tactical identity" />
@@ -471,6 +499,18 @@ export function TacticsV2({
         </section>
       </div>
     </Page>
+  )
+}
+
+function RoleCoverage({ assigned }: { assigned: Role[] }) {
+  const missing = missingRoles(assigned)
+  return (
+    <p className="role-coverage" style={{ color: missing.length ? tone.warn : tone.muted }}>
+      {missing.length ? <TriangleAlert size={14} /> : <Check size={14} />}
+      {missing.length
+        ? `No ${missing.join(', ')} assigned: ${compositionPenalty(assigned)} team rating`
+        : `All four core roles covered (${CORE_ROLES.join(', ')})`}
+    </p>
   )
 }
 

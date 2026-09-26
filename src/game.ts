@@ -18,6 +18,7 @@ import {
   overallRating,
   seedPotential,
 } from './development'
+import { bestRoleAssignment, compositionPenalty, roleRating } from './roles'
 import { attackerEdge, describeVeto, mapFit, runVeto } from './maps'
 import { recordMove, replenishFreeAgents, runAiTransfers } from './transfers'
 
@@ -647,23 +648,18 @@ export function teamStrength(state: GameState, teamId: string) {
   const team = state.teams[teamId]
   const players = team.lineup.map((id) => state.players[id]).filter(Boolean)
   if (!players.length) return 45
+  const assigned = players.map((player) => assignedRole(team, player))
   return (
     players.reduce(
-      (sum, player) =>
-        sum +
-        (Object.values(player.ratings).reduce((a, b) => a + b, 0) / 6) *
-          roleFit(player, team.roleAssignments[player.id] ?? player.primaryRole) +
-        conditionBonus(player),
+      (sum, player, index) => sum + roleRating(player, assigned[index]) + conditionBonus(player),
       0,
-    ) / players.length
+    ) /
+      players.length +
+    compositionPenalty(assigned)
   )
 }
-function roleFit(player: Player, role: Role) {
-  return player.primaryRole === role ||
-    player.secondaryRoles.includes(role) ||
-    player.primaryRole === 'Flex'
-    ? 1
-    : 0.86
+export function assignedRole(team: Team, player: Player): Role {
+  return team.roleAssignments[player.id] ?? player.primaryRole
 }
 
 function phaseRound(week: number, phase: CompetitionPhase) {
@@ -2116,6 +2112,13 @@ function refillLineup(state: GameState, team: Team) {
   Object.keys(team.roleAssignments).forEach((id) => {
     if (!team.lineup.includes(id)) delete team.roleAssignments[id]
   })
+  if (team.id !== state.currentTeamId) autoAssignRoles(state, team)
+}
+// AI teams re-slot roles so every core role is covered at the lowest comfort cost.
+export function autoAssignRoles(state: GameState, team: Team) {
+  team.roleAssignments = bestRoleAssignment(
+    team.lineup.map((id) => state.players[id]).filter(Boolean),
+  )
 }
 function resolveExpiredContracts(state: GameState, team: Team) {
   const managed = team.id === state.currentTeamId
