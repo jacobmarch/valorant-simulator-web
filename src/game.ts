@@ -1153,8 +1153,8 @@ function championsWeek(state: GameState, week: number) {
       week,
       'Lower Round 2',
       [
-        [resultLoser(upperSemis[0])!, resultWinner(lowerOne[0])!],
-        [resultLoser(upperSemis[1])!, resultWinner(lowerOne[1])!],
+        [resultLoser(upperSemis[0])!, resultWinner(lowerOne[1])!],
+        [resultLoser(upperSemis[1])!, resultWinner(lowerOne[0])!],
       ],
       { stage: 'Playoffs', bracket: 'Lower', round: 3 },
     )
@@ -1482,7 +1482,10 @@ export function ensureWeekScheduled(state: GameState, week = state.week) {
             week,
             3,
             'Middle Round 1',
-            upperOneLosers.map((teamId, index) => [teamId, upperTwoLosers[index]]),
+            upperOneLosers.map((teamId, index) => [
+              teamId,
+              upperTwoLosers[upperTwoLosers.length - 1 - index],
+            ]),
           )
         }
         return
@@ -1542,7 +1545,7 @@ export function ensureWeekScheduled(state: GameState, week = state.week) {
             'Lower Round 2',
             losers('Middle Round 2').map((teamId, index) => [
               teamId,
-              winners('Lower Round 1')[index],
+              winners('Lower Round 1')[1 - index],
             ]),
           )
         }
@@ -1566,7 +1569,7 @@ export function ensureWeekScheduled(state: GameState, week = state.week) {
             'Lower Round 3',
             losers('Middle Round 3').map((teamId, index) => [
               teamId,
-              winners('Lower Round 2')[index],
+              winners('Lower Round 2')[1 - index],
             ]),
           )
         }
@@ -2477,8 +2480,8 @@ function finishInternationalWeek(
           week,
           'Lower Round 2',
           [
-            [resultLoser(upperSemis[0])!, resultWinner(lowerOne[0])!],
-            [resultLoser(upperSemis[1])!, resultWinner(lowerOne[1])!],
+            [resultLoser(upperSemis[0])!, resultWinner(lowerOne[1])!],
+            [resultLoser(upperSemis[1])!, resultWinner(lowerOne[0])!],
           ],
           { stage: 'Playoffs', bracket: 'Lower', round: 3 },
         )

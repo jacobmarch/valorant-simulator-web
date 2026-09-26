@@ -5,32 +5,33 @@
   gap: 10px;
 }
 .map-plan-head small {
-  font-size: 9px;
-  color: #6c7995;
+  font-size: 12px;
+  color: var(--text-3);
 }
 .map-plan-reset {
-  border: 1px solid #ffffff1a;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
   background: transparent;
-  color: #d7ff56;
-  font-size: 10px;
-  padding: 4px 8px;
+  color: var(--accent);
+  font-size: 12px;
+  padding: 4px 10px;
 }
 .map-plan .map-plan-legend,
 .map-plan .map-plan-row {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr) 48px 32px 52px;
+  grid-template-columns: 22px minmax(0, 1fr) 52px 36px 56px;
   align-items: center;
   gap: 10px;
 }
-.map-plan-legend {
-  padding: 8px 9px 0;
-  font-size: 8px;
-  letter-spacing: 1px;
+.map-plan .map-plan-legend {
+  padding: 10px 10px 0 13px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #6c7995;
+  color: var(--text-3);
 }
 .map-plan .map-plan-row {
-  color: #e7edfa;
+  color: var(--text);
 }
 .map-plan-name {
   display: flex;
@@ -44,7 +45,7 @@
 .map-plan-record,
 .map-plan-opp {
   font-variant-numeric: tabular-nums;
-  color: #8b98b2;
+  color: var(--text-2);
 }
 .map-plan-move {
   display: flex;
@@ -52,18 +53,19 @@
   justify-content: flex-end;
 }
 .map-plan-move button {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   display: grid;
   place-items: center;
   padding: 0;
-  border: 1px solid #ffffff14;
-  background: #ffffff08;
-  color: #c7d2e8;
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  background: var(--surface-3);
+  color: var(--text-2);
 }
 .map-plan-move button:hover:not(:disabled) {
-  border-color: #d7ff56;
-  color: #d7ff56;
+  border-color: var(--accent);
+  color: var(--accent);
 }
 .map-plan-move button:disabled {
   opacity: 0.3;
@@ -74,6 +76,6 @@
 }
 .map-plan-note {
   margin: 4px 0 0;
-  font-size: 10px;
-  color: #6c7995;
+  font-size: 12px;
+  color: var(--text-3);
 }
