@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { CompetitionV2 } from '../src/competition-view'
-import { advanceWeek, createGame, simulateNextTournamentMatch } from '../src/game'
+import {
+  advanceWeek,
+  createGame,
+  kickoffQualifiers,
+  simulateNextTournamentMatch,
+} from '../src/game'
 import { MatchesV2 } from '../src/game-views'
 
 const memory = new Map<string, string>()
@@ -56,6 +61,12 @@ describe('competition center', () => {
     expect(html).toContain('SWISS RESULTS')
     expect(html).toContain('Stage games played')
     expect(html).toContain('Opening')
+    // Each region's Kickoff #1 (Upper Final winner) is listed as a direct seed.
+    const seeds = html.slice(html.indexOf('Regional champions'), html.indexOf('SWISS STAGE'))
+    ;(['Americas', 'EMEA', 'Pacific', 'China'] as const).forEach((region) => {
+      const first = kickoffQualifiers(state, region)[0]
+      expect(seeds).toContain(state.teams[first].name)
+    })
     const matches = renderToStaticMarkup(<CompetitionV2 s={state} initialTab="matches" />)
     expect(matches).toContain('Masters 1 · current matchups')
   })

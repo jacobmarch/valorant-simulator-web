@@ -1149,18 +1149,11 @@ function adjacentKickoffPairs(ids: string[]): Array<[string, string | null]> {
   return pairs
 }
 function mastersEntrants(state: GameState, phase: 'Masters 1' | 'Masters 2') {
-  const source = phase === 'Masters 1' ? 'Kickoff' : 'Stage 1'
-  const seeded = regions.map((region) => {
-    const ids = Object.values(state.teams)
-      .filter((team) => team.region === region)
-      .map((team) => team.id)
-    if (source === 'Kickoff') {
-      const qualified = kickoffQualifiers(state, region)
-      if (qualified.length === 3) return qualified
-    }
-    if (source === 'Stage 1') return regionalPlayoffQualifiers(state, 'Stage 1', region, 3)
-    return rankedTeams(state, ids, source).slice(0, 3)
-  })
+  const seeded = regions.map((region) =>
+    phase === 'Masters 1'
+      ? kickoffStandings(state, region).slice(0, 3)
+      : regionalPlayoffQualifiers(state, 'Stage 1', region, 3),
+  )
   return { direct: seeded.map((ids) => ids[0]), swiss: seeded.flatMap((ids) => ids.slice(1, 3)) }
 }
 function swissRecord(state: GameState, phase: 'Masters 1' | 'Masters 2', teamId: string) {

@@ -690,18 +690,11 @@ function SwissView({
   fixtures: Fixture[]
   onOpenMatch?: (matchId: string) => void
 }) {
-  const source = phase === 'Masters 1' ? 'Kickoff' : 'Stage 1',
-    direct = regions.map((region) =>
-      phase === 'Masters 1'
-        ? rankedTeams(
-            s,
-            Object.values(s.teams)
-              .filter((team) => team.region === region)
-              .map((team) => team.id),
-            source,
-          )[0]
-        : regionalPlayoffQualifiers(s, 'Stage 1', region, 3)[0],
-    )
+  const direct = regions.map((region) =>
+    phase === 'Masters 1'
+      ? kickoffStandings(s, region)[0]
+      : regionalPlayoffQualifiers(s, 'Stage 1', region, 3)[0],
+  )
   const swiss = fixtures.filter((f) => stageFor(f) === 'Swiss'),
     ids = [...new Set(swiss.flatMap((f) => (f.bId ? [f.aId, f.bId] : [f.aId])))]
   const ordered = [...ids].sort((a, b) => {
