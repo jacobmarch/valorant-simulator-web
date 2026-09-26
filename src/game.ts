@@ -536,14 +536,66 @@ function migrateGame(raw: unknown): GameState | null {
   state.transfers ??= []
   if (previousVersion < 11) replenishFreeAgents(state)
   state.version = 11
+  pruneHistory(state)
   ensureWeekScheduled(state, state.week)
   return state
 }
-export function saveGame(state: GameState) {
-  localStorage.setItem(
-    SAVE_KEY,
-    JSON.stringify({ ...state, saveTimestamp: new Date().toISOString() }),
-  )
+// Browsers cap localStorage at about 5 MB per site, and a full box score costs
+// about 5 KB per series, so only recent and managed-team matches keep round logs
+// and player stats. Older seasons are dropped entirely.
+const DETAILED_MATCH_LIMIT = 120
+const HISTORY_SEASONS = 2
+const INBOX_LIMIT = 200
+const TRANSFER_LIMIT = 600
+const stripMatchDetail = (match: MatchResult): MatchResult =>
+  match.maps.every((map) => !map.rounds.length && !Object.keys(map.stats).length)
+    ? match
+    : { ...match, maps: match.maps.map((map) => ({ ...map, rounds: [], stats: {} })) }
+export function hasMatchDetail(match: MatchResult) {
+  return match.maps.some((map) => Object.keys(map.stats).length > 0)
+}
+export function pruneHistory(
+  state: GameState,
+  { detailedMatches = DETAILED_MATCH_LIMIT, seasons = HISTORY_SEASONS } = {},
+) {
+  const oldestSeason = state.season - seasons + 1
+  const involvesManaged = (match: MatchResult) =>
+    match.aId === state.currentTeamId || match.bId === state.currentTeamId
+  state.matches = state.matches
+    .filter((match) => match.season >= oldestSeason)
+    .map((match, index) =>
+      index < detailedMatches || (match.season === state.season && involvesManaged(match))
+        ? match
+        : stripMatchDetail(match),
+    )
+  state.fixtures = state.fixtures.filter((fixture) => fixture.season >= oldestSeason)
+  state.inbox = state.inbox.slice(0, INBOX_LIMIT)
+  state.transfers = state.transfers
+    .filter((transfer) => transfer.season >= oldestSeason)
+    .slice(0, TRANSFER_LIMIT)
+  return state
+}
+const isQuotaError = (error: unknown) =>
+  error instanceof DOMException &&
+  (error.name === 'QuotaExceededError' || error.name === 'NS_ERROR_DOM_QUOTA_REACHED')
+export function saveGame(state: GameState): boolean {
+  const snapshot = { ...state, saveTimestamp: new Date().toISOString() }
+  // Last resort keeps just this season with the latest box scores.
+  const attempts = [
+    () => pruneHistory({ ...snapshot }),
+    () => pruneHistory({ ...snapshot }, { detailedMatches: 20, seasons: 1 }),
+    () => pruneHistory({ ...snapshot }, { detailedMatches: 0, seasons: 1 }),
+  ]
+  for (const attempt of attempts) {
+    try {
+      localStorage.setItem(SAVE_KEY, JSON.stringify(attempt()))
+      return true
+    } catch (error) {
+      if (!isQuotaError(error)) throw error
+    }
+  }
+  console.warn('Save skipped: browser storage is full.')
+  return false
 }
 export function loadGame(): GameState | null {
   try {
@@ -1989,6 +2041,7 @@ function finalizeCalendarWeek(state: GameState) {
   if (state.week === OFFSEASON_START_WEEK) warnExpiringContracts(state)
   if (state.week > 52) rolloverSeason(state)
   ensureWeekScheduled(state, state.week)
+  pruneHistory(state)
   state.saveTimestamp = new Date().toISOString()
   saveGame(state)
 }
