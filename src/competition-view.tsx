@@ -918,67 +918,41 @@ function ChampionsGroups({
       />
       <div className="group-grid">
         {(['A', 'B', 'C', 'D'] as const).map((group) => {
-          const matches = fixtures.filter((f) => f.group === group),
-            ids = [...new Set(matches.flatMap((f) => (f.bId ? [f.aId, f.bId] : [f.aId])))]
+          const matches = fixtures.filter((f) => f.group === group)
           return (
             <article className="group-card" key={group}>
               <header>
                 <strong>Group {group}</strong>
                 <small>{matches.filter((f) => f.status === 'completed').length} of 5 played</small>
               </header>
-              <div className="group-layout">
-                <div className="group-standings">
-                  {ids
-                    .sort((a, b) => {
-                      const ar = fixtureRecord(a, matches),
-                        br = fixtureRecord(b, matches)
-                      return br.wins - ar.wins || ar.losses - br.losses
-                    })
-                    .map((id, index) => {
-                      const team = s.teams[id],
-                        record = fixtureRecord(id, matches)
-                      return (
-                        <div className={id === s.currentTeamId ? 'managed' : ''} key={id}>
-                          <b>{index + 1}</b>
-                          <i style={{ background: team.color }} />
-                          <strong>{team.short}</strong>
-                          <small>
-                            {record.wins}–{record.losses}
-                          </small>
+              <div className="bracket-path group-bracket">
+                {groupColumns.map((column) => (
+                  <div className="bracket-step" key={column.title}>
+                    <h3>
+                      {column.title}
+                      <small>{column.note}</small>
+                    </h3>
+                    {column.slots.map((slot) => {
+                      const slotMatches = matches.filter((f) => f.label.endsWith(slot.label))
+                      return slotMatches.length ? (
+                        slotMatches.map((f) => (
+                          <FixtureCard
+                            s={s}
+                            fixture={f}
+                            compact
+                            onOpenMatch={onOpenMatch}
+                            key={f.id}
+                          />
+                        ))
+                      ) : (
+                        <div className="bracket-placeholder" key={slot.label}>
+                          <strong>{slot.label} match</strong>
+                          <span>{slot.pending}</span>
                         </div>
                       )
                     })}
-                  {!ids.length && <p>Draw pending</p>}
-                </div>
-                <div className="bracket-path group-bracket">
-                  {groupColumns.map((column) => (
-                    <div className="bracket-step" key={column.title}>
-                      <h3>
-                        {column.title}
-                        <small>{column.note}</small>
-                      </h3>
-                      {column.slots.map((slot) => {
-                        const slotMatches = matches.filter((f) => f.label.endsWith(slot.label))
-                        return slotMatches.length ? (
-                          slotMatches.map((f) => (
-                            <FixtureCard
-                              s={s}
-                              fixture={f}
-                              compact
-                              onOpenMatch={onOpenMatch}
-                              key={f.id}
-                            />
-                          ))
-                        ) : (
-                          <div className="bracket-placeholder" key={slot.label}>
-                            <strong>{slot.label} match</strong>
-                            <span>{slot.pending}</span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  ))}
-                </div>
+                  </div>
+                ))}
               </div>
             </article>
           )
