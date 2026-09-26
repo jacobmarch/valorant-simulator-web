@@ -12,6 +12,7 @@ import {
   type MatchResult,
 } from './game'
 import { skills } from './seed'
+import { pendingSponsorOffers } from './sponsors'
 import { MAX_ROSTER, transferWindowForWeek } from './transfers'
 import type { View } from './ui'
 
@@ -108,6 +109,18 @@ export function attentionItems(s: GameState): AttentionItem[] {
       title: `Only ${team.lineup.length} of 5 starters set`,
       detail: 'Promote a substitute or sign a player before the next series.',
       view: 'roster',
+    })
+  const sponsorOffers = pendingSponsorOffers(s)
+  if (sponsorOffers)
+    items.push({
+      id: 'sponsor',
+      level:
+        sponsorOffers.deadlineSeason === s.season && s.week >= sponsorOffers.deadlineWeek - 1
+          ? 'urgent'
+          : 'warn',
+      title: `Choose a ${sponsorOffers.season} sponsor`,
+      detail: `Three ${sponsorOffers.offers[0].level.toLowerCase()} offers. The board signs the medium deal after week ${sponsorOffers.deadlineWeek}.`,
+      view: 'finances',
     })
   const gaps = trainingGaps(s)
   if (gaps.length)

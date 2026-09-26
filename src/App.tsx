@@ -52,6 +52,7 @@ import {
 } from './transfers'
 import { DashboardV2, MatchPreview, MatchesV2, TacticsV2 } from './game-views'
 import { CompetitionV2 } from './competition-view'
+import { Finances } from './finances-view'
 import { SeriesWalkthrough, SimChoice } from './series-walkthrough'
 import { DEFAULT_TRAINING } from './development'
 import {
@@ -69,7 +70,6 @@ import {
   Modal,
   PanelTitle,
   Page,
-  Stat,
   money,
   phaseName,
   regionColors,
@@ -563,49 +563,6 @@ function Scouting({ s, setState }: { s: GameState; setState: (s: GameState) => v
     </Page>
   )
 }
-function Finances({ s }: { s: GameState }) {
-  const t = currentTeam(s)
-  const payroll = t.playerIds.reduce((sum, id) => sum + s.players[id].salary, 0)
-  return (
-    <Page
-      eyebrow="OFFICE"
-      title="Finances"
-      subtitle="Cash, payroll, and what moves the number each week."
-    >
-      <div className="stats">
-        <Stat label="Cash balance" value={money(t.cash)} detail="available for buyouts" accent />
-        <Stat label="Annual payroll" value={money(payroll)} detail="current roster commitments" />
-        <Stat label="Weekly burn" value={money(payroll / 52)} detail="salary deduction" />
-        <Stat
-          label="Salary headroom"
-          value={money(t.salaryBudget - payroll)}
-          detail="against budget"
-        />
-      </div>
-      <section className="panel ledger">
-        <PanelTitle eyebrow="CASHFLOW GUIDE" title="What moves the number?" />
-        <div className="ledger-grid">
-          <span>
-            Salary<strong className="negative">− {money(payroll / 52)} / week</strong>
-          </span>
-          <span>
-            Match win<strong className="positive">+ $25,000</strong>
-          </span>
-          <span>
-            Appearance<strong className="positive">+ $5,000</strong>
-          </span>
-          <span>
-            Prize money<strong className="positive">Event configured</strong>
-          </span>
-        </div>
-        <div className="callout">
-          <strong>Transparent contract math</strong>
-          <span>Buyouts equal annual salary × remaining years.</span>
-        </div>
-      </section>
-    </Page>
-  )
-}
 function Settings({
   s,
   setState,
@@ -846,7 +803,7 @@ export default function App() {
         onOpenMatch={setPreviewId}
       />
     ) : view === 'finances' ? (
-      <Finances s={s} />
+      <Finances s={s} setState={setS} />
     ) : (
       <Settings s={s} setState={setS} onNew={newGame} onReset={reset} />
     )
