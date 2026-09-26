@@ -27,6 +27,7 @@ import {
   teamPlayers,
   type DelegationMode,
   type GameState,
+  type MatchResult,
   type Skill,
   type TransferRecord,
 } from './game'
@@ -51,6 +52,7 @@ import {
 } from './transfers'
 import { DashboardV2, MatchPreview, MatchesV2, TacticsV2 } from './game-views'
 import { CompetitionV2 } from './competition-view'
+import { SeriesWalkthrough, SimChoice } from './series-walkthrough'
 import { DEFAULT_TRAINING } from './development'
 import {
   SCOUTING_HOURS,
@@ -744,6 +746,8 @@ export default function App() {
   const [previewId, setPreviewId] = useState<string>()
   const [attack, setAttack] = useState('Measured defaults')
   const [defense, setDefense] = useState('Disciplined retakes')
+  const [simChoiceId, setSimChoiceId] = useState<string>()
+  const [walkthrough, setWalkthrough] = useState<{ next: GameState; matchId: string }>()
   const start = (name: string, team: string) => {
     const n = createGame(name, team)
     saveGame(n)
@@ -777,8 +781,26 @@ export default function App() {
         : advanceWeek(s, attack, defense),
     )
   const simWeek = () => commit(advanceWeek(s, attack, defense))
-  const simMatch = (fixtureId: string) =>
+  const simMatch = (fixtureId: string) => {
+    setSimChoiceId(undefined)
     commit(simulateTournamentFixture(s, fixtureId, attack, defense))
+  }
+  /** Plays the series now but holds the new state back until every map has been revealed. */
+  const simMapByMap = (fixtureId: string) => {
+    setSimChoiceId(undefined)
+    const next = simulateTournamentFixture(s, fixtureId, attack, defense)
+    const resultId = next.fixtures.find((fixture) => fixture.id === fixtureId)?.resultId
+    if (resultId && next.matches.some((match) => match.id === resultId))
+      setWalkthrough({ next, matchId: resultId })
+    else commit(next)
+  }
+  const finishWalkthrough = () => {
+    if (walkthrough) commit(walkthrough.next)
+    setWalkthrough(undefined)
+  }
+  const simChoiceFixture = simChoiceId
+    ? s.fixtures.find((fixture) => fixture.id === simChoiceId)
+    : undefined
   const openMatch = (id: string) => {
     setMatchId(id)
     setView('matches')
@@ -819,7 +841,7 @@ export default function App() {
     ) : view === 'competition' ? (
       <CompetitionV2
         s={s}
-        onSimMatch={simMatch}
+        onSimMatch={setSimChoiceId}
         onSimulateRound={() => commit(simulateTournamentRound(s, attack, defense))}
         onOpenMatch={setPreviewId}
       />
@@ -922,6 +944,31 @@ export default function App() {
         )}
         {content}
       </main>
+      {simChoiceFixture && (
+        <SimChoice
+          s={s}
+          fixture={simChoiceFixture}
+          onQuick={() => simMatch(simChoiceFixture.id)}
+          onMapByMap={() => simMapByMap(simChoiceFixture.id)}
+          onClose={() => setSimChoiceId(undefined)}
+        />
+      )}
+      {walkthrough && (
+        <SeriesWalkthrough
+          s={walkthrough.next}
+          match={
+            walkthrough.next.matches.find(
+              (match) => match.id === walkthrough.matchId,
+            ) as MatchResult
+          }
+          onFinish={finishWalkthrough}
+          onOpenFull={(id) => {
+            commit(walkthrough.next)
+            setWalkthrough(undefined)
+            openMatch(id)
+          }}
+        />
+      )}
       {previewId && (
         <MatchPreview
           s={s}
