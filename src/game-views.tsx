@@ -18,8 +18,8 @@ import {
   type PlayerStat,
 } from './game'
 import { attentionItems, type AttentionItem } from './flow'
-import { mapTiers, runVeto } from './maps'
-import { maps, roles, type Role } from './seed'
+import { MapPlan } from './map-plan'
+import { roles, type Role } from './seed'
 import { playerOverall } from './transfers'
 import {
   Badge,
@@ -405,8 +405,6 @@ export function TacticsV2({
   const fixture = nextFixtureForTeam(s, team.id, s.week),
     opponentId = fixtureOpponent(fixture, team.id),
     opponent = opponentId ? s.teams[opponentId] : undefined
-  const ownTiers = mapTiers(s, team.id),
-    opponentTiers = opponent ? mapTiers(s, opponent.id) : ownTiers
   const setRole = (player: Player, role: Role) => {
     const next = structuredClone(s)
     next.teams[team.id].roleAssignments[player.id] = role
@@ -469,37 +467,7 @@ export function TacticsV2({
               <option>Deep site anchors</option>
             </select>
           </label>
-          <div className="maps">
-            <div className="eyebrow">
-              {opponent ? 'PROJECTED VETO / MAP TIERS (1 = BEST)' : 'MAP TIERS (1 = BEST)'}
-            </div>
-            {opponent && fixture
-              ? runVeto(s, fixture.aId, fixture.bId ?? opponent.id, fixture.bestOf).steps.map(
-                  (step, index) => (
-                    <div className={step.action === 'ban' ? 'map' : 'map selected'} key={step.map}>
-                      <b>{index + 1}</b>
-                      {step.map}
-                      <small>
-                        {step.action === 'decider'
-                          ? 'decider'
-                          : `${s.teams[step.teamId].short} ${step.action}`}{' '}
-                        · {team.short} T{ownTiers[step.map]} / {opponent.short} T
-                        {opponentTiers[step.map]}
-                      </small>
-                    </div>
-                  ),
-                )
-              : maps
-                  .slice()
-                  .sort((a, b) => ownTiers[a] - ownTiers[b])
-                  .map((map) => (
-                    <div className="map" key={map}>
-                      <b>{ownTiers[map]}</b>
-                      {map}
-                      <small>tier {ownTiers[map]}</small>
-                    </div>
-                  ))}
-          </div>
+          <MapPlan s={s} setState={setState} team={team} opponent={opponent} fixture={fixture} />
         </section>
       </div>
     </Page>

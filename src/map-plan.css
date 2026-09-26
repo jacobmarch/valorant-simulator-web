@@ -1,0 +1,81 @@
+.map-plan-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.map-plan-head small {
+  font-size: 12px;
+  color: var(--text-3);
+}
+.map-plan-reset {
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--accent);
+  font-size: 12px;
+  padding: 4px 10px;
+}
+.map-plan .map-plan-legend,
+.map-plan .map-plan-row {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) 52px 36px 56px;
+  align-items: center;
+  gap: 10px;
+}
+.map-plan .map-plan-legend {
+  padding: 10px 10px 0 13px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.map-plan .map-plan-row {
+  color: var(--text);
+}
+.map-plan-name {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.map-plan .map-plan-name small {
+  margin-left: 0;
+}
+.map-plan-record,
+.map-plan-opp {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+}
+.map-plan-move {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+.map-plan-move button {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  background: var(--surface-3);
+  color: var(--text-2);
+}
+.map-plan-move button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.map-plan-move button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.map-plan-veto-title {
+  margin-top: 18px;
+}
+.map-plan-note {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--text-3);
+}
