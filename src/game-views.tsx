@@ -10,6 +10,7 @@ import {
   hasMatchDetail,
   nextFixtureForTeam,
   phaseForWeek,
+  kickoffStandings,
   rankedTeams,
   saveGame,
   teamStrength,
@@ -77,12 +78,7 @@ function MiniStandings({ s, onView }: { s: GameState; onView: (view: View) => vo
     .filter((candidate) => candidate.region === team.region)
     .map((candidate) => candidate.id)
   const ordered =
-    phase === 'Kickoff'
-      ? [...ids].sort(
-          (a, b) =>
-            s.kickoff[b].wins - s.kickoff[a].wins || s.kickoff[a].losses - s.kickoff[b].losses,
-        )
-      : rankedTeams(s, ids, phase)
+    phase === 'Kickoff' ? kickoffStandings(s, team.region) : rankedTeams(s, ids, phase)
   const own = ordered.indexOf(team.id)
   const shown = ordered.slice(0, 6).concat(own >= 6 ? [team.id] : [])
   return (
