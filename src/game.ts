@@ -1213,77 +1213,83 @@ function championsGroups(state: GameState) {
     ids: regions.map((_, regionIndex) => regionSeeds[regionIndex][(index + regionIndex) % 4]),
   }))
 }
+/**
+ * Champions fixtures for this season with one label, in scheduling order.
+ * Past seasons keep their fixtures, so every lookup must be season-scoped.
+ */
+function championsFixtures(state: GameState, label: string) {
+  return state.fixtures.filter(
+    (f) => f.season === state.season && f.phase === 'Champions' && f.label === label,
+  )
+}
+const championsGroupNames = ['A', 'B', 'C', 'D'] as const
+/**
+ * Each Champions group is a four-team GSL bracket: two openers, a winners'
+ * match (winner qualifies as group winner), an elimination match (loser is
+ * out), and a decider between the winners' match loser and the elimination
+ * match winner for second place.
+ */
 function championsWeek(state: GameState, week: number) {
-  const groups = championsGroups(state)
+  const group = (name: string, stage: string) =>
+    championsFixtures(state, `Group ${name} · ${stage}`)
   if (week === 36) {
-    groups.forEach((group) =>
+    championsGroups(state).forEach((drawn) =>
       addInternationalFixtures(
         state,
         'Champions',
         week,
-        `Group ${group.name} · Opening`,
+        `Group ${drawn.name} · Opening`,
         [
-          [group.ids[0], group.ids[3]],
-          [group.ids[1], group.ids[2]],
+          [drawn.ids[0], drawn.ids[3]],
+          [drawn.ids[1], drawn.ids[2]],
         ],
-        { stage: 'Groups', bracket: 'Group', group: group.name, round: 1 },
+        { stage: 'Groups', bracket: 'Group', group: drawn.name, round: 1 },
       ),
     )
     return
   }
   if (week === 37) {
-    groups.forEach((group) => {
-      const opening = state.fixtures.filter(
-        (f) => f.phase === 'Champions' && f.group === group.name && f.round === 1,
-      )
+    championsGroupNames.forEach((name) => {
+      const opening = group(name, 'Opening')
       addInternationalFixtures(
         state,
         'Champions',
         week,
-        `Group ${group.name} · Winners`,
+        `Group ${name} · Winners`,
         [[resultWinner(opening[0])!, resultWinner(opening[1])!]],
-        { stage: 'Groups', bracket: 'Group', group: group.name, round: 2 },
+        { stage: 'Groups', bracket: 'Group', group: name, round: 2 },
       )
       addInternationalFixtures(
         state,
         'Champions',
         week,
-        `Group ${group.name} · Elimination`,
+        `Group ${name} · Elimination`,
         [[resultLoser(opening[0])!, resultLoser(opening[1])!]],
-        { stage: 'Groups', bracket: 'Group', group: group.name, round: 2 },
+        { stage: 'Groups', bracket: 'Group', group: name, round: 2 },
       )
     })
     return
   }
   if (week === 38) {
-    groups.forEach((group) => {
-      const winners = state.fixtures.find(
-        (f) => f.phase === 'Champions' && f.group === group.name && f.label.endsWith('Winners'),
-      )!
-      const elimination = state.fixtures.find(
-        (f) => f.phase === 'Champions' && f.group === group.name && f.label.endsWith('Elimination'),
-      )!
+    championsGroupNames.forEach((name) => {
+      const [winners] = group(name, 'Winners'),
+        [elimination] = group(name, 'Elimination')
       addInternationalFixtures(
         state,
         'Champions',
         week,
-        `Group ${group.name} · Decider`,
+        `Group ${name} · Decider`,
         [[resultLoser(winners)!, resultWinner(elimination)!]],
-        { stage: 'Groups', bracket: 'Group', group: group.name, round: 3 },
+        { stage: 'Groups', bracket: 'Group', group: name, round: 3 },
       )
     })
     return
   }
   if (week === 39) {
-    const qualified = groups.map((group) => {
-      const winners = state.fixtures.find(
-        (f) => f.phase === 'Champions' && f.group === group.name && f.label.endsWith('Winners'),
-      )!
-      const decider = state.fixtures.find(
-        (f) => f.phase === 'Champions' && f.group === group.name && f.label.endsWith('Decider'),
-      )!
-      return { winner: resultWinner(winners)!, runner: resultWinner(decider)! }
-    })
+    const qualified = championsGroupNames.map((name) => ({
+      winner: resultWinner(group(name, 'Winners')[0])!,
+      runner: resultWinner(group(name, 'Decider')[0])!,
+    }))
     addInternationalFixtures(
       state,
       'Champions',
@@ -1299,9 +1305,7 @@ function championsWeek(state: GameState, week: number) {
     )
     return
   }
-  const qf = state.fixtures.filter(
-    (f) => f.phase === 'Champions' && f.label === 'Upper Quarterfinal',
-  )
+  const qf = championsFixtures(state, 'Upper Quarterfinal')
   if (week === 40) {
     addInternationalFixtures(
       state,
@@ -1327,10 +1331,8 @@ function championsWeek(state: GameState, week: number) {
     )
     return
   }
-  const upperSemis = state.fixtures.filter(
-      (f) => f.phase === 'Champions' && f.label === 'Upper Semifinal',
-    ),
-    lowerOne = state.fixtures.filter((f) => f.phase === 'Champions' && f.label === 'Lower Round 1')
+  const upperSemis = championsFixtures(state, 'Upper Semifinal'),
+    lowerOne = championsFixtures(state, 'Lower Round 1')
   if (week === 41) {
     addInternationalFixtures(
       state,
@@ -1354,12 +1356,8 @@ function championsWeek(state: GameState, week: number) {
     return
   }
   if (week === 42) {
-    const upperFinal = state.fixtures.find(
-        (f) => f.phase === 'Champions' && f.label === 'Upper Final',
-      )!,
-      lowerThree = state.fixtures.find(
-        (f) => f.phase === 'Champions' && f.label === 'Lower Round 3',
-      )!
+    const [upperFinal] = championsFixtures(state, 'Upper Final'),
+      [lowerThree] = championsFixtures(state, 'Lower Round 3')
     addInternationalFixtures(
       state,
       'Champions',
@@ -2545,6 +2543,7 @@ function playScheduledByLabel(
   state.fixtures
     .filter(
       (f) =>
+        f.season === state.season &&
         f.phase === phase &&
         f.week === week &&
         f.status === 'scheduled' &&
@@ -2562,12 +2561,10 @@ function internationalFixtures(
   phase: 'Masters 1' | 'Masters 2' | 'Champions',
   label: string,
 ) {
-  return state.fixtures
-    .filter(
-      (fixture) =>
-        fixture.season === state.season && fixture.phase === phase && fixture.label === label,
-    )
-    .sort((left, right) => left.id.localeCompare(right.id))
+  return state.fixtures.filter(
+    (fixture) =>
+      fixture.season === state.season && fixture.phase === phase && fixture.label === label,
+  )
 }
 function finishInternationalWeek(
   state: GameState,
