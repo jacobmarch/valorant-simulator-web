@@ -91,16 +91,16 @@ describe('year in review', () => {
     expect(champions2027?.podium).toHaveLength(4)
   }, 600_000)
 
-  test('v14 saves migrate with empty reviews and rebuilt season lines', () => {
+  test('v15 saves migrate with empty reviews and rebuilt season lines', () => {
     const state = advanceTo(createGame('Manager', 'c9'), 2026, 3)
     const legacy = structuredClone(state) as Partial<GameState>
-    legacy.version = 14 as 15
+    legacy.version = 15 as 16
     delete legacy.seasonStats
     delete legacy.reviews
     delete legacy.pendingReview
     memory.set(SAVE_KEY, JSON.stringify(legacy))
     const loaded = loadGame()
-    expect(loaded?.version).toBe(15)
+    expect(loaded?.version).toBe(16)
     expect(loaded?.reviews).toEqual([])
     expect(loaded?.pendingReview).toBeNull()
     expect(Object.keys(loaded?.seasonStats ?? {}).length).toBeGreaterThan(0)

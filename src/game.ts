@@ -20,6 +20,7 @@ import {
 } from './development'
 import { bestRoleAssignment, compositionPenalty, roleRating } from './roles'
 import { attackerEdge, describeVeto, mapFit, runVeto } from './maps'
+import { iglAdjustment, refreshIgl } from './igl'
 import { recordMove, replenishFreeAgents, runAiTransfers } from './transfers'
 import {
   backfillSeasonStats,
@@ -69,6 +70,8 @@ export type Player = {
   potential: number
   form: number
   morale: number
+  /** In-game leader: earned from Tactics and Teamplay, see src/igl.ts. */
+  igl: boolean
 }
 export type Team = {
   id: string
@@ -181,7 +184,7 @@ export type TransferRecord = {
   note?: string
 }
 export type GameState = {
-  version: 15
+  version: 16
   season: number
   week: number
   managerName: string
@@ -338,12 +341,14 @@ export function createGame(managerName: string, currentTeamId: string): GameStat
         potential: 0,
         form: 0,
         morale: MORALE_DEFAULT,
+        igl: false,
       }
       players[id].potential = seedPotential(
         overallRating(players[id].ratings),
         players[id].age,
         (teamIndex * 3 + playerIndex * 5) % 5,
       )
+      refreshIgl(players[id])
       return id
     })
     const lineup = playerIds.slice(0, 5)
@@ -386,15 +391,17 @@ export function createGame(managerName: string, currentTeamId: string): GameStat
       potential: 0,
       form: 0,
       morale: MORALE_DEFAULT,
+      igl: false,
     }
     players[id].potential = seedPotential(
       overallRating(players[id].ratings),
       players[id].age,
       2 + (index % 3),
     )
+    refreshIgl(players[id])
   })
   const state: GameState = {
-    version: 15,
+    version: 16,
     season: 2026,
     week: 1,
     managerName: managerName || 'Manager',
@@ -640,12 +647,21 @@ function migrateGame(raw: unknown): GameState | null {
     )
   }
   if (previousVersion < 15) {
+    Object.values(state.players).forEach((player) => {
+      player.igl = false
+      refreshIgl(player)
+    })
+    state.inbox.push(
+      'Some players are now in-game leaders (IGL). Starting one gives your team rating a boost; a lineup without one takes a small penalty.',
+    )
+  }
+  if (previousVersion < 16) {
     // Older saves did not tally season lines; rebuild what the kept box scores allow.
     backfillSeasonStats(state)
     state.reviews ??= []
     state.pendingReview ??= null
   }
-  state.version = 15
+  state.version = 16
   pruneHistory(state)
   ensureWeekScheduled(state, state.week)
   return state
@@ -764,7 +780,8 @@ export function teamStrength(state: GameState, teamId: string) {
       0,
     ) /
       players.length +
-    compositionPenalty(assigned)
+    compositionPenalty(assigned) +
+    iglAdjustment(players)
   )
 }
 export function assignedRole(team: Team, player: Player): Role {
@@ -2603,6 +2620,7 @@ export function rolloverSeason(state: GameState) {
   state.season++
   Object.values(state.players).forEach((player) => {
     ageDevelopment(player)
+    refreshIgl(player)
     if (player.teamId) player.years--
   })
   Object.values(state.teams).forEach((team) => {
