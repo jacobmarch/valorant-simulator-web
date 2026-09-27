@@ -72,7 +72,7 @@ describe('in-game leaders', () => {
     })
     memory.set('vct-manager-mvp-save-v1', JSON.stringify(legacy))
     const loaded = loadGame()!
-    expect(loaded.version).toBe(15)
+    expect(loaded.version).toBe(16)
     Object.values(loaded.players).forEach((player) => {
       expect(player.igl).toBe(qualifiesAsIgl(player.ratings))
     })

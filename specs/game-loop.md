@@ -36,3 +36,12 @@ After week 52 the game moves to week 1 of the next season:
 - Lineups are refilled to five legal starters after departures.
 - Championship Points and season win/loss and map records reset to zero. Pending job offers lapse.
 - Kickoff resets, with byes for the previous season's Champions qualifiers.
+
+## Year in review
+
+Before rollover resets anything, the finished season is condensed into a review (`src/season-review.ts`) that pops up once on the new season's first screen and stays reachable from Results → Year in review. The last 10 reviews are kept.
+
+- **Your year:** series and map record, Championship Points, titles, and a placement in each event (bracket place, "Masters seed #N" for Kickoff, or the stage the team went out in).
+- **MVPs:** every player's season line (maps, kills, deaths, assists, ACS, first kills) is tallied as each series is played, because pruning strips most box scores during the year. Impact per map = average ACS + 60 × (K/D capped at 2 − 1) + 15 × first kills per map. Players need at least a third of the busiest player's maps. Team MVP and key players rank on impact alone; the global and league MVPs add 1.5 × the team's Championship Points plus 10 for a Masters title and 25 for Champions.
+- **Awards & winners:** global MVP, the Masters 1, Masters 2 and Champions winners with runners-up, and each league's Kickoff top seed, Stage 1 and Stage 2 winners.
+- **League pages (one per region):** Kickoff seeds, Stage 1 and Stage 2 top four, the four Champions spots, the top six by Championship Points, and the league MVP.
