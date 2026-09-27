@@ -253,6 +253,7 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
                       {p.status}
                     </Badge>
                     <Badge>{p.primaryRole}</Badge>
+                    {p.igl && <Badge color={tone.accent}>IGL</Badge>}
                     <Badge color={p.years <= 1 ? tone.warn : tone.muted}>
                       {`Age ${p.age} · ${p.years}y left`}
                     </Badge>
@@ -337,7 +338,8 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
                       {p.name} · {playerOverall(p)} OVR
                     </strong>
                     <small>
-                      {p.primaryRole} · Age {p.age}
+                      {p.primaryRole}
+                      {p.igl ? ' · IGL' : ''} · Age {p.age}
                       {p.teamId ? ` · ${s.teams[p.teamId].short}` : ''} · {money(p.salary)} / yr ×{' '}
                       {p.years} · {market === 'free' ? 'cost' : 'buyout'} {money(contractValue(p))}
                     </small>
@@ -460,7 +462,8 @@ function Training({ s, setState }: { s: GameState; setState: (s: GameState) => v
                 <div className="player-name">
                   <strong>{p.name}</strong>
                   <span>
-                    {p.primaryRole} · {playerOverall(p)} OVR · POT {p.potential} · {p.age}y
+                    {p.primaryRole}
+                    {p.igl ? ' · IGL' : ''} · {playerOverall(p)} OVR · POT {p.potential} · {p.age}y
                   </span>
                 </div>
                 <div className="hours">

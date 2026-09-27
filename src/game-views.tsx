@@ -25,6 +25,7 @@ import {
 import { attentionItems, type AttentionItem } from './flow'
 import { MapPlan } from './map-plan'
 import { roles, type Role } from './seed'
+import { iglAdjustment } from './igl'
 import { CORE_ROLES, compositionPenalty, missingRoles, rolePenalty } from './roles'
 import { playerOverall } from './transfers'
 import {
@@ -447,7 +448,10 @@ export function TacticsV2({
                   <small>OVR</small>
                 </b>
                 <span>
-                  <strong>{player.name}</strong>
+                  <strong>
+                    {player.name}
+                    {player.igl ? <em className="igl-tag">IGL</em> : null}
+                  </strong>
                   <small>
                     {player.primaryRole}
                     {player.secondaryRoles.length
@@ -478,6 +482,7 @@ export function TacticsV2({
             )
           })}
           <RoleCoverage assigned={players.map((player) => assignedRole(team, player))} />
+          <IglCoverage players={players} />
         </section>
         <section className="panel">
           <PanelTitle eyebrow="SERIES PLAN" title="Broad tactical identity" />
@@ -512,6 +517,18 @@ function RoleCoverage({ assigned }: { assigned: Role[] }) {
       {missing.length
         ? `No ${missing.join(', ')} assigned: ${compositionPenalty(assigned)} team rating`
         : `All four core roles covered (${CORE_ROLES.join(', ')})`}
+    </p>
+  )
+}
+
+function IglCoverage({ players }: { players: Player[] }) {
+  const leader = players.find((player) => player.igl)
+  return (
+    <p className="role-coverage" style={{ color: leader ? tone.muted : tone.warn }}>
+      {leader ? <Check size={14} /> : <TriangleAlert size={14} />}
+      {leader
+        ? `${leader.name} calls the shots as IGL: +${iglAdjustment(players)} team rating`
+        : `No IGL in the lineup: ${iglAdjustment(players)} team rating`}
     </p>
   )
 }
