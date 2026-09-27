@@ -4,6 +4,8 @@ import {
   activePhaseForWeek,
   acceptJob,
   assignedRole,
+  championshipPointsStandings,
+  championsQualifiers,
   competitionRecord,
   currentTeam,
   dateForWeek,
@@ -365,7 +367,11 @@ export function DashboardV2({
             <Stat
               label="Champ. points"
               value={String(team.championshipPoints)}
-              detail={team.playoffStage || 'Champions qualification race'}
+              detail={
+                championsQualifiers(s, team.region).includes(team.id)
+                  ? `Champions #${championsQualifiers(s, team.region).indexOf(team.id) + 1}`
+                  : `#${championshipPointsStandings(s, team.region).indexOf(team.id) + 1} in the ${team.region} race`
+              }
             />
             <Stat
               label="Cash balance"

@@ -174,7 +174,7 @@ export type TransferRecord = {
   note?: string
 }
 export type GameState = {
-  version: 13
+  version: 14
   season: number
   week: number
   managerName: string
@@ -381,7 +381,7 @@ export function createGame(managerName: string, currentTeamId: string): GameStat
     )
   })
   const state: GameState = {
-    version: 13,
+    version: 14,
     season: 2026,
     week: 1,
     managerName: managerName || 'Manager',
@@ -606,7 +606,24 @@ function migrateGame(raw: unknown): GameState | null {
       'Sponsors are here: pick a yearly sponsor on the Finances page to earn weekly income and a season bonus.',
     )
   }
-  state.version = 13
+  if (previousVersion < 14) {
+    refreshChampionshipPoints(state)
+    // Champions seeds 3 and 4 now go by Championship Points; re-award them if Champions has not started.
+    if (state.week < 36)
+      regions.forEach((region) => {
+        const regionTeams = Object.values(state.teams).filter((team) => team.region === region)
+        if (!regionTeams.some((team) => team.playoffStage.startsWith('Champions qualifier #')))
+          return
+        regionTeams.forEach((team) => {
+          if (team.playoffStage.startsWith('Champions qualifier #')) team.playoffStage = ''
+        })
+        awardRegionalPlayoffQualifiers(state, 'Stage 2', region)
+      })
+    state.inbox.push(
+      'Championship Points now follow the 2026 VCT table: event placements plus a point per Stage group win. Stage 2 finalists and the next two teams by points qualify for Champions.',
+    )
+  }
+  state.version = 14
   pruneHistory(state)
   ensureWeekScheduled(state, state.week)
   return state
@@ -632,7 +649,6 @@ function restartStage(state: GameState, phase: 'Stage 1' | 'Stage 2') {
       a.mapLosses -= match.bScore
       b.mapWins -= match.bScore
       b.mapLosses -= match.aScore
-      if (state.teams[match.winnerId]) state.teams[match.winnerId].championshipPoints--
     })
   state.fixtures = state.fixtures.filter((fixture) => !dropped.has(fixture.id))
   state.matches = state.matches.filter((match) => !match.fixtureId || !dropped.has(match.fixtureId))
@@ -1050,6 +1066,162 @@ export function regionalPlayoffQualifiers(
 ) {
   return regionalPlayoffOrder(state, phase, region).slice(0, count)
 }
+/**
+ * 2026 VCT Championship Points by event finish, best first. Kickoff and the
+ * Stages also count group-stage wins (Stage 1 and 2 only). Stage 2 finalists
+ * qualify for Champions directly, so only 3rd and 4th earn Stage 2 points.
+ */
+export const CHAMPIONSHIP_POINTS: Record<
+  'Kickoff' | 'Masters 1' | 'Stage 1' | 'Masters 2' | 'Stage 2',
+  number[]
+> = {
+  Kickoff: [4, 3, 2, 1],
+  'Masters 1': [6, 4, 3, 2, 1, 1],
+  'Stage 1': [6, 4, 3, 2],
+  'Masters 2': [8, 6, 5, 4, 3, 3],
+  'Stage 2': [0, 0, 5, 4],
+}
+export const STAGE_WIN_POINTS = 1
+export type ChampionshipPointsEvent = keyof typeof CHAMPIONSHIP_POINTS
+export type ChampionshipPointsBreakdown = {
+  total: number
+  stageWins: number
+  events: Partial<Record<ChampionshipPointsEvent, { place: string; points: number }>>
+}
+const placeLabels = ['1st', '2nd', '3rd', '4th', '5th–6th', '5th–6th', '7th–8th', '7th–8th']
+/**
+ * Finishing order of a double-elimination playoff by bracket placement:
+ * Grand Final winner and loser, then losers of the Lower Final, Lower Round
+ * 3, Lower Round 2 (5th–6th) and Lower Round 1 (7th–8th). Teams appear as
+ * soon as their place is settled; unsettled slots are left empty.
+ */
+function playoffFinish(fixtures: Fixture[]) {
+  const done = (label: string) =>
+    fixtures.filter((fixture) => fixture.label === label && fixture.status === 'completed')
+  const loser = (fixture?: Fixture) => (fixture ? resultLoser(fixture) : undefined)
+  const [grandFinal] = done('Grand Final')
+  const finish = [
+    grandFinal?.winnerId,
+    loser(grandFinal),
+    loser(done('Lower Final')[0]),
+    loser(done('Lower Round 3')[0]),
+    loser(done('Lower Round 2')[0]),
+    loser(done('Lower Round 2')[1]),
+  ]
+  return [...finish, ...done('Lower Round 1').map(loser)]
+}
+/** Kickoff finish: Upper, Middle and Lower Final winners (the Masters 1 seeds), then the Lower Final loser. */
+function kickoffFinish(state: GameState, region: Region) {
+  const final = (label: string) =>
+    state.fixtures.find(
+      (fixture) =>
+        fixture.season === state.season &&
+        fixture.phase === 'Kickoff' &&
+        fixture.region === region &&
+        fixture.label === label &&
+        fixture.status === 'completed',
+    )
+  const lowerFinal = final('Lower Final')
+  return [
+    final('Upper Final')?.winnerId,
+    final('Middle Final')?.winnerId,
+    lowerFinal?.winnerId,
+    lowerFinal && resultLoser(lowerFinal),
+  ]
+}
+/**
+ * Championship Points for every team this season, rebuilt from completed
+ * fixtures so the totals can never drift from the results.
+ */
+export function championshipPointsTable(state: GameState) {
+  const table: Record<string, ChampionshipPointsBreakdown> = Object.fromEntries(
+    Object.keys(state.teams).map((id) => [id, { total: 0, stageWins: 0, events: {} }]),
+  )
+  const season = state.fixtures.filter((fixture) => fixture.season === state.season)
+  const award = (event: ChampionshipPointsEvent, finish: Array<string | undefined>) =>
+    finish.forEach((id, index) => {
+      const points = CHAMPIONSHIP_POINTS[event][index] ?? 0
+      if (!id || !table[id]) return
+      table[id].events[event] = { place: placeLabels[index], points }
+      table[id].total += points
+    })
+  season.forEach((fixture) => {
+    if (
+      (fixture.phase === 'Stage 1' || fixture.phase === 'Stage 2') &&
+      fixture.stage !== 'Playoffs' &&
+      fixture.status === 'completed' &&
+      fixture.winnerId &&
+      table[fixture.winnerId]
+    ) {
+      table[fixture.winnerId].stageWins++
+      table[fixture.winnerId].total += STAGE_WIN_POINTS
+    }
+  })
+  regions.forEach((region) => {
+    award('Kickoff', kickoffFinish(state, region))
+    ;(['Stage 1', 'Stage 2'] as const).forEach((phase) =>
+      award(
+        phase,
+        playoffFinish(
+          season.filter(
+            (fixture) =>
+              fixture.phase === phase && fixture.region === region && fixture.stage === 'Playoffs',
+          ),
+        ),
+      ),
+    )
+  })
+  ;(['Masters 1', 'Masters 2'] as const).forEach((phase) =>
+    award(
+      phase,
+      playoffFinish(
+        season.filter((fixture) => fixture.phase === phase && fixture.stage === 'Playoffs'),
+      ),
+    ),
+  )
+  return table
+}
+function refreshChampionshipPoints(state: GameState) {
+  const table = championshipPointsTable(state)
+  Object.values(state.teams).forEach((team) => {
+    team.championshipPoints = table[team.id]?.total ?? 0
+  })
+}
+/** A region's Championship Points race, highest first; ties go to the better Stage 2 finish. */
+export function championshipPointsStandings(state: GameState, region: Region) {
+  const stageOrder = regionalPlayoffOrder(state, 'Stage 2', region)
+  return Object.values(state.teams)
+    .filter((team) => team.region === region)
+    .map((team) => team.id)
+    .sort(
+      (a, b) =>
+        state.teams[b].championshipPoints - state.teams[a].championshipPoints ||
+        stageOrder.indexOf(a) - stageOrder.indexOf(b),
+    )
+}
+/**
+ * A region's four Champions teams in seed order, once the Stage 2 Grand Final
+ * is played: the two finalists are seeds 1 and 2, and the next two teams by
+ * Championship Points, wherever they finished, are seeds 3 and 4.
+ */
+export function championsQualifiers(state: GameState, region: Region) {
+  const grandFinal = state.fixtures.find(
+    (fixture) =>
+      fixture.season === state.season &&
+      fixture.phase === 'Stage 2' &&
+      fixture.region === region &&
+      fixture.label === 'Grand Final' &&
+      fixture.status === 'completed',
+  )
+  if (!grandFinal?.winnerId) return []
+  const finalists = [grandFinal.winnerId, resultLoser(grandFinal)!]
+  return [
+    ...finalists,
+    ...championshipPointsStandings(state, region)
+      .filter((id) => !finalists.includes(id))
+      .slice(0, 2),
+  ]
+}
 function resultWinner(fixture: Fixture) {
   return fixture.winnerId
 }
@@ -1245,9 +1417,7 @@ function mastersWeek(state: GameState, phase: 'Masters 1' | 'Masters 2', week: n
   }
 }
 function championsGroups(state: GameState) {
-  const regionSeeds = regions.map((region) =>
-    regionalPlayoffQualifiers(state, 'Stage 2', region, 4),
-  )
+  const regionSeeds = regions.map((region) => championsQualifiers(state, region))
   return (['A', 'B', 'C', 'D'] as const).map((name, index) => ({
     name,
     ids: regions.map((_, regionIndex) => regionSeeds[regionIndex][(index + regionIndex) % 4]),
@@ -1510,9 +1680,12 @@ function awardRegionalPlayoffQualifiers(
     )
   )
     return
-  regionalPlayoffQualifiers(state, phase, region, config.qualifiers).forEach((id, index) => {
+  const qualifiers =
+    phase === 'Stage 1'
+      ? regionalPlayoffQualifiers(state, phase, region, config.qualifiers)
+      : championsQualifiers(state, region)
+  qualifiers.forEach((id, index) => {
     state.teams[id].playoffStage = prefix + (index + 1)
-    state.teams[id].championshipPoints += phase === 'Stage 1' ? 3 : 5
   })
 }
 function finishRegionalWeek(
@@ -2092,7 +2265,6 @@ export function simulateSeries(
   a.mapLosses += bWins
   b.mapWins += bWins
   b.mapLosses += aWins
-  state.teams[winnerId].championshipPoints++
   updateFormAndMorale(state, [...a.lineup, ...b.lineup], mapResults, (id) =>
     (winnerId === aId ? a : b).lineup.includes(id),
   )
@@ -2182,6 +2354,7 @@ function playFixture(
   fixture.resultId = result.id
   state.matches.unshift(result)
   if (fixture.phase === 'Kickoff') applyKickoffResult(state, result)
+  refreshChampionshipPoints(state)
   return result
 }
 const tournamentSteps: string[][] = [
@@ -2380,9 +2553,7 @@ function overall(player: Player) {
   return Object.values(player.ratings).reduce((a, b) => a + b, 0) / skills.length
 }
 export function rolloverSeason(state: GameState) {
-  const openingByes = new Set(
-    regions.flatMap((region) => regionalPlayoffQualifiers(state, 'Stage 2', region, 4)),
-  )
+  const openingByes = new Set(regions.flatMap((region) => championsQualifiers(state, region)))
   const finishedSeason = state.season
   state.week = 1
   state.season++
@@ -2866,7 +3037,6 @@ function finishKickoffRegion(
     if (state.kickoff[id].status === 'qualified') return
     state.kickoff[id].status = 'qualified'
     state.teams[id].playoffStage = 'Masters 1 · qualified'
-    state.teams[id].championshipPoints += 2
   })
 }
 function updateDevelopmentAndFinances(state: GameState) {
