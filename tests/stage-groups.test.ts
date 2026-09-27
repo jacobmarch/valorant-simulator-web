@@ -141,7 +141,7 @@ describe('Stage group format', () => {
     legacy.version = 11
     localStorage.setItem(SAVE_KEY, JSON.stringify(legacy))
     const migrated = loadGame()!
-    expect(migrated.version).toBe(14)
+    expect(migrated.version).toBe(15)
     expect(migrated.week).toBe(11)
     expect(
       migrated.fixtures.filter((f) => f.phase === 'Stage 1' && f.status === 'completed'),

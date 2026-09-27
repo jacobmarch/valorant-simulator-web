@@ -136,7 +136,7 @@ describe('sponsors', () => {
     })
     memory.set(SAVE_KEY, JSON.stringify(legacy))
     const loaded = loadGame()!
-    expect(loaded.version).toBe(14)
+    expect(loaded.version).toBe(15)
     expect(pendingSponsorOffers(loaded)?.offers).toHaveLength(3)
     expect(loaded.teams.sen.sponsor?.weekly).toBeGreaterThan(0)
     expect(loaded.teams.sen.prestige).toBeGreaterThan(loaded.teams.nrg.prestige!)
