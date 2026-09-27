@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, Trophy } from 'lucide-react'
 import { dateForWeek, type Fixture, type GameState, type MatchResult } from './game'
 import { BoxScoreModal } from './game-views'
+import { YearInReview } from './season-review-view'
 import { Badge, Empty, Page, PanelTitle, Stat, TeamMark, regionColors, tone } from './ui'
 
 export type TeamResult = {
@@ -85,6 +86,10 @@ export function Results({
   const [season, setSeason] = useState(initialSeason ?? s.season)
   const [event, setEvent] = useState('All')
   const [openId, setOpenId] = useState<string>()
+  const [reviewOpen, setReviewOpen] = useState(false)
+  const reviewSeason = s.reviews?.some((review) => review.season === season)
+    ? season
+    : s.reviews?.[0]?.season
   const results = seasonResults(s, season)
   const events = eventRecords(results)
   const shown = event === 'All' ? results : results.filter(({ match }) => match.phase === event)
@@ -113,20 +118,27 @@ export function Results({
       title="Season results"
       subtitle={`Every series ${team.name} played, by event. Click a series for its box score.`}
       actions={
-        seasons.length > 1 && (
-          <select
-            aria-label="Season"
-            value={season}
-            onChange={(e) => pickSeason(Number(e.target.value))}
-          >
-            {seasons.map((value) => (
-              <option value={value} key={value}>
-                Season {value}
-                {value === s.season ? ' (current)' : ''}
-              </option>
-            ))}
-          </select>
-        )
+        <>
+          {reviewSeason != null && (
+            <button className="secondary" onClick={() => setReviewOpen(true)}>
+              <Trophy size={15} /> Year in review
+            </button>
+          )}
+          {seasons.length > 1 && (
+            <select
+              aria-label="Season"
+              value={season}
+              onChange={(e) => pickSeason(Number(e.target.value))}
+            >
+              {seasons.map((value) => (
+                <option value={value} key={value}>
+                  Season {value}
+                  {value === s.season ? ' (current)' : ''}
+                </option>
+              ))}
+            </select>
+          )}
+        </>
       }
     >
       {results.length === 0 ? (
@@ -263,6 +275,9 @@ export function Results({
             </section>
           </div>
         </>
+      )}
+      {reviewOpen && (
+        <YearInReview s={s} season={reviewSeason} onClose={() => setReviewOpen(false)} />
       )}
       {opened && (
         <BoxScoreModal

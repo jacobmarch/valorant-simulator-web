@@ -55,6 +55,7 @@ import { DashboardV2, MatchPreview, MatchesV2, TacticsV2 } from './game-views'
 import { CompetitionV2 } from './competition-view'
 import { Finances } from './finances-view'
 import { Results } from './results-view'
+import { YearInReview } from './season-review-view'
 import { SeriesWalkthrough, SimChoice } from './series-walkthrough'
 import { DEFAULT_TRAINING } from './development'
 import {
@@ -740,6 +741,11 @@ export default function App() {
         ? simulateTournamentRound(s, attack, defense)
         : advanceWeek(s, attack, defense),
     )
+  const closeReview = () => {
+    const next = { ...s, pendingReview: null }
+    saveGame(next)
+    setS(next)
+  }
   const simWeek = () => commit(advanceWeek(s, attack, defense))
   const simMatch = (fixtureId: string) => {
     setSimChoiceId(undefined)
@@ -930,6 +936,9 @@ export default function App() {
             openMatch(id)
           }}
         />
+      )}
+      {s.pendingReview != null && !walkthrough && (
+        <YearInReview s={s} season={s.pendingReview} onClose={closeReview} />
       )}
       {previewId && (
         <MatchPreview

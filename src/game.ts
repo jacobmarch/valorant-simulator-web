@@ -22,6 +22,13 @@ import { bestRoleAssignment, compositionPenalty, roleRating } from './roles'
 import { attackerEdge, describeVeto, mapFit, runVeto } from './maps'
 import { recordMove, replenishFreeAgents, runAiTransfers } from './transfers'
 import {
+  backfillSeasonStats,
+  closeSeasonReview,
+  type PlayerSeasonLine,
+  recordSeasonStats,
+  type SeasonReview,
+} from './season-review'
+import {
   enforceSponsorDeadline,
   paySponsors,
   seedSponsors,
@@ -174,7 +181,7 @@ export type TransferRecord = {
   note?: string
 }
 export type GameState = {
-  version: 14
+  version: 15
   season: number
   week: number
   managerName: string
@@ -194,6 +201,12 @@ export type GameState = {
   settings: Record<string, DelegationMode | boolean>
   rng: number
   saveTimestamp: string
+  /** Each player's running line for the current season, kept because box scores get pruned. */
+  seasonStats?: Record<string, PlayerSeasonLine>
+  /** Year-in-review summaries of finished seasons, newest first. */
+  reviews?: SeasonReview[]
+  /** Season whose review pops up on next load, until the manager dismisses it. */
+  pendingReview?: number | null
 }
 
 const SAVE_KEY = 'vct-manager-mvp-save-v1'
@@ -381,7 +394,7 @@ export function createGame(managerName: string, currentTeamId: string): GameStat
     )
   })
   const state: GameState = {
-    version: 14,
+    version: 15,
     season: 2026,
     week: 1,
     managerName: managerName || 'Manager',
@@ -413,6 +426,9 @@ export function createGame(managerName: string, currentTeamId: string): GameStat
     },
     rng: 20260201,
     saveTimestamp: new Date().toISOString(),
+    seasonStats: {},
+    reviews: [],
+    pendingReview: null,
   }
   replenishFreeAgents(state)
   seedSponsors(state)
@@ -623,7 +639,13 @@ function migrateGame(raw: unknown): GameState | null {
       'Championship Points now follow the 2026 VCT table: event placements plus a point per Stage group win. Stage 2 finalists and the next two teams by points qualify for Champions.',
     )
   }
-  state.version = 14
+  if (previousVersion < 15) {
+    // Older saves did not tally season lines; rebuild what the kept box scores allow.
+    backfillSeasonStats(state)
+    state.reviews ??= []
+    state.pendingReview ??= null
+  }
+  state.version = 15
   pruneHistory(state)
   ensureWeekScheduled(state, state.week)
   return state
@@ -1180,6 +1202,26 @@ export function championshipPointsTable(state: GameState) {
     ),
   )
   return table
+}
+/**
+ * An event's finishing order this season by bracket placement (Kickoff: the
+ * three Masters seeds, then the Lower Final loser). Regional events need a region.
+ */
+export function eventFinish(
+  state: GameState,
+  phase: Exclude<CompetitionPhase, 'Break' | 'Offseason'>,
+  region?: Region,
+): Array<string | undefined> {
+  if (phase === 'Kickoff') return region ? kickoffFinish(state, region) : []
+  return playoffFinish(
+    state.fixtures.filter(
+      (fixture) =>
+        fixture.season === state.season &&
+        fixture.phase === phase &&
+        fixture.stage === 'Playoffs' &&
+        (!region || fixture.region === region),
+    ),
+  )
 }
 function refreshChampionshipPoints(state: GameState) {
   const table = championshipPointsTable(state)
@@ -2353,6 +2395,7 @@ function playFixture(
   fixture.winnerId = result.winnerId
   fixture.resultId = result.id
   state.matches.unshift(result)
+  recordSeasonStats(state, result)
   if (fixture.phase === 'Kickoff') applyKickoffResult(state, result)
   refreshChampionshipPoints(state)
   return result
@@ -2555,6 +2598,7 @@ function overall(player: Player) {
 export function rolloverSeason(state: GameState) {
   const openingByes = new Set(regions.flatMap((region) => championsQualifiers(state, region)))
   const finishedSeason = state.season
+  closeSeasonReview(state)
   state.week = 1
   state.season++
   Object.values(state.players).forEach((player) => {
