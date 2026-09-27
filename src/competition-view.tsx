@@ -1,6 +1,10 @@
 import { createContext, useContext, useState, type ReactNode } from 'react'
 import {
   activePhaseForWeek,
+  CHAMPIONSHIP_POINTS,
+  championshipPointsStandings,
+  championshipPointsTable,
+  championsQualifiers,
   competitionRecord,
   currentTeam,
   dateForWeek,
@@ -80,7 +84,7 @@ const events: Record<PlayablePhase, EventInfo> = {
     type: 'regional',
     location: 'Regional roadshows',
     format: 'Two groups of six and playoffs',
-    stakes: 'Champions qualification',
+    stakes: 'Two Champions places per region, plus two more by Championship Points',
   },
   Champions: {
     start: 36,
@@ -244,9 +248,11 @@ function TeamTable({
                   )
                 : false
             const qualifiers =
-              phase === 'Stage 1' || phase === 'Stage 2'
-                ? regionalPlayoffQualifiers(s, phase, region)
-                : kickoffQualifiers(s, region)
+              phase === 'Stage 2'
+                ? championsQualifiers(s, region)
+                : phase === 'Stage 1'
+                  ? regionalPlayoffQualifiers(s, phase, region)
+                  : kickoffQualifiers(s, region)
             const qualification = playoffComplete ? qualifiers.indexOf(id) : -1
             const label =
               phase === 'Kickoff'
@@ -592,7 +598,95 @@ function KickoffBracket({
     </section>
   )
 }
-type CompetitionTab = 'bracket' | 'opening' | 'standings' | 'matches'
+type CompetitionTab = 'bracket' | 'opening' | 'standings' | 'matches' | 'points'
+const pointsEvents = Object.keys(CHAMPIONSHIP_POINTS) as Array<keyof typeof CHAMPIONSHIP_POINTS>
+/** The season's Championship Points race for one region, with each event's contribution. */
+export function ChampionsPointsPanel({
+  s,
+  region,
+  setRegion,
+}: {
+  s: GameState
+  region: Region
+  setRegion?: (value: Region) => void
+}) {
+  const table = championshipPointsTable(s),
+    ordered = championshipPointsStandings(s, region),
+    qualifiers = championsQualifiers(s, region)
+  const status = (id: string) => {
+    const seed = qualifiers.indexOf(id)
+    if (seed >= 0)
+      return {
+        text: `Champions #${seed + 1} · ${seed === 0 ? 'Stage 2 winner' : seed === 1 ? 'Stage 2 finalist' : 'points'}`,
+        color: tone.accent,
+      }
+    return qualifiers.length ? { text: 'Out', color: tone.muted } : null
+  }
+  return (
+    <section className="panel standings-panel">
+      <PanelTitle
+        eyebrow={`${region} · season ${s.season}`}
+        title="Championship Points race"
+        right={<Badge color={colors[region]}>Finalists + top 2 by points</Badge>}
+      />
+      {setRegion && <RegionPicker region={region} setRegion={setRegion} />}
+      <p className="muted">
+        Teams earn points for Kickoff, Stage and Masters placements and one per Stage group win. The
+        two Stage 2 finalists qualify for Champions as seeds 1 and 2; the next two teams by points,
+        wherever they finished, take seeds 3 and 4.
+      </p>
+      <div className="table-wrap competition-table">
+        <table>
+          <thead>
+            <tr>
+              <th>Pos</th>
+              <th>Organization</th>
+              {pointsEvents.map((event) => (
+                <th key={event}>{event}</th>
+              ))}
+              <th title="One point per Stage 1 and Stage 2 group win">Wins</th>
+              <th>Total</th>
+              <th>Champions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ordered.map((id, index) => {
+              const team = s.teams[id],
+                row = table[id],
+                badge = status(id)
+              return (
+                <tr className={id === s.currentTeamId ? 'current' : ''} key={id}>
+                  <td>{String(index + 1).padStart(2, '0')}</td>
+                  <td>
+                    <strong>
+                      <span className="mini" style={{ background: team.color }}>
+                        {team.short.slice(0, 2)}
+                      </span>
+                      {team.name}
+                    </strong>
+                  </td>
+                  {pointsEvents.map((event) => {
+                    const entry = row.events[event]
+                    return (
+                      <td key={event} title={entry ? `${entry.place} place` : undefined}>
+                        {entry ? `${entry.points} (${entry.place})` : '—'}
+                      </td>
+                    )
+                  })}
+                  <td>{row.stageWins}</td>
+                  <td>
+                    <strong>{row.total}</strong>
+                  </td>
+                  <td>{badge ? <Badge color={badge.color}>{badge.text}</Badge> : '—'}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )
+}
 function StandingsPanel({
   s,
   region,
@@ -612,7 +706,7 @@ function StandingsPanel({
           <Badge color={colors[region]}>
             {phase === 'Kickoff'
               ? '3 qualify'
-              : `${groups ? 'Top 4 per group' : 'Top 8'} playoffs · ${phase === 'Stage 1' ? 3 : 4} qualify`}
+              : `${groups ? 'Top 4 per group' : 'Top 8'} playoffs · ${phase === 'Stage 1' ? '3 qualify' : 'finalists qualify'}`}
           </Badge>
         }
       />
@@ -983,7 +1077,11 @@ function ChampionsGroups({
     </section>
   )
 }
-const tabsFor = (phase: PlayablePhase): Array<[CompetitionTab, string]> =>
+const tabsFor = (phase: PlayablePhase): Array<[CompetitionTab, string]> => [
+  ...eventTabs(phase),
+  ['points', 'Champions points'],
+]
+const eventTabs = (phase: PlayablePhase): Array<[CompetitionTab, string]> =>
   phase === 'Kickoff'
     ? [
         ['bracket', 'Bracket'],
@@ -1059,7 +1157,9 @@ export function CompetitionV2({
   )
   const matchday = <Matchday week={week} setWeek={setWeek} min={info.start} max={info.end} />
   const body =
-    tab === 'matches' ? (
+    tab === 'points' ? (
+      <ChampionsPointsPanel s={s} region={region} setRegion={regional ? undefined : setRegion} />
+    ) : tab === 'matches' ? (
       regional ? (
         <Schedule
           onOpenMatch={onOpenMatch}

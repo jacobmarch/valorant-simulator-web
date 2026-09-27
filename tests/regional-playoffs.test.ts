@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import {
   advanceWeek,
+  championsQualifiers,
   createGame,
   fixturesForWeek,
   regionalPlayoffQualifiers,
@@ -112,7 +113,7 @@ describe('regional split playoffs', () => {
     const expected = new Map(
       (['Americas', 'EMEA', 'Pacific', 'China'] as const).map((region) => [
         region,
-        new Set(regionalPlayoffQualifiers(beforeReset, 'Stage 2', region, 4)),
+        new Set(championsQualifiers(beforeReset, region)),
       ]),
     )
     const state = advanceWeek(beforeReset, 'Measured defaults', 'Disciplined retakes')
