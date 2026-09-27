@@ -10,6 +10,7 @@ export type View =
   | 'scouting'
   | 'tactics'
   | 'matches'
+  | 'results'
   | 'competition'
   | 'finances'
   | 'settings'

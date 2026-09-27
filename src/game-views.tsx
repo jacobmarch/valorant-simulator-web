@@ -297,8 +297,8 @@ export function DashboardV2({
             eyebrow="RESULTS"
             title="Recent series"
             right={
-              <button className="link" onClick={() => setView('matches')}>
-                Match center <ArrowRight size={14} />
+              <button className="link" onClick={() => setView('results')}>
+                All results <ArrowRight size={14} />
               </button>
             }
           />
@@ -1045,6 +1045,84 @@ export function MatchesV2({ s, initialMatchId }: { s: GameState; initialMatchId?
         </Modal>
       )}
     </Page>
+  )
+}
+
+/** Full box score in a pop-up: map scores, per-map tabs and the sortable scoreboard. */
+export function BoxScoreModal({
+  s,
+  match,
+  eyebrow,
+  onClose,
+  onOpenFull,
+}: {
+  s: GameState
+  match: MatchResult
+  eyebrow?: string
+  onClose: () => void
+  onOpenFull?: (id: string) => void
+}) {
+  const [tab, setTab] = useState<'series' | number>('series')
+  const [mode, setMode] = useState<ScoreboardMode>('teams')
+  const [sortKey, setSortKey] = useState<ScoreSortKey>('acs')
+  const [direction, setDirection] = useState<ScoreDirection>('desc')
+  const stats = useMemo(() => aggregateStats(match, tab), [match, tab])
+  const a = s.teams[match.aId],
+    b = s.teams[match.bId]
+  const onSort = (key: ScoreSortKey) => {
+    if (key === sortKey) setDirection((current) => (current === 'desc' ? 'asc' : 'desc'))
+    else {
+      setSortKey(key)
+      setDirection(key === 'player' ? 'asc' : 'desc')
+    }
+  }
+  return (
+    <Modal
+      eyebrow={eyebrow ?? `${match.phase} · Week ${match.week} · Bo${match.bestOf}`}
+      title={`${a.name} ${match.aScore}–${match.bScore} ${b.name}`}
+      onClose={onClose}
+      wide
+    >
+      <div className="view-tabs box-score-tabs">
+        <button className={tab === 'series' ? 'active' : ''} onClick={() => setTab('series')}>
+          Entire series
+        </button>
+        {match.maps.map((map, index) => (
+          <button
+            className={tab === index ? 'active' : ''}
+            onClick={() => setTab(index)}
+            key={`${map.map}-${index}`}
+          >
+            {map.map} <b className={map.winnerId === match.aId ? 'win' : ''}>{map.aScore}</b>–
+            <b className={map.winnerId === match.bId ? 'win' : ''}>{map.bScore}</b>
+          </button>
+        ))}
+      </div>
+      {hasMatchDetail(match) ? (
+        <Scoreboard
+          s={s}
+          match={match}
+          stats={stats}
+          mode={mode}
+          sortKey={sortKey}
+          direction={direction}
+          onSort={onSort}
+          onModeChange={setMode}
+        />
+      ) : (
+        <p className="muted">
+          Player stats for this series were cleared to keep the save small. Box scores are kept for
+          your own team's matches this season and the most recent series around the league.
+        </p>
+      )}
+      {onOpenFull && (
+        <div className="modal-actions">
+          <button className="secondary" onClick={() => onOpenFull(match.id)}>
+            Open in Match center <ArrowRight size={15} />
+          </button>
+        </div>
+      )}
+    </Modal>
   )
 }
 
