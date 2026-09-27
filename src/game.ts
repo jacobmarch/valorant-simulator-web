@@ -21,6 +21,16 @@ import {
 import { bestRoleAssignment, compositionPenalty, roleRating } from './roles'
 import { attackerEdge, describeVeto, mapFit, runVeto } from './maps'
 import { recordMove, replenishFreeAgents, runAiTransfers } from './transfers'
+import {
+  enforceSponsorDeadline,
+  paySponsors,
+  seedSponsors,
+  settleSponsorSeason,
+  SPONSOR_SETTLE_WEEK,
+  type SeasonSummary,
+  type SponsorContract,
+  type SponsorOffers,
+} from './sponsors'
 
 export type Skill = (typeof skills)[number]
 export type DelegationMode = 'hands-on' | 'balanced' | 'hands-off'
@@ -72,6 +82,10 @@ export type Team = {
   playoffStage: string
   /** The manager's map order, best first. Only read for the managed team. */
   mapOrder?: string[]
+  sponsor?: SponsorContract | null
+  /** 0-100 running score of how deep the team goes each season; sets sponsor offers. */
+  prestige?: number
+  history?: SeasonSummary[]
 }
 export type PlayerStat = {
   kills: number
@@ -160,7 +174,7 @@ export type TransferRecord = {
   note?: string
 }
 export type GameState = {
-  version: 12
+  version: 13
   season: number
   week: number
   managerName: string
@@ -173,6 +187,8 @@ export type GameState = {
   inbox: string[]
   jobs: JobOffer[]
   transfers: TransferRecord[]
+  /** The managed team's open sponsor offers, if it has not signed yet. */
+  sponsorOffers?: SponsorOffers | null
   training: Record<string, Partial<Record<Skill, number>>>
   scoutingHours: Record<string, number>
   settings: Record<string, DelegationMode | boolean>
@@ -365,7 +381,7 @@ export function createGame(managerName: string, currentTeamId: string): GameStat
     )
   })
   const state: GameState = {
-    version: 12,
+    version: 13,
     season: 2026,
     week: 1,
     managerName: managerName || 'Manager',
@@ -399,6 +415,7 @@ export function createGame(managerName: string, currentTeamId: string): GameStat
     saveTimestamp: new Date().toISOString(),
   }
   replenishFreeAgents(state)
+  seedSponsors(state)
   ensureWeekScheduled(state, 1)
   return state
 }
@@ -583,7 +600,13 @@ function migrateGame(raw: unknown): GameState | null {
     )
       restartStage(state, 'Stage 2')
   }
-  state.version = 12
+  if (previousVersion < 13) {
+    seedSponsors(state)
+    state.inbox.push(
+      'Sponsors are here: pick a yearly sponsor on the Finances page to earn weekly income and a season bonus.',
+    )
+  }
+  state.version = 13
   pruneHistory(state)
   ensureWeekScheduled(state, state.week)
   return state
@@ -2262,7 +2285,9 @@ function finalizeCalendarWeek(state: GameState) {
     }
   }
   runAiTransfers(state)
+  enforceSponsorDeadline(state)
   state.week++
+  if (state.week === SPONSOR_SETTLE_WEEK) settleSponsorSeason(state)
   if (state.week === OFFSEASON_START_WEEK) warnExpiringContracts(state)
   if (state.week > 52) rolloverSeason(state)
   ensureWeekScheduled(state, state.week)
@@ -2867,6 +2892,7 @@ function updateDevelopmentAndFinances(state: GameState) {
   Object.values(state.teams).forEach((team) => {
     team.cash -= team.playerIds.reduce((sum, id) => sum + (state.players[id]?.salary ?? 0) / 52, 0)
   })
+  paySponsors(state)
 }
 export function simulateTournamentRound(
   input: GameState,
