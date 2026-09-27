@@ -2508,3 +2508,173 @@ table {
   font-style: normal;
   font-weight: 500;
 }
+
+/* Season results: stats row, scrolling series list and per-event records */
+.results-stats {
+  margin-bottom: 14px;
+}
+.results-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 14px;
+  align-items: start;
+}
+.results-grid > .panel {
+  margin: 0;
+  min-width: 0;
+}
+.results-filter {
+  margin-bottom: 8px;
+}
+.results-list {
+  max-height: calc(100vh - 500px);
+  min-height: 220px;
+  overflow-y: auto;
+  margin-right: -8px;
+  padding-right: 8px;
+}
+.results-row {
+  display: grid;
+  grid-template-columns: 28px 96px minmax(120px, 1fr) minmax(150px, 1.1fr) 44px minmax(0, 1.4fr) 16px;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 9px 6px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-3);
+  text-align: left;
+}
+.results-row:hover {
+  background: rgb(255 255 255 / 0.03);
+  color: var(--text);
+}
+.results-row:last-child {
+  border-bottom: 0;
+}
+.results-when,
+.results-event {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.results-when strong,
+.results-event strong {
+  color: var(--text);
+  font-size: 13px;
+}
+.results-when small,
+.results-event small {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.results-opponent {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.results-opponent strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.results-score {
+  font-size: 17px;
+  text-align: center;
+}
+.results-score.w {
+  color: var(--pos);
+}
+.results-score.l {
+  color: var(--neg);
+}
+.results-maps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-size: 12px;
+}
+.results-maps .w {
+  color: var(--text-2);
+}
+.results-maps .l {
+  color: var(--text-3);
+}
+.results-events {
+  max-height: calc(100vh - 270px);
+  overflow-y: auto;
+}
+.results-event-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 8px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+.results-event-row:hover,
+.results-event-row.active {
+  background: var(--surface-2);
+}
+.results-event-row span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.results-event-row small {
+  color: var(--text-3);
+  font-size: 12px;
+}
+.box-score-tabs {
+  margin-bottom: 12px;
+}
+.box-score-tabs b {
+  font-weight: 600;
+}
+.box-score-tabs b.win {
+  color: var(--pos);
+}
+@media (max-width: 1100px) {
+  .results-grid {
+    grid-template-columns: 1fr;
+  }
+  .results-row {
+    grid-template-columns: 28px minmax(0, 1fr) minmax(0, 1fr) 44px 16px;
+  }
+  .results-when,
+  .results-maps {
+    display: none;
+  }
+}
+@media (max-width: 720px) {
+  .results-list,
+  .results-events {
+    max-height: none;
+  }
+  .results-row {
+    grid-template-columns: 28px minmax(0, 1fr) 44px;
+  }
+  .results-event,
+  .results-row > svg {
+    display: none;
+  }
+}
+/* The box score pop-up needs the scoreboard's full width */
+.modal.wide:has(.box-score-tabs) {
+  width: min(1200px, 100%);
+}

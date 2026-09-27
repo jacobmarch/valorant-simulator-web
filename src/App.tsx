@@ -6,6 +6,7 @@ import {
   Dumbbell,
   FastForward,
   LayoutDashboard,
+  ListOrdered,
   MonitorPlay,
   Play,
   Settings as SettingsIcon,
@@ -53,6 +54,7 @@ import {
 import { DashboardV2, MatchPreview, MatchesV2, TacticsV2 } from './game-views'
 import { CompetitionV2 } from './competition-view'
 import { Finances } from './finances-view'
+import { Results } from './results-view'
 import { SeriesWalkthrough, SimChoice } from './series-walkthrough'
 import { DEFAULT_TRAINING } from './development'
 import {
@@ -95,6 +97,7 @@ const navGroups: Array<{ label: string; items: Array<[View, string, ReactNode]> 
     items: [
       ['tactics', 'Match prep', <Crosshair size={17} key="i" />],
       ['matches', 'Match center', <MonitorPlay size={17} key="i" />],
+      ['results', 'Results', <ListOrdered size={17} key="i" />],
       ['competition', 'Competition', <Trophy size={17} key="i" />],
     ],
   },
@@ -795,6 +798,8 @@ export default function App() {
       />
     ) : view === 'matches' ? (
       <MatchesV2 s={s} initialMatchId={matchId} key={matchId} />
+    ) : view === 'results' ? (
+      <Results s={s} onOpenFull={openMatch} />
     ) : view === 'competition' ? (
       <CompetitionV2
         s={s}
