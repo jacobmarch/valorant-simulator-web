@@ -64,7 +64,6 @@ export type SeasonReview = {
   leagues: LeagueReview[]
 }
 
-export const REVIEW_LIMIT = 10
 const regions: Region[] = ['Americas', 'EMEA', 'Pacific', 'China']
 const phases: ReviewEventPhase[] = [
   'Kickoff',
@@ -252,10 +251,8 @@ export function buildSeasonReview(state: GameState): SeasonReview {
 /** Stores the finished season's review and flags it for the pop-up. */
 export function closeSeasonReview(state: GameState) {
   const review = buildSeasonReview(state)
-  state.reviews = [
-    review,
-    ...(state.reviews ?? []).filter((r) => r.season !== review.season),
-  ].slice(0, REVIEW_LIMIT)
+  // Every season is kept: a review is a few KB, and it is the game's only record of past winners.
+  state.reviews = [review, ...(state.reviews ?? []).filter((r) => r.season !== review.season)]
   state.pendingReview = review.season
   state.seasonStats = {}
   return review

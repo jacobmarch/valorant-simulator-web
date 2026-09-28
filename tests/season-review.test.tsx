@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import { advanceWeek, createGame, eventFinish, type GameState, loadGame } from '../src/game'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { REVIEW_LIMIT } from '../src/season-review'
 import { YearInReview } from '../src/season-review-view'
 import type { Region } from '../src/seed'
 
@@ -35,6 +34,10 @@ describe('year in review', () => {
       stage2: Object.fromEntries(regions.map((region) => [region, finish('Stage 2', region)])),
       record: [state.teams.c9.wins, state.teams.c9.losses],
       lines: structuredClone(state.seasonStats ?? {}),
+      // Rollover prunes other teams' 2026 series, so count the maps before it.
+      playedMaps: state.matches
+        .filter((match) => match.season === 2026)
+        .reduce((sum, match) => sum + match.maps.length, 0),
     }
     state = step(state)
     expect(state.season).toBe(2027)
@@ -62,10 +65,7 @@ describe('year in review', () => {
     expect(review.teamMvp && expected.lines[review.teamMvp.playerId].teamId).toBe('c9')
     expect(review.globalMvp).not.toBeNull()
     const totalMaps = Object.values(expected.lines).reduce((sum, line) => sum + line.maps, 0)
-    const playedMaps = state.matches
-      .filter((match) => match.season === 2026)
-      .reduce((sum, match) => sum + match.maps.length, 0)
-    expect(totalMaps).toBe(playedMaps * 10)
+    expect(totalMaps).toBe(expected.playedMaps * 10)
     expect(review.placements.map((placement) => placement.phase)).toEqual([
       'Kickoff',
       'Masters 1',
@@ -85,7 +85,6 @@ describe('year in review', () => {
     state = advanceTo(loaded!, 2028, 1)
     expect(state.reviews?.map((entry) => entry.season)).toEqual([2027, 2026])
     expect(state.pendingReview).toBe(2027)
-    expect(state.reviews!.length).toBeLessThanOrEqual(REVIEW_LIMIT)
     // The 2027 review only counts 2027 fixtures.
     const champions2027 = state.reviews![0].events.find((event) => event.phase === 'Champions')
     expect(champions2027?.podium).toHaveLength(4)

@@ -697,7 +697,10 @@ function restartStage(state: GameState, phase: 'Stage 1' | 'Stage 2') {
 }
 // Browsers cap localStorage at about 5 MB per site, and a full box score costs
 // about 5 KB per series, so only recent and managed-team matches keep round logs
-// and player stats. Older seasons are dropped entirely.
+// and player stats. The whole save is cloned and written on every click, so past
+// seasons keep only the managed team's series (for Results); the rest of the
+// league's history lives on in the compact year-in-review summaries. Seasons
+// before the previous one are dropped entirely.
 const DETAILED_MATCH_LIMIT = 120
 const HISTORY_SEASONS = 2
 const INBOX_LIMIT = 200
@@ -714,16 +717,18 @@ export function pruneHistory(
   { detailedMatches = DETAILED_MATCH_LIMIT, seasons = HISTORY_SEASONS } = {},
 ) {
   const oldestSeason = state.season - seasons + 1
-  const involvesManaged = (match: MatchResult) =>
-    match.aId === state.currentTeamId || match.bId === state.currentTeamId
+  const involvesManaged = (item: MatchResult | Fixture) =>
+    item.aId === state.currentTeamId || item.bId === state.currentTeamId
+  const kept = (item: MatchResult | Fixture) =>
+    item.season === state.season || (item.season >= oldestSeason && involvesManaged(item))
   state.matches = state.matches
-    .filter((match) => match.season >= oldestSeason)
+    .filter(kept)
     .map((match, index) =>
       index < detailedMatches || (match.season === state.season && involvesManaged(match))
         ? match
         : stripMatchDetail(match),
     )
-  state.fixtures = state.fixtures.filter((fixture) => fixture.season >= oldestSeason)
+  state.fixtures = state.fixtures.filter(kept)
   state.inbox = state.inbox.slice(0, INBOX_LIMIT)
   state.transfers = state.transfers
     .filter((transfer) => transfer.season >= oldestSeason)
@@ -867,36 +872,64 @@ function regionalPlayoffConfig(phase: 'Stage 1' | 'Stage 2'): RegionalPlayoffCon
 function regionalPlayoffPhase(phase: string) {
   return phase === 'Stage 1' || phase === 'Stage 2'
 }
-export function competitionRecord(state: GameState, teamId: string, phase: string) {
-  let wins = 0,
-    losses = 0,
-    mapWins = 0,
-    mapLosses = 0
-  state.matches
-    .filter((match) => {
-      const fixture = match.fixtureId
-        ? state.fixtures.find((candidate) => candidate.id === match.fixtureId)
-        : undefined
-      return (
-        match.season === state.season &&
-        match.phase.startsWith(phase) &&
-        (match.aId === teamId || match.bId === teamId) &&
-        ((phase !== 'Stage 1' && phase !== 'Stage 2') || !fixture || fixture.stage === 'League')
-      )
-    })
-    .forEach((match) => {
-      if (match.winnerId === teamId) wins++
-      else losses++
-      const isA = match.aId === teamId
-      mapWins += isA ? match.aScore : match.bScore
-      mapLosses += isA ? match.bScore : match.aScore
-    })
-  return { wins, losses, mapWins, mapLosses }
+type CompetitionRecord = { wins: number; losses: number; mapWins: number; mapLosses: number }
+/**
+ * Every team's record in one phase of the current season, from a single pass
+ * over the matches. Standings sort with this instead of rescanning per comparison.
+ */
+function competitionRecords(state: GameState, phase: string) {
+  const records = new Map<string, CompetitionRecord>()
+  // Stage records count league play only, not the playoff bracket.
+  const stageById =
+    phase === 'Stage 1' || phase === 'Stage 2'
+      ? new Map(
+          state.fixtures
+            .filter((fixture) => fixture.season === state.season && fixture.phase === phase)
+            .map((fixture) => [fixture.id, fixture.stage]),
+        )
+      : undefined
+  const tally = (teamId: string, won: boolean, own: number, other: number) => {
+    const record = records.get(teamId) ?? { wins: 0, losses: 0, mapWins: 0, mapLosses: 0 }
+    if (won) record.wins++
+    else record.losses++
+    record.mapWins += own
+    record.mapLosses += other
+    records.set(teamId, record)
+  }
+  for (const match of state.matches) {
+    if (match.season !== state.season || !match.phase.startsWith(phase)) continue
+    if (
+      stageById &&
+      match.fixtureId &&
+      stageById.has(match.fixtureId) &&
+      stageById.get(match.fixtureId) !== 'League'
+    )
+      continue
+    tally(match.aId, match.winnerId === match.aId, match.aScore, match.bScore)
+    tally(match.bId, match.winnerId === match.bId, match.bScore, match.aScore)
+  }
+  return records
+}
+export function competitionRecord(
+  state: GameState,
+  teamId: string,
+  phase: string,
+): CompetitionRecord {
+  return (
+    competitionRecords(state, phase).get(teamId) ?? {
+      wins: 0,
+      losses: 0,
+      mapWins: 0,
+      mapLosses: 0,
+    }
+  )
 }
 export function rankedTeams(state: GameState, teamIds: string[], phase: string) {
+  const records = competitionRecords(state, phase)
+  const empty = { wins: 0, losses: 0, mapWins: 0, mapLosses: 0 }
   return [...teamIds].sort((a, b) => {
-    const ar = competitionRecord(state, a, phase),
-      br = competitionRecord(state, b, phase)
+    const ar = records.get(a) ?? empty,
+      br = records.get(b) ?? empty
     return (
       br.wins - ar.wins ||
       ar.losses - br.losses ||

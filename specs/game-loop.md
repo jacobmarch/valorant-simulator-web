@@ -39,9 +39,11 @@ After week 52 the game moves to week 1 of the next season:
 
 ## Year in review
 
-Before rollover resets anything, the finished season is condensed into a review (`src/season-review.ts`) that pops up once on the new season's first screen and stays reachable from Results → Year in review. The last 10 reviews are kept.
+Before rollover resets anything, the finished season is condensed into a review (`src/season-review.ts`) that pops up once on the new season's first screen and stays reachable from Results → Year in review. Every review is kept (a few KB each), so it is the game's permanent record of past winners.
 
 - **Your year:** series and map record, Championship Points, titles, and a placement in each event (bracket place, "Masters seed #N" for Kickoff, or the stage the team went out in).
 - **MVPs:** every player's season line (maps, kills, deaths, assists, ACS, first kills) is tallied as each series is played, because pruning strips most box scores during the year. Impact per map = average ACS + 60 × (K/D capped at 2 − 1) + 15 × first kills per map. Players need at least a third of the busiest player's maps. Team MVP and key players rank on impact alone; the global and league MVPs add 1.5 × the team's Championship Points plus 10 for a Masters title and 25 for Champions.
 - **Awards & winners:** global MVP, the Masters 1, Masters 2 and Champions winners with runners-up, and each league's Kickoff top seed, Stage 1 and Stage 2 winners.
 - **League pages (one per region):** Kickoff seeds, Stage 1 and Stage 2 top four, the four Champions spots, the top six by Championship Points, and the league MVP.
+
+The save only carries raw history the game still reads: the current season in full, and from the previous season just the managed team's series (for Results). Other teams' older series are dropped at rollover, because the whole save is cloned and written on every click; the reviews carry their results forward.

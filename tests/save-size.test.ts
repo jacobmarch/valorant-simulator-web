@@ -54,7 +54,8 @@ describe('save size', () => {
 
   test('seasons older than the previous one are dropped', () => {
     const state = createGame('Manager', 'c9')
-    const match = playWeeks(state, 1).matches[0]
+    const match = playWeeks(state, 1).matches.find(involvesManaged(state))
+    if (!match) throw new Error('no managed match')
     state.season = 2028
     state.matches = [
       { ...match, season: 2026 },
@@ -62,6 +63,18 @@ describe('save size', () => {
     ]
     pruneHistory(state)
     expect(state.matches.map((m) => m.season)).toEqual([2027])
+  })
+
+  test('the previous season keeps only the managed team series', () => {
+    const played = playWeeks(createGame('Manager', 'c9'), 2)
+    const state = { ...played, season: played.season + 1 }
+    pruneHistory(state)
+    expect(state.matches.length).toBeGreaterThan(0)
+    expect(state.matches.every(involvesManaged(state))).toBe(true)
+    expect(state.fixtures.length).toBeGreaterThan(0)
+    expect(
+      state.fixtures.every((f) => f.aId === state.currentTeamId || f.bId === state.currentTeamId),
+    ).toBe(true)
   })
 
   test('saving never throws when storage is full', () => {
