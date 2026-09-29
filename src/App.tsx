@@ -36,7 +36,9 @@ import {
   MAX_ROSTER,
   buyOutError,
   buyOutPlayer,
+  askingSalary,
   contractValue,
+  newContractSalary,
   contractedPlayers,
   freeAgents,
   nextTransferWindow,
@@ -44,6 +46,7 @@ import {
   releaseError,
   releasePlayer,
   rosterHistory,
+  salaryForOverall,
   setPlayerStatus,
   signFreeAgent,
   signFreeAgentError,
@@ -341,8 +344,12 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
                     <small>
                       {p.primaryRole}
                       {p.igl ? ' · IGL' : ''} · Age {p.age}
-                      {p.teamId ? ` · ${s.teams[p.teamId].short}` : ''} · {money(p.salary)} / yr ×{' '}
-                      {p.years} · {market === 'free' ? 'cost' : 'buyout'} {money(contractValue(p))}
+                      {p.teamId ? ` · ${s.teams[p.teamId].short}` : ''} · {money(askingSalary(p))} /
+                      yr × {p.years} · {market === 'free' ? 'cost' : 'buyout'}{' '}
+                      {money(contractValue(p))}
+                      {market !== 'free' && newContractSalary(p) > p.salary
+                        ? ` · wants ${money(newContractSalary(p))} / yr to move`
+                        : ''}
                     </small>
                   </span>
                   <button
@@ -387,7 +394,9 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
         <Modal eyebrow="MARKET" title="Transfer rules" onClose={() => setPopup(null)}>
           <p className="modal-lead">
             Contracted players cost annual salary × remaining years. The buyer pays the seller
-            immediately and takes over the contract.
+            immediately, and the player moves on a new salary if their asking price is higher.
+            Asking salaries climb steeply with overall: about {money(salaryForOverall(75))} at 75,{' '}
+            {money(salaryForOverall(85))} at 85 and {money(salaryForOverall(90))} at 90.
           </p>
           <p className="muted">
             Signings, buyouts, and releases only happen in transfer windows: weeks{' '}

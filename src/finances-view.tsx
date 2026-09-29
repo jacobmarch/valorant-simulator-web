@@ -14,6 +14,7 @@ import {
   tierLabels,
   type SponsorContract,
 } from './sponsors'
+import { PRIZES, seasonPrizes } from './prizes'
 import { Badge, PanelTitle, Page, Stat, money, tone } from './ui'
 
 const tierColor = { easy: tone.pos, medium: tone.warn, high: tone.neg } as const
@@ -60,6 +61,8 @@ export function Finances({ s, setState }: { s: GameState; setState: (s: GameStat
   const weeklySponsor = t.sponsor?.weekly ?? 0
   const net = weeklySponsor - weeklySalaries
   const market = pendingSponsorOffers(s)
+  const prizes = seasonPrizes(s, t.id)
+  const prizeTotal = prizes.reduce((sum, prize) => sum + prize.amount, 0)
   const level = sponsorLevel(t)
   const prestige = teamPrestige(t)
   const sign = (id: string) => {
@@ -88,7 +91,7 @@ export function Finances({ s, setState }: { s: GameState; setState: (s: GameStat
         <div className="stat">
           <small>Weekly net</small>
           <strong className={net >= 0 ? 'positive' : 'negative'}>{signed(net)}</strong>
-          <span>before match money ($25k a win)</span>
+          <span>before prize money</span>
         </div>
       </div>
       {market && (
@@ -175,7 +178,7 @@ export function Finances({ s, setState }: { s: GameState; setState: (s: GameStat
             </>
           ) : (
             <p className="muted">
-              Sign one of the offers above. Until then only match winnings come in.
+              Sign one of the offers above. Until then only prize money comes in.
             </p>
           )}
         </section>
@@ -207,6 +210,28 @@ export function Finances({ s, setState }: { s: GameState; setState: (s: GameStat
                   </strong>
                 </li>
               ))}
+          </ul>
+        </section>
+        <section className="panel">
+          <PanelTitle
+            eyebrow={`${s.season} PRIZE MONEY`}
+            title={money(prizeTotal)}
+            right={<Badge>{prizes.length} paid</Badge>}
+          />
+          <p className="muted sponsor-reason">
+            Paid when each event ends. A title is worth {money(PRIZES['Masters 1'][0])} at Masters
+            and {money(PRIZES.Champions[0])} at Champions; a Stage win pays{' '}
+            {money(PRIZES['Stage 1'][0])}.
+          </p>
+          <ul className="sponsor-history">
+            {prizes.map((prize) => (
+              <li key={prize.phase}>
+                <span>{prize.phase}</span>
+                <strong>
+                  {prize.place} · {money(prize.amount)}
+                </strong>
+              </li>
+            ))}
           </ul>
         </section>
       </div>

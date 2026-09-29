@@ -3,6 +3,7 @@ import { MORALE_DEFAULT, overallRating, seedPotential } from './development'
 import { bestRoleAssignment } from './roles'
 import { refreshIgl } from './igl'
 import { roles, type Region } from './seed'
+import { payroll } from './sponsors'
 
 export const MIN_ROSTER = 5
 export const MAX_ROSTER = 7
@@ -39,8 +40,29 @@ export function nextTransferWindow(week: number) {
     transferWindows[0]
   )
 }
+// What a player asks for a new contract each year. It climbs steeply with overall: a
+// league-average 75 wants about $120k, an 85 about $350k, a 90 about $600k and a 95 about $1M,
+// so a roster full of stars costs far more than sponsors alone pay.
+const DEMAND_AT_75 = 120000
+const DEMAND_GROWTH = 0.107
+const MIN_SALARY = 25000
+export function salaryForOverall(overall: number) {
+  return Math.max(MIN_SALARY, money(DEMAND_AT_75 * Math.exp(DEMAND_GROWTH * (overall - 75))))
+}
+export function salaryDemand(player: Player) {
+  return salaryForOverall(overallRating(player.ratings))
+}
+/** Annual salary on the table: free agents ask their current demand, others earn their contract. */
+export function askingSalary(player: Player) {
+  return player.status === 'free-agent' ? salaryDemand(player) : player.salary
+}
+/** Salary on the player's next contract. Nobody takes a pay cut to change teams. */
+export function newContractSalary(player: Player) {
+  const demand = salaryDemand(player)
+  return player.status === 'free-agent' ? demand : Math.max(player.salary, demand)
+}
 export function contractValue(player: Player) {
-  return money(player.salary * player.years)
+  return money(askingSalary(player) * player.years)
 }
 export function playerOverall(player: Player) {
   return Math.round(Object.values(player.ratings).reduce((a, b) => a + b, 0) / 6)
@@ -179,6 +201,7 @@ function applySigning(state: GameState, teamId: string, playerId: string) {
   const team = state.teams[teamId],
     player = state.players[playerId],
     cost = contractValue(player)
+  player.salary = newContractSalary(player)
   team.cash -= cost
   joinTeam(state, player, team)
   recordMove(state, {
@@ -226,6 +249,7 @@ function applyBuyout(state: GameState, buyerId: string, playerId: string) {
     fee = contractValue(player)
   buyer.cash -= fee
   seller.cash += fee
+  player.salary = newContractSalary(player)
   leaveTeam(state, player)
   joinTeam(state, player, buyer)
   recordMove(state, { kind: 'buyout', playerId, fromTeamId: seller.id, toTeamId: buyer.id, fee })
@@ -345,7 +369,7 @@ export function replenishFreeAgents(state: GameState, minimum = MIN_FREE_AGENTS)
         Clutch: base - 3,
         Teamplay: base - 1,
       },
-      salary: money(28000 + (base - 58) * 2500),
+      salary: 0,
       years: 1 + Math.floor(random(state) * 2),
       status: 'free-agent',
       isImport: false,
@@ -356,6 +380,7 @@ export function replenishFreeAgents(state: GameState, minimum = MIN_FREE_AGENTS)
       igl: false,
     }
     const prospect = state.players[id]
+    prospect.salary = salaryDemand(prospect)
     prospect.potential = seedPotential(
       overallRating(prospect.ratings),
       prospect.age,
@@ -365,10 +390,26 @@ export function replenishFreeAgents(state: GameState, minimum = MIN_FREE_AGENTS)
     count++
   }
 }
-function bestAffordableFreeAgent(state: GameState, team: Team) {
-  return freeAgents(state)
-    .filter((player) => contractValue(player) <= team.cash && !importError(state, player, team))
-    .sort((a, b) => playerOverall(b) - playerOverall(a) || a.salary - b.salary)[0]
+/** Payroll an AI organization will carry: its sponsor base plus half of its spare cash. */
+function aiPayrollLimit(team: Team) {
+  return (team.sponsor?.weekly ?? 0) * 52 * 1.15 + Math.max(0, team.cash - AI_CASH_RESERVE) / 2
+}
+export function payrollRoom(state: GameState, team: Team) {
+  return aiPayrollLimit(team) - payroll(state, team)
+}
+// The best free agent the team can pay for, preferring ones that fit its payroll. Pass
+// `mustSign` when the roster is short: then the cheapest option is better than nobody.
+function bestAffordableFreeAgent(state: GameState, team: Team, mustSign = true) {
+  const affordable = freeAgents(state).filter(
+    (player) => contractValue(player) <= team.cash && !importError(state, player, team),
+  )
+  const room = payrollRoom(state, team)
+  const fits = affordable.filter((player) => salaryDemand(player) <= room)
+  if (fits.length)
+    return fits.sort(
+      (a, b) => playerOverall(b) - playerOverall(a) || salaryDemand(a) - salaryDemand(b),
+    )[0]
+  return mustSign ? affordable.sort((a, b) => salaryDemand(a) - salaryDemand(b))[0] : undefined
 }
 
 // AI organizations act during open windows. The manager's team is never a buyout target.
@@ -391,7 +432,7 @@ export function runAiTransfers(state: GameState) {
       return
     }
     if (roll < 0.35 && team.playerIds.length === MIN_ROSTER && team.cash > 600000) {
-      const depth = bestAffordableFreeAgent(state, team)
+      const depth = bestAffordableFreeAgent(state, team, false)
       if (depth && !signFreeAgentError(state, team.id, depth.id))
         applySigning(state, team.id, depth.id)
       return
@@ -412,6 +453,7 @@ function tryAiUpgrade(state: GameState, team: Team) {
     .sort((a, b) => playerOverall(a) - playerOverall(b))[0]
   if (!weakest) return false
   const budget = team.cash - AI_CASH_RESERVE
+  const room = payrollRoom(state, team)
   const target = contractedPlayers(state, team.id)
     .filter((player) => {
       const seller = state.teams[player.teamId as string]
@@ -419,7 +461,8 @@ function tryAiUpgrade(state: GameState, team: Team) {
         seller.id !== state.currentTeamId &&
         seller.region === team.region &&
         playerOverall(player) >= playerOverall(weakest) + 4 &&
-        contractValue(player) <= budget
+        contractValue(player) <= budget &&
+        Math.max(player.salary, salaryDemand(player)) - weakest.salary <= room
       )
     })
     .sort((a, b) => playerOverall(b) - playerOverall(a) || contractValue(a) - contractValue(b))[0]

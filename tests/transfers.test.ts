@@ -3,6 +3,7 @@ import { MORALE_DEFAULT } from '../src/development'
 import { advanceWeek, createGame, type GameState } from '../src/game'
 import {
   MIN_ROSTER,
+  newContractSalary,
   buyOutPlayer,
   contractValue,
   freeAgents,
@@ -11,6 +12,8 @@ import {
   rosterHistory,
   rosterViolations,
   runAiTransfers,
+  salaryDemand,
+  salaryForOverall,
   setPlayerStatus,
   signFreeAgent,
   transferWindowForWeek,
@@ -68,7 +71,8 @@ describe('buyouts', () => {
     const replacement = moves.find((move) => move.kind === 'signing' && move.toTeamId === 'sen')
     expect(next.teams.sen.cash).toBe(sellerCash + fee - (replacement?.fee ?? 0))
     expect(next.players['sen-1'].teamId).toBe('c9')
-    expect(next.players['sen-1'].salary).toBe(target.salary)
+    expect(next.players['sen-1'].salary).toBe(newContractSalary(target))
+    expect(next.players['sen-1'].salary).toBeGreaterThanOrEqual(target.salary)
     expect(next.players['sen-1'].years).toBe(target.years)
     expect(next.teams.c9.playerIds).toContain('sen-1')
     expect(next.teams.sen.playerIds).not.toContain('sen-1')
@@ -182,5 +186,33 @@ describe('AI roster moves', () => {
     expect(state.week).toBe(13)
     expect(rosterHistory(state).length).toBeGreaterThan(0)
     expect(allLegal(state)).toEqual([])
+  })
+})
+
+describe('salary demands', () => {
+  test('asking salaries climb steeply with overall', () => {
+    expect(salaryForOverall(75)).toBe(120000)
+    expect(salaryForOverall(85)).toBeGreaterThan(salaryForOverall(75) * 2.5)
+    expect(salaryForOverall(90)).toBeGreaterThan(salaryForOverall(85) * 1.5)
+    expect(salaryForOverall(40)).toBe(25000)
+  })
+
+  test('seeded players are paid by rating', () => {
+    const state = createGame('Manager', 'c9')
+    const contracted = Object.values(state.players).filter((player) => player.teamId)
+    contracted.forEach((player) => expect(player.salary).toBe(salaryDemand(player)))
+    const [best] = [...contracted].sort((a, b) => playerOverall(b) - playerOverall(a))
+    const [worst] = [...contracted].sort((a, b) => playerOverall(a) - playerOverall(b))
+    expect(best.salary).toBeGreaterThan(worst.salary * 3)
+  })
+
+  test('a free agent signs at their current asking salary', () => {
+    const state = createGame('Manager', 'c9')
+    state.teams.c9.cash = 10_000_000
+    const agent = freeAgents(state)[0]
+    agent.ratings = { ...agent.ratings, Mechanics: 95, Tactics: 95 }
+    expect(contractValue(agent)).toBe(Math.round((salaryDemand(agent) * agent.years) / 1000) * 1000)
+    const next = expectOk(signFreeAgent(state, 'c9', agent.id))
+    expect(next.players[agent.id].salary).toBe(salaryDemand(agent))
   })
 })
