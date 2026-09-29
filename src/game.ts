@@ -682,7 +682,7 @@ function migrateGame(raw: unknown): GameState | null {
     addProspectClass(state)
     refreshIgls(Object.values(state.players))
     state.inbox.push(
-      "Player careers are tougher: veterans decline from their mid-twenties and retire, a new class of prospects turns pro every offseason, and only the league's ten best shot-callers hold the IGL trait.",
+      'Player careers are tougher: veterans decline from their mid-twenties and retire, a new class of prospects turns pro every offseason, and the IGL trait goes to the best shot-caller on about 38 teams.',
     )
   }
   state.version = 17
