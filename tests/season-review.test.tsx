@@ -100,7 +100,7 @@ describe('year in review', () => {
     delete legacy.pendingReview
     memory.set(SAVE_KEY, JSON.stringify(legacy))
     const loaded = loadGame()
-    expect(loaded?.version).toBe(16)
+    expect(loaded?.version).toBe(17)
     expect(loaded?.reviews).toEqual([])
     expect(loaded?.pendingReview).toBeNull()
     expect(Object.keys(loaded?.seasonStats ?? {}).length).toBeGreaterThan(0)

@@ -179,7 +179,7 @@ describe('Championship Points', () => {
     })
     localStorage.setItem(SAVE_KEY, JSON.stringify(legacy))
     const loaded = loadGame()!
-    expect(loaded.version).toBe(16)
+    expect(loaded.version).toBe(17)
     Object.values(loaded.teams).forEach((team) =>
       expect(team.championshipPoints).toBe(state.teams[team.id].championshipPoints),
     )

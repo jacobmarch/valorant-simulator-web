@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
+import { overallRating } from '../src/development'
 import { advanceWeek, createGame, loadGame, rolloverSeason, SAVE_KEY } from '../src/game'
 import { attentionItems, nextAction } from '../src/flow'
 import {
@@ -41,6 +42,8 @@ describe('season rollover', () => {
     expect(state.season).toBe(2027)
     expect(state.week).toBe(1)
     Object.values(state.players).forEach((player) => {
+      // New prospects join at rollover; everyone who was already here is a year older.
+      if (!before[player.id]) return
       expect(player.age).toBe(before[player.id].age + 1)
       if (before[player.id].teamId && before[player.id].years > 1)
         expect(player.years).toBe(before[player.id].years - 1)
@@ -84,9 +87,10 @@ describe('season rollover', () => {
     // Seven players, three expire, one is re-signed: two walk and nobody is forced to stay.
     expect(kept.teams.c9.playerIds).toHaveLength(5)
     const walked = expiring.slice(1)
+    // They leave c9; AI teams short of five may pick them up straight away.
     walked.forEach((id) => {
-      expect(kept.players[id].teamId).toBeNull()
-      expect(kept.players[id].status).toBe('free-agent')
+      expect(kept.players[id].teamId).not.toBe('c9')
+      expect(kept.players[id].status).not.toBe('starter')
     })
     const stayed = kept.players[expiring[0]]
     expect(stayed.teamId).toBe('c9')
@@ -200,9 +204,51 @@ describe('season rollover', () => {
     })
     memory.set(SAVE_KEY, JSON.stringify(state))
     const loaded = loadGame()!
-    expect(loaded.version).toBe(16)
+    expect(loaded.version).toBe(17)
     Object.values(loaded.players).forEach((player) => {
       expect(player.age).toBeGreaterThanOrEqual(17)
     })
+  })
+
+  test('veterans with expiring deals can retire and a prospect class turns pro', () => {
+    const state = createGame('Manager', 'c9')
+    const veteran = state.players['fut-0']
+    Object.assign(veteran, { age: 36, years: 1 })
+    const prospectsBefore = Object.keys(state.players).filter((id) => id.startsWith('prospect-'))
+    rolloverSeason(state)
+    expect(veteran.status).toBe('retired')
+    expect(veteran.teamId).toBeNull()
+    expect(state.teams.fut.playerIds).not.toContain('fut-0')
+    expect(state.teams.fut.playerIds.length).toBeGreaterThanOrEqual(5)
+    expect(
+      state.transfers.some((move) => move.kind === 'retirement' && move.playerId === 'fut-0'),
+    ).toBeTrue()
+    const newcomers = Object.values(state.players).filter(
+      (player) => player.id.startsWith('prospect-') && !prospectsBefore.includes(player.id),
+    )
+    expect(newcomers.length).toBeGreaterThanOrEqual(20)
+    newcomers.forEach((player) => {
+      expect(player.age).toBeLessThanOrEqual(20)
+      expect(player.potential).toBeGreaterThan(Math.round(overallRating(player.ratings)))
+    })
+    // Retirees stay for last season's box scores, then drop out of the save.
+    rolloverSeason(state)
+    expect(state.players['fut-0']).toBeDefined()
+    rolloverSeason(state)
+    expect(state.players['fut-0']).toBeUndefined()
+  })
+
+  test('a managed roster of five that re-signs everyone keeps all five despite retirement age', () => {
+    const state = createGame('Manager', 'c9')
+    const team = state.teams.c9
+    team.playerIds.forEach((id) => {
+      Object.assign(state.players[id], { age: 38, years: 3 })
+    })
+    team.playerIds.slice(0, 5).forEach((id) => {
+      state.players[id].years = 1
+      state.players[id].renewal = { years: 1, salary: state.players[id].salary }
+    })
+    rolloverSeason(state)
+    expect(team.playerIds.length).toBeGreaterThanOrEqual(5)
   })
 })
