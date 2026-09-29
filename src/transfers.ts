@@ -11,6 +11,9 @@ export const MAX_IMPORTS = 1
 const MIN_FREE_AGENTS = 12
 const AI_CASH_RESERVE = 300000
 const AI_BUYOUTS_PER_WEEK = 3
+// A player who has just changed teams cannot be bought out by an AI club again for this many
+// weeks; without it the same star was traded between clubs every week of a window.
+const AI_BUYOUT_COOLDOWN_WEEKS = 26
 
 export type TransferWindow = { label: string; start: number; end: number }
 // Weeks in which signings, buyouts, and releases are allowed. Status changes are always allowed.
@@ -447,6 +450,16 @@ export function runAiTransfers(state: GameState) {
   })
   aiTeams.forEach((team) => repairLineup(state, team.id))
 }
+const absoluteWeek = (season: number, week: number) => season * 52 + week
+function recentlyMoved(state: GameState, playerId: string) {
+  const now = absoluteWeek(state.season, state.week)
+  return (state.transfers ?? []).some(
+    (move) =>
+      move.playerId === playerId &&
+      (move.kind === 'buyout' || move.kind === 'signing') &&
+      now - absoluteWeek(move.season, move.week) < AI_BUYOUT_COOLDOWN_WEEKS,
+  )
+}
 function tryAiUpgrade(state: GameState, team: Team) {
   const weakest = team.lineup
     .map((id) => state.players[id])
@@ -460,6 +473,7 @@ function tryAiUpgrade(state: GameState, team: Team) {
       return (
         seller.id !== state.currentTeamId &&
         seller.region === team.region &&
+        !recentlyMoved(state, player.id) &&
         playerOverall(player) >= playerOverall(weakest) + 4 &&
         contractValue(player) <= budget &&
         Math.max(player.salary, salaryDemand(player)) - weakest.salary <= room

@@ -216,3 +216,17 @@ describe('salary demands', () => {
     expect(next.players[agent.id].salary).toBe(salaryDemand(agent))
   })
 })
+
+describe('AI buyout churn', () => {
+  test('a player is not bought out again within a season of moving', { timeout: 15000 }, () => {
+    let state = createGame('Manager', 'c9')
+    while (state.week <= 52 && state.season === 2026)
+      state = advanceWeek(state, 'Measured defaults', 'Disciplined retakes')
+    const buyouts = new Map<string, number>()
+    state.transfers
+      .filter((move) => move.kind === 'buyout' && move.season === 2026)
+      .forEach((move) => buyouts.set(move.playerId, (buyouts.get(move.playerId) ?? 0) + 1))
+    expect(buyouts.size).toBeGreaterThan(0)
+    expect(Math.max(...buyouts.values())).toBeLessThanOrEqual(2)
+  })
+})
