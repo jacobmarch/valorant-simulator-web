@@ -67,9 +67,9 @@ const goalsByLevel: Record<SponsorLevel, Record<SponsorTier, SponsorGoal>> = {
 }
 // Annual base for a medium deal at each level; tiers scale it.
 const levelValue: Record<SponsorLevel, number> = {
-  Regional: 700000,
-  Contender: 950000,
-  Champions: 1300000,
+  Regional: 600000,
+  Contender: 750000,
+  Champions: 900000,
 }
 const baseScale: Record<SponsorTier, number> = { easy: 0.8, medium: 1, high: 1.25 }
 const bonusScale: Record<SponsorTier, number> = { easy: 0.15, medium: 0.35, high: 0.7 }

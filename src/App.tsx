@@ -36,7 +36,15 @@ import {
   MAX_ROSTER,
   buyOutError,
   buyOutPlayer,
+  askingSalary,
+  cancelRenewal,
+  canRenegotiate,
+  maxRenewalYears,
+  renegotiateContract,
+  rosterShortfall,
+  salaryDemand,
   contractValue,
+  newContractSalary,
   contractedPlayers,
   freeAgents,
   nextTransferWindow,
@@ -44,6 +52,7 @@ import {
   releaseError,
   releasePlayer,
   rosterHistory,
+  salaryForOverall,
   setPlayerStatus,
   signFreeAgent,
   signFreeAgentError,
@@ -191,6 +200,8 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
     .sort((a, b) => playerOverall(b) - playerOverall(a))
     .slice(0, 20)
   const history = rosterHistory(s, t.id).slice(0, 8)
+  const negotiable = ps.filter((p) => canRenegotiate(s, p))
+  const shortfall = rosterShortfall(s)
   const apply = (outcome: TransferOutcome) => {
     if (!outcome.ok) {
       setNotice(outcome.error)
@@ -230,6 +241,65 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
           <strong>Move not allowed</strong>
           <span>{notice}</span>
         </div>
+      )}
+      {(negotiable.length > 0 || shortfall > 0) && (
+        <section className="panel">
+          <PanelTitle
+            eyebrow="CONTRACTS"
+            title={shortfall > 0 ? `Sign ${shortfall} more before Kickoff` : 'Expiring contracts'}
+            right={
+              shortfall > 0 ? (
+                <Badge color={tone.neg}>{ps.length} on contract</Badge>
+              ) : (
+                <Badge color={tone.warn}>{negotiable.filter((p) => !p.renewal).length} open</Badge>
+              )
+            }
+          />
+          {shortfall > 0 && (
+            <p className="muted">
+              The season cannot start until you can field five. Sign free agents below, including
+              players whose contracts just ended.
+            </p>
+          )}
+          {negotiable.map((p) => (
+            <div className="market-row" key={p.id}>
+              <span>
+                <strong>
+                  {p.name} · {playerOverall(p)} OVR
+                </strong>
+                <small>
+                  Age {p.age} · {money(p.salary)} / yr · asks {money(salaryDemand(p))} / yr
+                  {p.renewal
+                    ? ` · re-signing ${p.renewal.years}y at ${money(p.renewal.salary)} / yr`
+                    : ' · leaves at rollover unless re-signed'}
+                </small>
+              </span>
+              <span className="row-actions">
+                {Array.from({ length: maxRenewalYears(p) }, (_, index) => index + 1).map(
+                  (years) => (
+                    <button
+                      key={years}
+                      className={
+                        p.renewal?.years === years ? 'primary compact' : 'secondary compact'
+                      }
+                      onClick={() => apply(renegotiateContract(s, p.id, years))}
+                    >
+                      {years}y
+                    </button>
+                  ),
+                )}
+                {p.renewal && (
+                  <button
+                    className="secondary compact"
+                    onClick={() => apply({ ok: true, state: cancelRenewal(s, p.id) })}
+                  >
+                    Let go
+                  </button>
+                )}
+              </span>
+            </div>
+          ))}
+        </section>
       )}
       <div className="columns">
         <section className="panel">
@@ -343,8 +413,12 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
                     <small>
                       {p.primaryRole}
                       {p.igl ? ' · IGL' : ''} · Age {p.age}
-                      {p.teamId ? ` · ${s.teams[p.teamId].short}` : ''} · {money(p.salary)} / yr ×{' '}
-                      {p.years} · {market === 'free' ? 'cost' : 'buyout'} {money(contractValue(p))}
+                      {p.teamId ? ` · ${s.teams[p.teamId].short}` : ''} · {money(askingSalary(p))} /
+                      yr × {p.years} · {market === 'free' ? 'cost' : 'buyout'}{' '}
+                      {money(contractValue(p))}
+                      {market !== 'free' && newContractSalary(p) > p.salary
+                        ? ` · wants ${money(newContractSalary(p))} / yr to move`
+                        : ''}
                     </small>
                   </span>
                   <button
@@ -389,7 +463,9 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
         <Modal eyebrow="MARKET" title="Transfer rules" onClose={() => setPopup(null)}>
           <p className="modal-lead">
             Contracted players cost annual salary × remaining years. The buyer pays the seller
-            immediately and takes over the contract.
+            immediately, and the player moves on a new salary if their asking price is higher.
+            Asking salaries climb steeply with overall: about {money(salaryForOverall(75))} at 75,{' '}
+            {money(salaryForOverall(85))} at 85 and {money(salaryForOverall(90))} at 90.
           </p>
           <p className="muted">
             Signings, buyouts, and releases only happen in transfer windows: weeks{' '}
@@ -745,17 +821,19 @@ export default function App() {
     setS(next)
   }
   const proceed = () =>
-    commit(
-      step.mode === 'round'
-        ? simulateTournamentRound(s, attack, defense)
-        : advanceWeek(s, attack, defense),
-    )
+    step.blocked
+      ? go('roster')
+      : commit(
+          step.mode === 'round'
+            ? simulateTournamentRound(s, attack, defense)
+            : advanceWeek(s, attack, defense),
+        )
   const closeReview = () => {
     const next = { ...s, pendingReview: null }
     saveGame(next)
     setS(next)
   }
-  const simWeek = () => commit(advanceWeek(s, attack, defense))
+  const simWeek = () => (step.blocked ? go('roster') : commit(advanceWeek(s, attack, defense)))
   const simMatch = (fixtureId: string) => {
     setSimChoiceId(undefined)
     commit(simulateTournamentFixture(s, fixtureId, attack, defense))

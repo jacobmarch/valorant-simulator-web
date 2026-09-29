@@ -34,14 +34,19 @@ import {
   weaponFor,
 } from './round-sim'
 import { iglAdjustment, refreshIgls } from './igl'
+import { payEventPrizes } from './prizes'
 import {
   addProspectClass,
   fillAiRosters,
+  payrollRoom,
   processRetirements,
   pruneRetiredPlayers,
   recordMove,
   replenishFreeAgents,
+  rosterBlock,
+  rosterShortfall,
   runAiTransfers,
+  salaryDemand,
 } from './transfers'
 import {
   backfillSeasonStats,
@@ -93,6 +98,8 @@ export type Player = {
   morale: number
   /** In-game leader: earned from Tactics and Teamplay, see src/igl.ts. */
   igl: boolean
+  /** New terms agreed in the offseason; they replace the contract when it expires at rollover. */
+  renewal?: { years: number; salary: number }
   /** Season the player retired in; retirees are pruned once history no longer needs them. */
   retiredSeason?: number
 }
@@ -176,6 +183,8 @@ export type Fixture = {
   status: 'scheduled' | 'completed'
   winnerId?: string
   resultId?: string
+  /** Set on an event's closing fixture once its prize money is paid (src/prizes.ts). */
+  prizePaid?: boolean
   stage?: 'Swiss' | 'Groups' | 'Playoffs' | 'League'
   bracket?: 'Swiss' | 'Group' | 'Upper' | 'Lower' | 'Final'
   group?: 'A' | 'B' | 'C' | 'D'
@@ -236,7 +245,7 @@ export type GameState = {
 }
 
 const SAVE_KEY = 'vct-manager-mvp-save-v1'
-const regions: Region[] = ['Americas', 'EMEA', 'Pacific', 'China']
+export const regions: Region[] = ['Americas', 'EMEA', 'Pacific', 'China']
 const openingKickoffByes = new Set(Object.values(previousChampionsByRegion).flat())
 const breakWeeks: Record<number, string> = {
   7: 'Masters 1',
@@ -289,7 +298,6 @@ const random = (state: GameState) => {
 }
 const seedAge = (teamIndex: number, playerIndex: number) =>
   19 + ((teamIndex * 5 + playerIndex * 3) % 10)
-const money = (value: number) => Math.round(value / 1000) * 1000
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
 
 export function phaseForWeek(week: number): CompetitionPhase {
@@ -356,7 +364,7 @@ export function createGame(managerName: string, currentTeamId: string): GameStat
               : [],
         ratings: seedRatings(base, primaryRole, teamIndex, playerIndex),
         age: seedAge(teamIndex, playerIndex),
-        salary: money(55000 + base * 1400),
+        salary: 0,
         years: 1 + (playerIndex % 3),
         status: 'starter',
         isImport: playerIndex === 0 && teamIndex % 5 === 0,
@@ -371,6 +379,7 @@ export function createGame(managerName: string, currentTeamId: string): GameStat
         players[id].age,
         (teamIndex * 3 + playerIndex * 5) % 5,
       )
+      players[id].salary = salaryDemand(players[id])
       return id
     })
     const lineup = playerIds.slice(0, 5)
@@ -405,7 +414,7 @@ export function createGame(managerName: string, currentTeamId: string): GameStat
       secondaryRoles: [],
       ratings: emptyRatings(62 + index * 2),
       age: 17 + (index % 4),
-      salary: 35000 + index * 4000,
+      salary: 0,
       years: 1,
       status: 'free-agent',
       isImport: false,
@@ -420,6 +429,7 @@ export function createGame(managerName: string, currentTeamId: string): GameStat
       players[id].age,
       2 + (index % 3),
     )
+    players[id].salary = salaryDemand(players[id])
   })
   refreshIgls(Object.values(players))
   const state: GameState = {
@@ -2855,6 +2865,7 @@ function finalizeCalendarWeek(state: GameState) {
       state.inbox.unshift(`${candidate.name} has opened a manager position for you.`)
     }
   }
+  payEventPrizes(state)
   runAiTransfers(state)
   enforceSponsorDeadline(state)
   state.week++
@@ -2876,7 +2887,7 @@ function warnExpiringContracts(state: GameState) {
   const expiring = expiringContracts(state)
   if (!expiring.length) return
   state.inbox.unshift(
-    `Contracts expiring after season ${state.season}: ${expiring.map((player) => player.name).join(', ')}. Players still on contract at rollover leave in free agency unless you need them to field five.`,
+    `Contracts expiring after season ${state.season}: ${expiring.map((player) => player.name).join(', ')}. Renegotiate on the Roster page before the year ends. Anyone you don't re-sign leaves in free agency, and you need five players signed before Kickoff.`,
   )
 }
 function renewalYears(player: Player) {
@@ -2912,22 +2923,39 @@ function resolveExpiredContracts(state: GameState, team: Team) {
   const managed = team.id === state.currentTeamId
   const expired = team.playerIds.filter((id) => state.players[id].years <= 0)
   if (!expired.length) return
-  // AI organizations keep their starters; the managed team lets everyone walk.
-  // Either way the best expiring players re-sign until the roster can field five.
-  const keep = new Set(managed ? [] : expired.filter((id) => team.lineup.includes(id)))
+  // AI organizations keep the starters they can still pay at the new asking price and re-sign
+  // the best expiring players until the roster can field five. The manager decides for
+  // themselves: only players renegotiated in the offseason stay, and the roster may fall below
+  // five until Kickoff.
+  const keep = new Set<string>(managed ? expired.filter((id) => state.players[id].renewal) : [])
+  if (!managed) {
+    let room =
+      payrollRoom(state, team) + expired.reduce((sum, id) => sum + state.players[id].salary, 0)
+    expired
+      .filter((id) => team.lineup.includes(id))
+      .sort((a, b) => overall(state.players[b]) - overall(state.players[a]))
+      .forEach((id) => {
+        const demand = salaryDemand(state.players[id])
+        if (demand > room) return
+        room -= demand
+        keep.add(id)
+      })
+  }
   const byRating = [...expired].sort(
     (a, b) => overall(state.players[b]) - overall(state.players[a]),
   )
-  byRating.forEach((id) => {
-    if (team.playerIds.length - expired.length + keep.size < MIN_ROSTER) keep.add(id)
-  })
+  if (!managed)
+    byRating.forEach((id) => {
+      if (team.playerIds.length - expired.length + keep.size < MIN_ROSTER) keep.add(id)
+    })
   const renewed: string[] = []
   const departed: string[] = []
   expired.forEach((id) => {
     const player = state.players[id]
     if (keep.has(id)) {
-      player.years = renewalYears(player)
-      player.salary = money(player.salary * 1.05)
+      player.years = player.renewal?.years ?? renewalYears(player)
+      player.salary = player.renewal?.salary ?? salaryDemand(player)
+      delete player.renewal
       renewed.push(player.name)
       recordMove(state, {
         kind: 'renewal',
@@ -2943,6 +2971,7 @@ function resolveExpiredContracts(state: GameState, team: Team) {
     player.teamId = null
     player.status = 'free-agent'
     player.years = 1
+    delete player.renewal
     departed.push(player.name)
     recordMove(state, { kind: 'expiry', playerId: id, fromTeamId: team.id, toTeamId: null, fee: 0 })
   })
@@ -2950,8 +2979,12 @@ function resolveExpiredContracts(state: GameState, team: Team) {
   if (managed) {
     if (departed.length)
       state.inbox.unshift(`Contracts expired and left for free agency: ${departed.join(', ')}.`)
-    if (renewed.length)
-      state.inbox.unshift(`Re-signed to keep a legal roster of five: ${renewed.join(', ')}.`)
+    if (renewed.length) state.inbox.unshift(`Re-signed for next season: ${renewed.join(', ')}.`)
+    const missing = rosterShortfall(state)
+    if (missing)
+      state.inbox.unshift(
+        `${team.name} has ${team.playerIds.length} players. Sign ${missing} more from free agency before Kickoff; the season cannot start until you can field five.`,
+      )
   }
 }
 function overall(player: Player) {
@@ -3083,6 +3116,7 @@ export function simulateNextTournamentMatch(
   phase?: Exclude<CompetitionPhase, 'Break' | 'Offseason'>,
   region?: Region,
 ): GameState {
+  if (rosterBlock(input)) return input
   const state: GameState = structuredClone(input)
   ensureWeekScheduled(state, state.week)
   buildIntraWeekRounds(state, attackStyle, defenseStyle, false)
@@ -3141,7 +3175,7 @@ export function simulateTournamentFixture(
   replay?: SeriesReplay,
 ): GameState {
   const phase = phaseForWeek(input.week)
-  if (phase === 'Break' || phase === 'Offseason') return input
+  if (phase === 'Break' || phase === 'Offseason' || rosterBlock(input)) return input
   const state: GameState = structuredClone(input)
   ensureWeekScheduled(state, state.week)
   buildIntraWeekRounds(state, attackStyle, defenseStyle, false)
@@ -3498,6 +3532,7 @@ export function simulateTournamentRound(
   defenseStyle: string,
 ): GameState {
   const phase = phaseForWeek(input.week)
+  if (rosterBlock(input)) return input
   if (phase === 'Break' || phase === 'Offseason')
     return advanceWeek(input, attackStyle, defenseStyle)
   const state: GameState = structuredClone(input)
@@ -3529,6 +3564,7 @@ export function advanceWeek(
   attackStyle: string,
   defenseStyle: string,
 ): GameState {
+  if (rosterBlock(input)) return input
   const state: GameState = structuredClone(input),
     phase = phaseForWeek(state.week),
     managedTeam = currentTeam(state)
@@ -3581,7 +3617,6 @@ export function advanceWeek(
         opponent = state.teams[opponentId]
       const ownScore = result.aId === managedTeam.id ? result.aScore : result.bScore
       const opponentScore = result.aId === managedTeam.id ? result.bScore : result.aScore
-      managedTeam.cash += result.winnerId === managedTeam.id ? 25000 : 5000
       state.inbox.unshift(
         result.winnerId === managedTeam.id
           ? `${managedTeam.name} defeated ${opponent.name} ${ownScore}-${opponentScore} in ${result.phase}.`

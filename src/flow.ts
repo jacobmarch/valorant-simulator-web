@@ -13,7 +13,13 @@ import {
 } from './game'
 import { skills } from './seed'
 import { pendingSponsorOffers } from './sponsors'
-import { MAX_ROSTER, transferWindowForWeek } from './transfers'
+import {
+  MAX_ROSTER,
+  RENEGOTIATION_START_WEEK,
+  rosterBlock,
+  rosterShortfall,
+  transferWindowForWeek,
+} from './transfers'
 import type { View } from './ui'
 
 export const TRAINING_HOURS = 40
@@ -39,10 +45,20 @@ export type NextAction = {
   detail: string
   /** The managed team's fixture in this step, when there is one. */
   fixture?: Fixture
+  /** The roster is short of five, so the calendar cannot move until it is filled. */
+  blocked?: boolean
 }
 
 export function nextAction(s: GameState): NextAction {
   const team = currentTeam(s)
+  const missing = rosterShortfall(s)
+  if (missing)
+    return {
+      mode: 'week',
+      label: `Sign ${missing} more`,
+      detail: rosterBlock(s) ?? 'Fill the roster before Kickoff',
+      blocked: true,
+    }
   const opponentShort = (fixture: Fixture) =>
     s.teams[fixture.aId === team.id ? (fixture.bId ?? '') : fixture.aId]?.short ?? 'TBD'
   if (isRoundWeek(s)) {
@@ -102,7 +118,16 @@ export function attentionItems(s: GameState): AttentionItem[] {
   const team = currentTeam(s)
   const players = teamPlayers(s)
   const items: AttentionItem[] = []
-  if (team.lineup.length < 5)
+  const missing = rosterShortfall(s)
+  if (missing)
+    items.push({
+      id: 'roster-short',
+      level: 'urgent',
+      title: `Sign ${missing} more player${missing === 1 ? '' : 's'} before Kickoff`,
+      detail: `Only ${players.length} on contract. The season cannot start until you can field five.`,
+      view: 'roster',
+    })
+  else if (team.lineup.length < 5)
     items.push({
       id: 'lineup',
       level: 'urgent',
@@ -140,13 +165,16 @@ export function attentionItems(s: GameState): AttentionItem[] {
       detail: `Sign, buy out, or release players through week ${window.end}. ${players.length}/${MAX_ROSTER} on the roster.`,
       view: 'roster',
     })
-  const expiring = players.filter((player) => player.years <= 1)
+  const expiring = players.filter((player) => player.years <= 1 && !player.renewal)
   if (expiring.length && s.week >= 36)
     items.push({
       id: 'contracts',
       level: 'warn',
       title: `${expiring.length} contract${expiring.length === 1 ? '' : 's'} expiring`,
-      detail: expiring.map((player) => player.name).join(', '),
+      detail:
+        s.week >= RENEGOTIATION_START_WEEK
+          ? `${expiring.map((player) => player.name).join(', ')}. Re-sign them before the year ends or they leave.`
+          : expiring.map((player) => player.name).join(', '),
       view: 'roster',
     })
   const scouting = Object.values(s.scoutingHours).reduce((sum, hours) => sum + hours, 0)

@@ -60,13 +60,9 @@ describe('sponsors', () => {
     const payroll = state.teams.c9.playerIds.reduce((sum, id) => sum + state.players[id].salary, 0)
     const before = state.teams.c9.cash
     const next = advanceWeek(state, 'Measured defaults', 'Disciplined retakes')
-    const matchMoney = next.matches.some(
-      (match) => match.week === 1 && (match.aId === 'c9' || match.bId === 'c9'),
-    )
+    // Week 1 ends no event, so no prize money lands: only sponsor base minus salaries.
     const delta = next.teams.c9.cash - before
-    const expected = offer.weekly - payroll / 52
-    expect(delta - expected).toBeGreaterThanOrEqual(0)
-    expect(delta - expected).toBeLessThanOrEqual(matchMoney ? 25000 : 0)
+    expect(delta).toBeCloseTo(offer.weekly - payroll / 52, 0)
   })
 
   test('the board signs the medium deal when the deadline passes', () => {

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
+import { stepWeek } from './helpers'
 import {
-  advanceWeek,
   CHAMPIONSHIP_POINTS,
   championshipPointsStandings,
   championshipPointsTable,
@@ -24,7 +24,7 @@ Object.assign(globalThis, {
 beforeEach(() => memory.clear())
 
 const regions: Region[] = ['Americas', 'EMEA', 'Pacific', 'China']
-const step = (state: GameState) => advanceWeek(state, 'Measured defaults', 'Disciplined retakes')
+const step = (state: GameState) => stepWeek(state)
 const advanceTo = (state: GameState, season: number, week: number) => {
   while (state.season < season || state.week < week) state = step(state)
   return state

@@ -3184,3 +3184,8 @@ table {
     grid-template-columns: 1fr 1fr;
   }
 }
+.row-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}

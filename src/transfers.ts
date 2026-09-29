@@ -2,6 +2,7 @@ import type { GameState, Player, PlayerStatus, Team, TransferRecord } from './ga
 import { MORALE_DEFAULT, overallRating, prospectPotential, retirementChance } from './development'
 import { bestRoleAssignment } from './roles'
 import { roles, type Region } from './seed'
+import { payroll } from './sponsors'
 
 export const MIN_ROSTER = 5
 export const MAX_ROSTER = 7
@@ -9,6 +10,9 @@ export const MAX_IMPORTS = 1
 const MIN_FREE_AGENTS = 12
 const AI_CASH_RESERVE = 300000
 const AI_BUYOUTS_PER_WEEK = 3
+// A player who has just changed teams cannot be bought out by an AI club again for this many
+// weeks; without it the same star was traded between clubs every week of a window.
+const AI_BUYOUT_COOLDOWN_WEEKS = 26
 
 export type TransferWindow = { label: string; start: number; end: number }
 // Weeks in which signings, buyouts, and releases are allowed. Status changes are always allowed.
@@ -18,6 +22,9 @@ export const transferWindows: TransferWindow[] = [
   { label: 'Stage 2 window', start: 23, end: 23 },
   { label: 'Offseason window', start: 43, end: 52 },
 ]
+
+/** From this week the season is over and expiring contracts can be renegotiated. */
+export const RENEGOTIATION_START_WEEK = 43
 
 export type TransferOutcome = { ok: true; state: GameState } | { ok: false; error: string }
 
@@ -38,8 +45,85 @@ export function nextTransferWindow(week: number) {
     transferWindows[0]
   )
 }
+// What a player asks for a new contract each year. It climbs steeply with overall: a
+// league-average 75 wants about $120k, an 85 about $350k, a 90 about $600k and a 95 about $1M,
+// so a roster full of stars costs far more than sponsors alone pay.
+const DEMAND_AT_75 = 120000
+const DEMAND_GROWTH = 0.107
+const MIN_SALARY = 25000
+export function salaryForOverall(overall: number) {
+  return Math.max(MIN_SALARY, money(DEMAND_AT_75 * Math.exp(DEMAND_GROWTH * (overall - 75))))
+}
+export function salaryDemand(player: Player) {
+  return salaryForOverall(overallRating(player.ratings))
+}
+/** Annual salary on the table: free agents ask their current demand, others earn their contract. */
+export function askingSalary(player: Player) {
+  return player.status === 'free-agent' ? salaryDemand(player) : player.salary
+}
+/** Salary on the player's next contract. Nobody takes a pay cut to change teams. */
+export function newContractSalary(player: Player) {
+  const demand = salaryDemand(player)
+  return player.status === 'free-agent' ? demand : Math.max(player.salary, demand)
+}
+/** Longest new contract a player will sign: veterans only take one year. */
+export function maxRenewalYears(player: Player) {
+  if (player.age >= 30) return 1
+  return player.age <= 23 ? 3 : 2
+}
+export function canRenegotiate(state: GameState, player: Player) {
+  return (
+    state.week >= RENEGOTIATION_START_WEEK &&
+    player.teamId === state.currentTeamId &&
+    player.years <= 1
+  )
+}
+/** Agrees new terms now; they take effect when the current contract ends at rollover. */
+export function renegotiateContract(
+  input: GameState,
+  playerId: string,
+  years: number,
+): TransferOutcome {
+  const player = input.players[playerId]
+  if (!player || player.teamId !== input.currentTeamId)
+    return { ok: false, error: 'That player is not on your roster.' }
+  if (input.week < RENEGOTIATION_START_WEEK)
+    return {
+      ok: false,
+      error: `Contracts can be renegotiated once the season ends, from week ${RENEGOTIATION_START_WEEK}.`,
+    }
+  if (player.years > 1)
+    return { ok: false, error: `${player.name} still has ${player.years} years on their contract.` }
+  const max = maxRenewalYears(player)
+  if (!Number.isInteger(years) || years < 1 || years > max)
+    return {
+      ok: false,
+      error: `${player.name} will only sign for 1${max > 1 ? `–${max}` : ''} year${max > 1 ? 's' : ''}.`,
+    }
+  const state = structuredClone(input)
+  state.players[playerId].renewal = { years, salary: salaryDemand(state.players[playerId]) }
+  return { ok: true, state }
+}
+export function cancelRenewal(input: GameState, playerId: string): GameState {
+  const state = structuredClone(input)
+  if (state.players[playerId]) delete state.players[playerId].renewal
+  return state
+}
+/** How many players the managed team still needs before it can field a match. */
+export function rosterShortfall(state: GameState) {
+  const team = state.teams[state.currentTeamId]
+  const active = team.playerIds.filter((id) => state.players[id]?.status !== 'inactive').length
+  return Math.max(0, 5 - active)
+}
+/** Why the calendar cannot move yet, if the managed team is short of players. */
+export function rosterBlock(state: GameState) {
+  const missing = rosterShortfall(state)
+  return missing
+    ? `${state.teams[state.currentTeamId].name} needs ${missing} more player${missing === 1 ? '' : 's'} to field five. Sign ${missing === 1 ? 'a free agent' : 'free agents'} before Kickoff.`
+    : null
+}
 export function contractValue(player: Player) {
-  return money(player.salary * player.years)
+  return money(askingSalary(player) * player.years)
 }
 export function playerOverall(player: Player) {
   return Math.round(Object.values(player.ratings).reduce((a, b) => a + b, 0) / 6)
@@ -178,6 +262,7 @@ function applySigning(state: GameState, teamId: string, playerId: string) {
   const team = state.teams[teamId],
     player = state.players[playerId],
     cost = contractValue(player)
+  player.salary = newContractSalary(player)
   team.cash -= cost
   joinTeam(state, player, team)
   recordMove(state, {
@@ -225,6 +310,7 @@ function applyBuyout(state: GameState, buyerId: string, playerId: string) {
     fee = contractValue(player)
   buyer.cash -= fee
   seller.cash += fee
+  player.salary = newContractSalary(player)
   leaveTeam(state, player)
   joinTeam(state, player, buyer)
   recordMove(state, { kind: 'buyout', playerId, fromTeamId: seller.id, toTeamId: buyer.id, fee })
@@ -267,6 +353,7 @@ function applyRelease(state: GameState, teamId: string, playerId: string) {
   leaveTeam(state, player)
   player.teamId = null
   player.status = 'free-agent'
+  delete player.renewal
   recordMove(state, { kind: 'release', playerId, fromTeamId: teamId, toTeamId: null, fee: 0 })
   if (teamId === state.currentTeamId) state.inbox.unshift(`Released ${player.name}.`)
 }
@@ -359,7 +446,7 @@ function createProspect(state: GameState, age: number) {
       Clutch: base - 3,
       Teamplay: base - 1,
     },
-    salary: money(28000 + (base - 58) * 2500),
+    salary: 0,
     years: 1 + Math.floor(random(state) * 2),
     status: 'free-agent',
     isImport: false,
@@ -370,6 +457,7 @@ function createProspect(state: GameState, age: number) {
     igl: false,
   }
   const prospect = state.players[id]
+  prospect.salary = salaryDemand(prospect)
   // Teenagers never have the game sense to lead; see refreshIgls.
   prospect.potential = prospectPotential(overallRating(prospect.ratings), random(state))
   return prospect
@@ -403,6 +491,7 @@ export function processRetirements(state: GameState) {
     player.status = 'retired'
     player.retiredSeason = state.season
     player.igl = false
+    delete player.renewal
     delete state.training[player.id]
     delete state.scoutingHours[player.id]
     retired.push(player)
@@ -430,10 +519,26 @@ export function fillAiRosters(state: GameState) {
       repairLineup(state, team.id)
     })
 }
-function bestAffordableFreeAgent(state: GameState, team: Team) {
-  return freeAgents(state)
-    .filter((player) => contractValue(player) <= team.cash && !importError(state, player, team))
-    .sort((a, b) => playerOverall(b) - playerOverall(a) || a.salary - b.salary)[0]
+/** Payroll an AI organization will carry: its sponsor base plus half of its spare cash. */
+function aiPayrollLimit(team: Team) {
+  return (team.sponsor?.weekly ?? 0) * 52 * 1.15 + Math.max(0, team.cash - AI_CASH_RESERVE) / 2
+}
+export function payrollRoom(state: GameState, team: Team) {
+  return aiPayrollLimit(team) - payroll(state, team)
+}
+// The best free agent the team can pay for, preferring ones that fit its payroll. Pass
+// `mustSign` when the roster is short: then the cheapest option is better than nobody.
+function bestAffordableFreeAgent(state: GameState, team: Team, mustSign = true) {
+  const affordable = freeAgents(state).filter(
+    (player) => contractValue(player) <= team.cash && !importError(state, player, team),
+  )
+  const room = payrollRoom(state, team)
+  const fits = affordable.filter((player) => salaryDemand(player) <= room)
+  if (fits.length)
+    return fits.sort(
+      (a, b) => playerOverall(b) - playerOverall(a) || salaryDemand(a) - salaryDemand(b),
+    )[0]
+  return mustSign ? affordable.sort((a, b) => salaryDemand(a) - salaryDemand(b))[0] : undefined
 }
 
 // AI organizations act during open windows. The manager's team is never a buyout target.
@@ -456,7 +561,7 @@ export function runAiTransfers(state: GameState) {
       return
     }
     if (roll < 0.35 && team.playerIds.length === MIN_ROSTER && team.cash > 600000) {
-      const depth = bestAffordableFreeAgent(state, team)
+      const depth = bestAffordableFreeAgent(state, team, false)
       if (depth && !signFreeAgentError(state, team.id, depth.id))
         applySigning(state, team.id, depth.id)
       return
@@ -471,20 +576,33 @@ export function runAiTransfers(state: GameState) {
   })
   aiTeams.forEach((team) => repairLineup(state, team.id))
 }
+const absoluteWeek = (season: number, week: number) => season * 52 + week
+function recentlyMoved(state: GameState, playerId: string) {
+  const now = absoluteWeek(state.season, state.week)
+  return (state.transfers ?? []).some(
+    (move) =>
+      move.playerId === playerId &&
+      (move.kind === 'buyout' || move.kind === 'signing') &&
+      now - absoluteWeek(move.season, move.week) < AI_BUYOUT_COOLDOWN_WEEKS,
+  )
+}
 function tryAiUpgrade(state: GameState, team: Team) {
   const weakest = team.lineup
     .map((id) => state.players[id])
     .sort((a, b) => playerOverall(a) - playerOverall(b))[0]
   if (!weakest) return false
   const budget = team.cash - AI_CASH_RESERVE
+  const room = payrollRoom(state, team)
   const target = contractedPlayers(state, team.id)
     .filter((player) => {
       const seller = state.teams[player.teamId as string]
       return (
         seller.id !== state.currentTeamId &&
         seller.region === team.region &&
+        !recentlyMoved(state, player.id) &&
         playerOverall(player) >= playerOverall(weakest) + 4 &&
-        contractValue(player) <= budget
+        contractValue(player) <= budget &&
+        Math.max(player.salary, salaryDemand(player)) - weakest.salary <= room
       )
     })
     .sort((a, b) => playerOverall(b) - playerOverall(a) || contractValue(a) - contractValue(b))[0]
