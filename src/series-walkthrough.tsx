@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowRight, FastForward, Layers } from 'lucide-react'
+import { ArrowRight, Eye, FastForward } from 'lucide-react'
 import {
   hasMatchDetail,
   type Fixture,
@@ -7,20 +7,22 @@ import {
   type MapResult,
   type MatchResult,
 } from './game'
+import { RoundReplayView } from './round-replay'
+import type { SeriesReplay } from './round-sim'
 import { Modal, TeamMark } from './ui'
 
-/** Asks how to play a single series: all at once, or one map at a time. */
+/** Asks how to play a single series: all at once, or watched map by map and round by round. */
 export function SimChoice({
   s,
   fixture,
   onQuick,
-  onMapByMap,
+  onWatch,
   onClose,
 }: {
   s: GameState
   fixture: Fixture
   onQuick: () => void
-  onMapByMap: () => void
+  onWatch: () => void
   onClose: () => void
 }) {
   const a = s.teams[fixture.aId],
@@ -37,10 +39,12 @@ export function SimChoice({
           <strong>Quick sim</strong>
           <span>Play the whole series and see the final score.</span>
         </button>
-        <button onClick={onMapByMap}>
-          <Layers size={18} />
-          <strong>Map by map</strong>
-          <span>Watch the veto, then play each map and follow the series as it unfolds.</span>
+        <button onClick={onWatch}>
+          <Eye size={18} />
+          <strong>Watch</strong>
+          <span>
+            Follow the veto, then watch each map round by round with the kill feed and economy.
+          </span>
         </button>
       </div>
     </Modal>
@@ -75,20 +79,24 @@ function keyRounds(map: MapResult) {
 
 /**
  * Reveals an already-played series one map at a time. The series is simulated up front, so
- * closing the pop-up early just skips to the final result.
+ * closing the pop-up early just skips to the final result. With a `replay`, each map can also
+ * be watched round by round; the replay is never saved.
  */
 export function SeriesWalkthrough({
   s,
   match,
+  replay,
   onFinish,
   onOpenFull,
 }: {
   s: GameState
   match: MatchResult
+  replay?: SeriesReplay
   onFinish: () => void
   onOpenFull: (id: string) => void
 }) {
   const [shown, setShown] = useState(0)
+  const [watching, setWatching] = useState<number | null>(null)
   const a = s.teams[match.aId],
     b = s.teams[match.bId]
   const played = match.maps.slice(0, shown)
@@ -100,6 +108,27 @@ export function SeriesWalkthrough({
   const star = current ? mapStar(s, current) : null
   const half = current ? halfScore(s, match, current) : null
   const detail = hasMatchDetail(match)
+  const mapReplay = watching == null ? undefined : replay?.maps[watching]
+  if (watching != null && mapReplay)
+    return (
+      <Modal
+        eyebrow={`${match.phase} · Map ${watching + 1} of Bo${match.bestOf} · Series ${aMaps}–${bMaps}`}
+        title={`${a.name} vs ${b.name}`}
+        onClose={onFinish}
+        wide
+      >
+        <RoundReplayView
+          key={watching}
+          s={s}
+          replay={mapReplay}
+          onDone={() => {
+            setShown(watching + 1)
+            setWatching(null)
+          }}
+        />
+      </Modal>
+    )
+  const canWatch = Boolean(replay?.maps[shown]?.rounds.length)
   return (
     <Modal
       eyebrow={`${match.phase} · Week ${match.week} · Bo${match.bestOf} · Map by map`}
@@ -196,9 +225,20 @@ export function SeriesWalkthrough({
             <button className="secondary" onClick={onFinish}>
               Skip to result
             </button>
-            <button className="primary" onClick={() => setShown((value) => value + 1)}>
-              Play map {shown + 1}: {upcoming} <ArrowRight size={15} />
-            </button>
+            {canWatch ? (
+              <>
+                <button className="secondary" onClick={() => setShown((value) => value + 1)}>
+                  Sim map {shown + 1}
+                </button>
+                <button className="primary" onClick={() => setWatching(shown)}>
+                  Watch map {shown + 1}: {upcoming} <ArrowRight size={15} />
+                </button>
+              </>
+            ) : (
+              <button className="primary" onClick={() => setShown((value) => value + 1)}>
+                Play map {shown + 1}: {upcoming} <ArrowRight size={15} />
+              </button>
+            )}
           </>
         )}
       </div>
