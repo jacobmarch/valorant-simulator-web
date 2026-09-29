@@ -2187,15 +2187,72 @@ function weightedPlayer(state: GameState, ids: string[], acc: Record<string, Sta
   }
   return ids[ids.length - 1]
 }
+
+const assistRoleWeight: Record<Role, number> = {
+  Duelist: 0.55,
+  Initiator: 1.45,
+  Controller: 1.4,
+  Sentinel: 0.9,
+  Flex: 1,
+}
+
+function weightedId(state: GameState, ids: string[], weightFor: (id: string) => number) {
+  const weights = ids.map((id) => Math.max(0.05, weightFor(id)))
+  const total = weights.reduce((sum, weight) => sum + weight, 0)
+  let roll = random(state) * total
+  for (let index = 0; index < ids.length; index++) {
+    roll -= weights[index]
+    if (roll <= 0) return ids[index]
+  }
+  return ids[ids.length - 1]
+}
+
+/** A map-long exposure profile keeps deaths from being evenly rotated through a lineup. */
+function deathExposure(state: GameState, team: Team) {
+  const roleWeight: Record<Role, number> = {
+    Duelist: 1.16,
+    Initiator: 1.04,
+    Controller: 0.9,
+    Sentinel: 0.94,
+    Flex: 1,
+  }
+  return Object.fromEntries(
+    team.lineup.map((id) => {
+      const player = state.players[id]
+      const consistency = 1 + (70 - player.ratings.Consistency) / 180
+      // This persistent map factor represents which players repeatedly take (or avoid) first
+      // contact in this particular game, rather than smoothing everybody toward the same total.
+      const mapFactor = 0.68 + random(state) * 0.64
+      return [id, roleWeight[assignedRole(team, player)] * consistency * mapFactor]
+    }),
+  )
+}
+
+function assistPlayer(state: GameState, team: Team, killerId: string) {
+  const helpers = team.lineup.filter((id) => id !== killerId)
+  return weightedId(state, helpers, (id) => {
+    const player = state.players[id]
+    return (
+      assistRoleWeight[assignedRole(team, player)] *
+      (player.ratings.Utility * 0.65 + player.ratings.Teamplay * 0.35)
+    )
+  })
+}
+
 function victimsForRound(
   state: GameState,
   ids: string[],
   count: number,
-  acc: Record<string, StatAccumulator>,
+  exposure: Record<string, number>,
 ) {
-  return [...ids]
-    .sort((a, b) => acc[a].deaths - acc[b].deaths || random(state) - 0.5)
-    .slice(0, count)
+  const available = [...ids]
+  const victims: string[] = []
+  while (victims.length < count && available.length) {
+    const victim = weightedId(state, available, (id) => exposure[id])
+    victims.push(victim)
+    available.splice(available.indexOf(victim), 1)
+  }
+  return victims
 }
 function casualtyCount(state: GameState, losingSide: boolean) {
   if (losingSide) return random(state) < 0.9 ? 5 : 4
@@ -2273,6 +2330,7 @@ function simulateMap(
   allIds.forEach((id) => {
     acc[id] = blankAccumulator()
   })
+  const exposure = { ...deathExposure(state, a), ...deathExposure(state, b) }
   let aScore = 0,
     bScore = 0,
     round = 0
@@ -2288,16 +2346,16 @@ function simulateMap(
       losing = aWins ? b : a
     const winningDeaths = casualtyCount(state, false),
       losingDeaths = casualtyCount(state, true)
-    const winningVictims = victimsForRound(state, winning.lineup, winningDeaths, acc)
-    const losingVictims = victimsForRound(state, losing.lineup, losingDeaths, acc)
+    const winningVictims = victimsForRound(state, winning.lineup, winningDeaths, exposure)
+    const losingVictims = victimsForRound(state, losing.lineup, losingDeaths, exposure)
     const killed = new Set<string>(),
       assisted = new Set<string>(),
       died = new Set<string>()
     const roundKills: Record<string, number> = {}
     const firstFromWinner = random(state) < 0.72
 
-    const registerDeath = (victimId: string, killerTeamIds: string[], first: boolean) => {
-      const killerId = weightedPlayer(state, killerTeamIds, acc)
+    const registerDeath = (victimId: string, killerTeam: Team, first: boolean) => {
+      const killerId = weightedPlayer(state, killerTeam.lineup, acc)
       acc[victimId].deaths++
       acc[killerId].kills++
       acc[killerId].damage += 125 + Math.round(random(state) * 35)
@@ -2308,9 +2366,8 @@ function simulateMap(
         acc[killerId].firstKills++
         acc[victimId].firstDeaths++
       }
-      if (random(state) < 0.56) {
-        const helpers = killerTeamIds.filter((id) => id !== killerId)
-        const assistId = helpers[Math.floor(random(state) * helpers.length)]
+      if (random(state) < 0.4) {
+        const assistId = assistPlayer(state, killerTeam, killerId)
         if (assistId) {
           acc[assistId].assists++
           acc[assistId].damage += 28 + Math.round(random(state) * 42)
@@ -2321,10 +2378,9 @@ function simulateMap(
 
     const firstWinnerKill = firstFromWinner || winningVictims.length === 0
     const firstVictim = firstWinnerKill ? losingVictims.shift() : winningVictims.shift()
-    if (firstVictim)
-      registerDeath(firstVictim, firstWinnerKill ? winning.lineup : losing.lineup, true)
-    losingVictims.forEach((victimId) => registerDeath(victimId, winning.lineup, false))
-    winningVictims.forEach((victimId) => registerDeath(victimId, losing.lineup, false))
+    if (firstVictim) registerDeath(firstVictim, firstWinnerKill ? winning : losing, true)
+    losingVictims.forEach((victimId) => registerDeath(victimId, winning, false))
+    winningVictims.forEach((victimId) => registerDeath(victimId, losing, false))
 
     const attackers = aAttacking ? a : b,
       defenders = aAttacking ? b : a
@@ -2378,6 +2434,7 @@ function simulateWatchedMap(
   allIds.forEach((id) => {
     acc[id] = blankAccumulator()
   })
+  const exposure = { ...deathExposure(state, a), ...deathExposure(state, b) }
   const economy: Record<string, Economy> = { [aId]: startingEconomy(), [bId]: startingEconomy() }
   const sites = SITES.slice(0, map === 'Haven' || map === 'Lotus' ? 3 : 2)
   let aScore = 0,
@@ -2486,7 +2543,7 @@ function simulateWatchedMap(
       const killers = loserDies ? winning : losing,
         victims = loserDies ? losing : winning
       const victimPool = alive[victims.id]
-      const victimId = victimPool[Math.floor(random(state) * victimPool.length)]
+      const victimId = weightedId(state, victimPool, (id) => exposure[id])
       const killerId = weightedPlayer(state, alive[killers.id], acc)
       alive[victims.id] = victimPool.filter((id) => id !== victimId)
       const player = state.players[killerId]
@@ -2508,9 +2565,8 @@ function simulateWatchedMap(
         acc[victimId].firstDeaths++
       }
       let assistId: string | undefined
-      if (random(state) < 0.56) {
-        const helpers = killers.lineup.filter((id) => id !== killerId)
-        assistId = helpers[Math.floor(random(state) * helpers.length)]
+      if (random(state) < 0.4) {
+        assistId = assistPlayer(state, killers, killerId)
         if (assistId) {
           acc[assistId].assists++
           acc[assistId].damage += 28 + Math.round(random(state) * 42)
