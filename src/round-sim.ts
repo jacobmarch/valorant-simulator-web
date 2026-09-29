@@ -41,13 +41,15 @@ export type SeriesReplay = { maps: MapReplay[] }
 
 export type Economy = { credits: number; lossStreak: number }
 const START_CREDITS = 800
+/** Every overtime round starts both teams on fresh, equal credits. */
+export const OVERTIME_CREDITS = 5000
 const MAX_CREDITS = 9000
 const FULL_BUY = 3900
 const FORCE_MIN = 2000
 const LOSS_BONUS = [1900, 2400, 2900]
 
-export function startingEconomy(): Economy {
-  return { credits: START_CREDITS, lossStreak: 0 }
+export function startingEconomy(round = 1): Economy {
+  return { credits: round > 24 ? OVERTIME_CREDITS : START_CREDITS, lossStreak: 0 }
 }
 
 /** Team buy for the round, and what it leaves in the bank. Credits are a per-player average. */
