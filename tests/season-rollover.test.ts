@@ -1,5 +1,18 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import { advanceWeek, createGame, loadGame, rolloverSeason, SAVE_KEY } from '../src/game'
+import { attentionItems, nextAction } from '../src/flow'
+import {
+  cancelRenewal,
+  canRenegotiate,
+  freeAgents,
+  renegotiateContract,
+  rosterBlock,
+  rosterShortfall,
+  rosterViolations,
+  salaryDemand,
+  signFreeAgent,
+  type TransferOutcome,
+} from '../src/transfers'
 
 const memory = new Map<string, string>()
 Object.assign(globalThis, {
@@ -10,6 +23,15 @@ Object.assign(globalThis, {
   },
 })
 beforeEach(() => memory.clear())
+
+const expectOk = (outcome: TransferOutcome) => {
+  if (!outcome.ok) throw new Error(outcome.error)
+  return outcome.state
+}
+const expectError = (outcome: TransferOutcome) => {
+  if (outcome.ok) throw new Error('expected an error')
+  return outcome.error
+}
 
 describe('season rollover', () => {
   test('players age and contract years count down', () => {
@@ -41,7 +63,7 @@ describe('season rollover', () => {
     })
   })
 
-  test('expired managed contracts leave unless needed to field five', () => {
+  test('expired managed contracts leave unless renegotiated, even below five', () => {
     const state = createGame('Manager', 'c9')
     const team = state.teams.c9
     const [bench1, bench2] = ['tier2-0', 'tier2-1']
@@ -56,20 +78,69 @@ describe('season rollover', () => {
     expiring.forEach((id) => {
       state.players[id].years = 1
     })
-    rolloverSeason(state)
-    // Seven players, three expire: two may walk, one re-signs to keep five.
-    expect(team.playerIds).toHaveLength(5)
-    expect(team.lineup).toHaveLength(5)
-    expect(team.lineup.every((id) => team.playerIds.includes(id))).toBeTrue()
-    const walked = expiring.filter((id) => !team.playerIds.includes(id))
-    expect(walked).toHaveLength(2)
+    state.week = 44
+    const kept = expectOk(renegotiateContract(state, expiring[0], 2))
+    rolloverSeason(kept)
+    // Seven players, three expire, one is re-signed: two walk and nobody is forced to stay.
+    expect(kept.teams.c9.playerIds).toHaveLength(5)
+    const walked = expiring.slice(1)
     walked.forEach((id) => {
-      expect(state.players[id].teamId).toBeNull()
-      expect(state.players[id].status).toBe('free-agent')
+      expect(kept.players[id].teamId).toBeNull()
+      expect(kept.players[id].status).toBe('free-agent')
     })
-    const stayed = expiring.find((id) => team.playerIds.includes(id))!
-    expect(state.players[stayed].years).toBeGreaterThan(0)
-    expect(state.inbox.some((line) => line.startsWith('Contracts expired'))).toBeTrue()
+    const stayed = kept.players[expiring[0]]
+    expect(stayed.teamId).toBe('c9')
+    expect(stayed.years).toBe(2)
+    expect(stayed.renewal).toBeUndefined()
+    expect(kept.inbox.some((line) => line.startsWith('Contracts expired'))).toBeTrue()
+  })
+
+  test('the roster can fall below five and the calendar waits until it is filled', () => {
+    const state = createGame('Manager', 'c9')
+    const team = state.teams.c9
+    team.playerIds.forEach((id) => {
+      state.players[id].years = 3
+    })
+    team.lineup.slice(0, 3).forEach((id) => {
+      state.players[id].years = 1
+    })
+    rolloverSeason(state)
+    expect(team.playerIds).toHaveLength(2)
+    expect(rosterShortfall(state)).toBe(3)
+    expect(rosterBlock(state)).toContain('needs 3 more players')
+    expect(state.inbox.some((line) => line.includes('before Kickoff'))).toBeTrue()
+    expect(nextAction(state).blocked).toBeTrue()
+    expect(attentionItems(state)[0].id).toBe('roster-short')
+    // Nothing moves while the roster is short.
+    expect(advanceWeek(state, 'Measured defaults', 'Disciplined retakes')).toBe(state)
+    state.teams.c9.cash = 10_000_000
+    let next = state
+    freeAgents(state)
+      .slice(0, 3)
+      .forEach((agent) => {
+        next = expectOk(signFreeAgent(next, 'c9', agent.id))
+      })
+    expect(rosterShortfall(next)).toBe(0)
+    expect(rosterViolations(next, 'c9')).toEqual([])
+    expect(advanceWeek(next, 'Measured defaults', 'Disciplined retakes').week).toBe(2)
+  })
+
+  test('contracts can only be renegotiated in the offseason, for a limited term', () => {
+    const state = createGame('Manager', 'c9')
+    const player = state.players[state.teams.c9.lineup[0]]
+    player.years = 1
+    player.age = 31
+    expect(canRenegotiate(state, player)).toBeFalse()
+    expect(expectError(renegotiateContract(state, player.id, 1))).toContain('week 43')
+    state.week = 43
+    expect(canRenegotiate(state, player)).toBeTrue()
+    expect(expectError(renegotiateContract(state, player.id, 3))).toContain('only sign for 1 year')
+    player.age = 25
+    const next = expectOk(renegotiateContract(state, player.id, 2))
+    expect(next.players[player.id].renewal).toEqual({ years: 2, salary: salaryDemand(player) })
+    expect(cancelRenewal(next, player.id).players[player.id].renewal).toBeUndefined()
+    player.years = 2
+    expect(expectError(renegotiateContract(state, player.id, 1))).toContain('still has 2 years')
   })
 
   test('AI teams keep their expiring starters', () => {
@@ -97,6 +168,8 @@ describe('season rollover', () => {
     ).toBeTrue()
     Object.values(state.teams).forEach((team) => {
       expect(team.championshipPoints).toBe(0)
+      // The manager may be short of players until Kickoff; AI clubs always field five.
+      if (team.id === state.currentTeamId) return
       expect(team.playerIds.length).toBeGreaterThanOrEqual(5)
       expect(team.lineup).toHaveLength(5)
       team.playerIds.forEach((id) => {

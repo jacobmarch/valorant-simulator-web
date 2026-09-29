@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
-import { advanceWeek, createGame, type Fixture, type GameState } from '../src/game'
+import { stepWeek } from './helpers'
+import { createGame, type Fixture, type GameState } from '../src/game'
 
 const memory = new Map<string, string>()
 Object.assign(globalThis, {
@@ -11,7 +12,7 @@ Object.assign(globalThis, {
 })
 beforeEach(() => memory.clear())
 
-const step = (state: GameState) => advanceWeek(state, 'Measured defaults', 'Disciplined retakes')
+const step = (state: GameState) => stepWeek(state)
 const loser = (fixture: Fixture) => (fixture.winnerId === fixture.aId ? fixture.bId : fixture.aId)
 const champions = (state: GameState) =>
   state.fixtures.filter(

@@ -24,6 +24,9 @@ export const transferWindows: TransferWindow[] = [
   { label: 'Offseason window', start: 43, end: 52 },
 ]
 
+/** From this week the season is over and expiring contracts can be renegotiated. */
+export const RENEGOTIATION_START_WEEK = 43
+
 export type TransferOutcome = { ok: true; state: GameState } | { ok: false; error: string }
 
 const money = (value: number) => Math.round(value / 1000) * 1000
@@ -63,6 +66,62 @@ export function askingSalary(player: Player) {
 export function newContractSalary(player: Player) {
   const demand = salaryDemand(player)
   return player.status === 'free-agent' ? demand : Math.max(player.salary, demand)
+}
+/** Longest new contract a player will sign: veterans only take one year. */
+export function maxRenewalYears(player: Player) {
+  if (player.age >= 30) return 1
+  return player.age <= 23 ? 3 : 2
+}
+export function canRenegotiate(state: GameState, player: Player) {
+  return (
+    state.week >= RENEGOTIATION_START_WEEK &&
+    player.teamId === state.currentTeamId &&
+    player.years <= 1
+  )
+}
+/** Agrees new terms now; they take effect when the current contract ends at rollover. */
+export function renegotiateContract(
+  input: GameState,
+  playerId: string,
+  years: number,
+): TransferOutcome {
+  const player = input.players[playerId]
+  if (!player || player.teamId !== input.currentTeamId)
+    return { ok: false, error: 'That player is not on your roster.' }
+  if (input.week < RENEGOTIATION_START_WEEK)
+    return {
+      ok: false,
+      error: `Contracts can be renegotiated once the season ends, from week ${RENEGOTIATION_START_WEEK}.`,
+    }
+  if (player.years > 1)
+    return { ok: false, error: `${player.name} still has ${player.years} years on their contract.` }
+  const max = maxRenewalYears(player)
+  if (!Number.isInteger(years) || years < 1 || years > max)
+    return {
+      ok: false,
+      error: `${player.name} will only sign for 1${max > 1 ? `–${max}` : ''} year${max > 1 ? 's' : ''}.`,
+    }
+  const state = structuredClone(input)
+  state.players[playerId].renewal = { years, salary: salaryDemand(state.players[playerId]) }
+  return { ok: true, state }
+}
+export function cancelRenewal(input: GameState, playerId: string): GameState {
+  const state = structuredClone(input)
+  if (state.players[playerId]) delete state.players[playerId].renewal
+  return state
+}
+/** How many players the managed team still needs before it can field a match. */
+export function rosterShortfall(state: GameState) {
+  const team = state.teams[state.currentTeamId]
+  const active = team.playerIds.filter((id) => state.players[id]?.status !== 'inactive').length
+  return Math.max(0, 5 - active)
+}
+/** Why the calendar cannot move yet, if the managed team is short of players. */
+export function rosterBlock(state: GameState) {
+  const missing = rosterShortfall(state)
+  return missing
+    ? `${state.teams[state.currentTeamId].name} needs ${missing} more player${missing === 1 ? '' : 's'} to field five. Sign ${missing === 1 ? 'a free agent' : 'free agents'} before Kickoff.`
+    : null
 }
 export function contractValue(player: Player) {
   return money(askingSalary(player) * player.years)
@@ -295,6 +354,7 @@ function applyRelease(state: GameState, teamId: string, playerId: string) {
   leaveTeam(state, player)
   player.teamId = null
   player.status = 'free-agent'
+  delete player.renewal
   recordMove(state, { kind: 'release', playerId, fromTeamId: teamId, toTeamId: null, fee: 0 })
   if (teamId === state.currentTeamId) state.inbox.unshift(`Released ${player.name}.`)
 }

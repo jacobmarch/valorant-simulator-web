@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
-import { advanceWeek, createGame, eventFinish, type GameState, loadGame } from '../src/game'
+import { stepWeek } from './helpers'
+import { createGame, eventFinish, type GameState, loadGame } from '../src/game'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { YearInReview } from '../src/season-review-view'
 import type { Region } from '../src/seed'
@@ -17,7 +18,7 @@ beforeEach(() => memory.clear())
 // Matches the private key in src/game.ts.
 const SAVE_KEY = 'vct-manager-mvp-save-v1'
 const regions: Region[] = ['Americas', 'EMEA', 'Pacific', 'China']
-const step = (state: GameState) => advanceWeek(state, 'Measured defaults', 'Disciplined retakes')
+const step = (state: GameState) => stepWeek(state)
 const advanceTo = (state: GameState, season: number, week: number) => {
   while (state.season < season || state.week < week) state = step(state)
   return state
