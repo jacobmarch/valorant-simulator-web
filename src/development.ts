@@ -44,7 +44,7 @@ export function seedPotential(currentOverall: number, age: number, jitter: numbe
 }
 
 // Ceiling for a newly generated prospect. Most top out as solid pros; about one in
-// fifteen can become a star (88+) and roughly one in thirty a 90+ talent.
+// eight has a star's ceiling (88+), and few of those get all the way there.
 export function prospectPotential(currentOverall: number, roll: number) {
   return Math.round(clamp(67 + 28 * roll ** 2, currentOverall + 3, 94))
 }
