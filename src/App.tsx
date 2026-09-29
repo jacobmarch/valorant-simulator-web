@@ -56,6 +56,7 @@ import { CompetitionV2 } from './competition-view'
 import { Finances } from './finances-view'
 import { Results } from './results-view'
 import { YearInReview } from './season-review-view'
+import type { SeriesReplay } from './round-sim'
 import { SeriesWalkthrough, SimChoice } from './series-walkthrough'
 import { DEFAULT_TRAINING } from './development'
 import {
@@ -712,7 +713,11 @@ export default function App() {
   const [attack, setAttack] = useState('Measured defaults')
   const [defense, setDefense] = useState('Disciplined retakes')
   const [simChoiceId, setSimChoiceId] = useState<string>()
-  const [walkthrough, setWalkthrough] = useState<{ next: GameState; matchId: string }>()
+  const [walkthrough, setWalkthrough] = useState<{
+    next: GameState
+    matchId: string
+    replay: SeriesReplay
+  }>()
   const start = (name: string, team: string) => {
     const n = createGame(name, team)
     saveGame(n)
@@ -755,13 +760,15 @@ export default function App() {
     setSimChoiceId(undefined)
     commit(simulateTournamentFixture(s, fixtureId, attack, defense))
   }
-  /** Plays the series now but holds the new state back until every map has been revealed. */
-  const simMapByMap = (fixtureId: string) => {
+  /** Plays the series now with the round-by-round sim, but holds the new state back until
+   * every map has been revealed. Only the box score is saved; the replay stays in memory. */
+  const watchSeries = (fixtureId: string) => {
     setSimChoiceId(undefined)
-    const next = simulateTournamentFixture(s, fixtureId, attack, defense)
+    const replay: SeriesReplay = { maps: [] }
+    const next = simulateTournamentFixture(s, fixtureId, attack, defense, replay)
     const resultId = next.fixtures.find((fixture) => fixture.id === fixtureId)?.resultId
     if (resultId && next.matches.some((match) => match.id === resultId))
-      setWalkthrough({ next, matchId: resultId })
+      setWalkthrough({ next, matchId: resultId, replay })
     else commit(next)
   }
   const finishWalkthrough = () => {
@@ -921,7 +928,7 @@ export default function App() {
           s={s}
           fixture={simChoiceFixture}
           onQuick={() => simMatch(simChoiceFixture.id)}
-          onMapByMap={() => simMapByMap(simChoiceFixture.id)}
+          onWatch={() => watchSeries(simChoiceFixture.id)}
           onClose={() => setSimChoiceId(undefined)}
         />
       )}
@@ -933,6 +940,7 @@ export default function App() {
               (match) => match.id === walkthrough.matchId,
             ) as MatchResult
           }
+          replay={walkthrough.replay}
           onFinish={finishWalkthrough}
           onOpenFull={(id) => {
             commit(walkthrough.next)

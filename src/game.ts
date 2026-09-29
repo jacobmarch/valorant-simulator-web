@@ -20,6 +20,19 @@ import {
 } from './development'
 import { bestRoleAssignment, compositionPenalty, roleRating } from './roles'
 import { attackerEdge, describeVeto, mapFit, runVeto } from './maps'
+import {
+  buyStrength,
+  chooseBuy,
+  type Economy,
+  type EndReason,
+  type MapReplay,
+  type RoundEvent,
+  type RoundReplay,
+  type SeriesReplay,
+  settleEconomy,
+  startingEconomy,
+  weaponFor,
+} from './round-sim'
 import { iglAdjustment, refreshIgls } from './igl'
 import {
   addProspectClass,
@@ -2184,17 +2197,16 @@ function casualtyCount(state: GameState, losingSide: boolean) {
   return 4
 }
 
-function simulateMap(
+/** Chance team A takes a round, before economy, from strength, map fit, tactics and side. */
+function roundOdds(
   state: GameState,
   aId: string,
   bId: string,
   map: string,
   attackStyle: string,
   defenseStyle: string,
-  mapEdge = 0,
-): MapResult {
-  const a = state.teams[aId],
-    b = state.teams[bId]
+  mapEdge: number,
+) {
   const aPower = teamStrength(state, aId) + mapEdge,
     bPower = teamStrength(state, bId)
   const styleBonus =
@@ -2204,6 +2216,48 @@ function simulateMap(
         ? 0.5
         : 0) +
     (defenseStyle === 'Disciplined retakes' ? 1 : defenseStyle === 'Proactive contesting' ? 0.5 : 0)
+  return (aAttacking: boolean) => {
+    const sideBonus = aAttacking ? attackerEdge(map) : -attackerEdge(map)
+    return 0.5 + (aPower - bPower) / 115 + styleBonus / 100 + sideBonus
+  }
+}
+function isMapOver(aScore: number, bScore: number) {
+  return (
+    (aScore >= 13 || bScore >= 13) &&
+    (Math.min(aScore, bScore) < 12 || Math.abs(aScore - bScore) >= 2)
+  )
+}
+function roundSummary(
+  state: GameState,
+  round: number,
+  winning: Team,
+  losingDeaths: number,
+  winningDeaths: number,
+  roundKills: Record<string, number>,
+) {
+  const star = Object.entries(roundKills).sort(([, left], [, right]) => right - left)[0]
+  const starText =
+    star && star[1] >= 3
+      ? ` · ${state.players[star[0]].name} ${star[1] === 5 ? 'ACE' : `${star[1]}K`}`
+      : ''
+  return `${round > 24 ? 'OT · ' : ''}${winning.short} won round ${round}, ${losingDeaths}-${winningDeaths}${starText}`
+}
+
+function simulateMap(
+  state: GameState,
+  aId: string,
+  bId: string,
+  map: string,
+  attackStyle: string,
+  defenseStyle: string,
+  mapEdge = 0,
+  replay?: MapReplay,
+): MapResult {
+  if (replay)
+    return simulateWatchedMap(state, aId, bId, map, attackStyle, defenseStyle, mapEdge, replay)
+  const a = state.teams[aId],
+    b = state.teams[bId]
+  const odds = roundOdds(state, aId, bId, map, attackStyle, defenseStyle, mapEdge)
   const acc: Record<string, StatAccumulator> = {}
   const allIds = [...a.lineup, ...b.lineup]
   allIds.forEach((id) => {
@@ -2215,20 +2269,10 @@ function simulateMap(
   const rounds: string[] = []
 
   while (round < 60) {
-    if (
-      (aScore >= 13 || bScore >= 13) &&
-      (Math.min(aScore, bScore) < 12 || Math.abs(aScore - bScore) >= 2)
-    )
-      break
+    if (isMapOver(aScore, bScore)) break
     round++
-    const overtime = round > 24
-    const aAttacking = overtime ? round % 2 === 1 : round <= 12
-    const sideBonus = aAttacking ? attackerEdge(map) : -attackerEdge(map)
-    const probability = clamp(
-      0.5 + (aPower - bPower) / 115 + styleBonus / 100 + sideBonus,
-      0.17,
-      0.83,
-    )
+    const aAttacking = round > 24 ? round % 2 === 1 : round <= 12
+    const probability = clamp(odds(aAttacking), 0.17, 0.83)
     const aWins = random(state) < probability
     const winning = aWins ? a : b,
       losing = aWins ? b : a
@@ -2292,17 +2336,253 @@ function simulateMap(
     })
     if (aWins) aScore++
     else bScore++
-    const star = Object.entries(roundKills).sort(([, left], [, right]) => right - left)[0]
-    const starText =
-      star && star[1] >= 3
-        ? ` · ${state.players[star[0]].name} ${star[1] === 5 ? 'ACE' : `${star[1]}K`}`
-        : ''
-    rounds.push(
-      `${overtime ? 'OT · ' : ''}${winning.short} won round ${round}, ${losingDeaths}-${winningDeaths}${starText}`,
-    )
+    rounds.push(roundSummary(state, round, winning, losingDeaths, winningDeaths, roundKills))
   }
+  const stats = mapStats(state, allIds, acc, aScore + bScore)
+  return { map, aScore, bScore, winnerId: aScore > bScore ? aId : bId, rounds, stats }
+}
 
-  const totalRounds = aScore + bScore
+const SITES = ['A', 'B', 'C']
+// Round-win probability swing between a full buy and nothing.
+const ECONOMY_SWING = 0.22
+/**
+ * The watched version of simulateMap: same round odds and stat bookkeeping, plus an economy
+ * that swings rounds and a kill-by-kill log (who killed whom, with what, when) written to
+ * `replay`. It returns an ordinary MapResult, so a watched series saves exactly like a quick one.
+ */
+function simulateWatchedMap(
+  state: GameState,
+  aId: string,
+  bId: string,
+  map: string,
+  attackStyle: string,
+  defenseStyle: string,
+  mapEdge: number,
+  replay: MapReplay,
+): MapResult {
+  const a = state.teams[aId],
+    b = state.teams[bId]
+  const odds = roundOdds(state, aId, bId, map, attackStyle, defenseStyle, mapEdge)
+  const acc: Record<string, StatAccumulator> = {}
+  const allIds = [...a.lineup, ...b.lineup]
+  allIds.forEach((id) => {
+    acc[id] = blankAccumulator()
+  })
+  const economy: Record<string, Economy> = { [aId]: startingEconomy(), [bId]: startingEconomy() }
+  const sites = SITES.slice(0, map === 'Haven' || map === 'Lotus' ? 3 : 2)
+  let aScore = 0,
+    bScore = 0,
+    round = 0
+  const rounds: string[] = []
+
+  while (round < 60) {
+    if (isMapOver(aScore, bScore)) break
+    round++
+    if (round === 13) {
+      economy[aId] = startingEconomy()
+      economy[bId] = startingEconomy()
+    }
+    const aAttacking = round > 24 ? round % 2 === 1 : round <= 12
+    const attackers = aAttacking ? a : b,
+      defenders = aAttacking ? b : a
+    const mustSpend = round === 12 || round === 24 || aScore === 12 || bScore === 12
+    const aBuy = chooseBuy(economy[aId], round, mustSpend),
+      bBuy = chooseBuy(economy[bId], round, mustSpend)
+    const probability = clamp(
+      odds(aAttacking) + (buyStrength[aBuy.buy] - buyStrength[bBuy.buy]) * ECONOMY_SWING,
+      0.06,
+      0.94,
+    )
+    const aWins = random(state) < probability
+    const winning = aWins ? a : b,
+      losing = aWins ? b : a
+    const winnerAttacks = winning.id === attackers.id
+    const winningDeaths = casualtyCount(state, false),
+      losingDeaths = casualtyCount(state, true)
+    // A round only ends short of a wipe on the spike: detonation for attackers, the clock or a
+    // defuse for defenders.
+    const planted = winnerAttacks ? losingDeaths < 5 || random(state) < 0.6 : random(state) < 0.22
+    const endReason: EndReason = winnerAttacks
+      ? losingDeaths === 5
+        ? 'elimination'
+        : 'detonation'
+      : planted
+        ? 'defuse'
+        : losingDeaths === 5
+          ? 'elimination'
+          : 'time'
+
+    // Order the deaths: first blood usually goes the winners' way, and a wipe ends on the losers.
+    const wipe = losingDeaths === 5
+    const order: boolean[] = [
+      ...Array(losingDeaths - (wipe ? 1 : 0)).fill(true),
+      ...Array(winningDeaths).fill(false),
+    ]
+    for (let index = order.length - 1; index > 0; index--) {
+      const swap = Math.floor(random(state) * (index + 1))
+      ;[order[index], order[swap]] = [order[swap], order[index]]
+    }
+    const firstFromWinner = random(state) < 0.72 || winningDeaths === 0
+    const firstIndex = order.indexOf(firstFromWinner)
+    if (firstIndex > 0) [order[0], order[firstIndex]] = [order[firstIndex], order[0]]
+    if (wipe) order.push(true)
+    // The plant has to happen while an attacker is alive, so before a wipe's last kill.
+    const plantAfter = planted
+      ? Math.floor(random(state) * (wipe ? order.length : order.length + 1))
+      : -1
+
+    const buys: Record<string, ReturnType<typeof chooseBuy>> = { [aId]: aBuy, [bId]: bBuy }
+    const weapons: Record<string, string> = {}
+    for (const team of [a, b])
+      team.lineup.forEach((id) => {
+        weapons[id] = weaponFor(
+          buys[team.id].buy,
+          assignedRole(team, state.players[id]),
+          random(state),
+          random(state),
+        )
+      })
+    const alive: Record<string, string[]> = { [aId]: [...a.lineup], [bId]: [...b.lineup] }
+    const events: RoundEvent[] = []
+    const roundKills: Record<string, number> = {}
+    const killed = new Set<string>(),
+      assisted = new Set<string>(),
+      died = new Set<string>()
+    let time = 4 + random(state) * 10,
+      plantTime = 0,
+      clutch: RoundReplay['clutch']
+    const tick = (postPlant: boolean) => {
+      time = postPlant
+        ? Math.min(plantTime + 44, time + 2 + random(state) * 9)
+        : Math.min(96, time + 3 + random(state) * 16)
+    }
+    const plant = () => {
+      const planterId = alive[attackers.id][Math.floor(random(state) * alive[attackers.id].length)]
+      if (!planterId) return
+      plantTime = Math.max(time + 2, 30 + random(state) * 50)
+      time = plantTime
+      acc[planterId].plants++
+      events.push({
+        kind: 'plant',
+        time: plantTime,
+        playerId: planterId,
+        site: sites[Math.floor(random(state) * sites.length)],
+      })
+    }
+
+    order.forEach((loserDies, index) => {
+      if (index === plantAfter) plant()
+      tick(plantTime > 0)
+      const killers = loserDies ? winning : losing,
+        victims = loserDies ? losing : winning
+      const victimPool = alive[victims.id]
+      const victimId = victimPool[Math.floor(random(state) * victimPool.length)]
+      const killerId = weightedPlayer(state, alive[killers.id], acc)
+      alive[victims.id] = victimPool.filter((id) => id !== victimId)
+      const player = state.players[killerId]
+      const headshotRate = clamp(
+        0.18 + (player.ratings.Mechanics - 55) / 180 + random(state) * 0.08,
+        0.16,
+        0.48,
+      )
+      const headshot = random(state) < headshotRate
+      acc[victimId].deaths++
+      acc[killerId].kills++
+      if (headshot) acc[killerId].headshots++
+      acc[killerId].damage += 125 + Math.round(random(state) * 35)
+      roundKills[killerId] = (roundKills[killerId] ?? 0) + 1
+      killed.add(killerId)
+      died.add(victimId)
+      if (index === 0) {
+        acc[killerId].firstKills++
+        acc[victimId].firstDeaths++
+      }
+      let assistId: string | undefined
+      if (random(state) < 0.56) {
+        const helpers = killers.lineup.filter((id) => id !== killerId)
+        assistId = helpers[Math.floor(random(state) * helpers.length)]
+        if (assistId) {
+          acc[assistId].assists++
+          acc[assistId].damage += 28 + Math.round(random(state) * 42)
+          assisted.add(assistId)
+        }
+      }
+      events.push({
+        kind: 'kill',
+        time,
+        killerId,
+        victimId,
+        weapon: weapons[killerId],
+        headshot,
+        first: index === 0,
+        assistId,
+      })
+      if (!clutch && alive[winning.id].length === 1 && alive[losing.id].length > 0)
+        clutch = { playerId: alive[winning.id][0], versus: alive[losing.id].length }
+    })
+    if (plantAfter >= order.length) plant()
+    let endTime = time
+    if (endReason === 'detonation') endTime = plantTime + 45
+    else if (endReason === 'time') endTime = 100
+    else if (endReason === 'defuse') {
+      const defuserId =
+        alive[defenders.id][Math.floor(random(state) * alive[defenders.id].length)] ??
+        defenders.lineup[0]
+      endTime = Math.min(plantTime + 44, time + 4 + random(state) * 4)
+      acc[defuserId].defuses++
+      events.push({ kind: 'defuse', time: endTime, playerId: defuserId })
+    }
+    if (clutch) acc[clutch.playerId].clutches++
+    allIds.forEach((id) => {
+      acc[id].damage += Math.round(random(state) * 42)
+      if (killed.has(id) || assisted.has(id) || !died.has(id)) acc[id].kastRounds++
+    })
+    for (const team of [a, b]) {
+      const other = team.id === aId ? b : a
+      settleEconomy(
+        economy[team.id],
+        buys[team.id],
+        team.id === winning.id,
+        other.lineup.length - alive[other.id].length,
+        alive[team.id].length,
+        team.id === attackers.id && planted,
+      )
+    }
+    if (aWins) aScore++
+    else bScore++
+    const summary = roundSummary(state, round, winning, losingDeaths, winningDeaths, roundKills)
+    rounds.push(summary)
+    replay.rounds.push({
+      round,
+      overtime: round > 24,
+      attackerId: attackers.id,
+      winnerId: winning.id,
+      aScore,
+      bScore,
+      endReason,
+      endTime,
+      buys: [
+        { buy: aBuy.buy, credits: aBuy.credits },
+        { buy: bBuy.buy, credits: bBuy.credits },
+      ],
+      events,
+      clutch,
+      summary,
+    })
+  }
+  const stats = mapStats(state, allIds, acc, aScore + bScore, true)
+  return { map, aScore, bScore, winnerId: aScore > bScore ? aId : bId, rounds, stats }
+}
+
+/** Box-score lines from a map's running tallies. `countedHeadshots` keeps the headshots the
+ * watched sim recorded kill by kill instead of estimating them from the player's aim. */
+function mapStats(
+  state: GameState,
+  allIds: string[],
+  acc: Record<string, StatAccumulator>,
+  totalRounds: number,
+  countedHeadshots = false,
+) {
   const stats: Record<string, PlayerStat> = {}
   allIds.forEach((id) => {
     const x = acc[id],
@@ -2333,10 +2613,12 @@ function simulateMap(
       clutches: x.clutches,
       plants: x.plants,
       defuses: x.defuses,
-      headshots: Math.min(x.kills, Math.round(x.kills * headshotRate)),
+      headshots: countedHeadshots
+        ? x.headshots
+        : Math.min(x.kills, Math.round(x.kills * headshotRate)),
     }
   })
-  return { map, aScore, bScore, winnerId: aScore > bScore ? aId : bId, rounds, stats }
+  return stats
 }
 
 export function simulateSeries(
@@ -2348,6 +2630,7 @@ export function simulateSeries(
   defenseStyle = 'Disciplined retakes',
   bestOf: 3 | 5 = 3,
   fixtureIdValue?: string,
+  replay?: SeriesReplay,
 ): MatchResult {
   const needed = Math.ceil(bestOf / 2),
     vetoResult = runVeto(state, aId, bId, bestOf, () => random(state)),
@@ -2357,6 +2640,8 @@ export function simulateSeries(
     bWins = 0
   while (aWins < needed && bWins < needed) {
     const map = veto[mapResults.length % veto.length]
+    const mapReplay = replay ? { map, aId, bId, rounds: [] } : undefined
+    if (replay && mapReplay) replay.maps.push(mapReplay)
     const mapResult = simulateMap(
       state,
       aId,
@@ -2365,6 +2650,7 @@ export function simulateSeries(
       attackStyle,
       defenseStyle,
       mapFit(state, aId, map) - mapFit(state, bId, map),
+      mapReplay,
     )
     mapResults.push(mapResult)
     if (mapResult.winnerId === aId) aWins++
@@ -2452,6 +2738,7 @@ function playFixture(
   fixture: Fixture,
   attackStyle: string,
   defenseStyle: string,
+  replay?: SeriesReplay,
 ) {
   if (!fixture.bId || fixture.status === 'completed') return null
   const userInvolved = fixture.aId === state.currentTeamId || fixture.bId === state.currentTeamId
@@ -2464,6 +2751,7 @@ function playFixture(
     userInvolved ? defenseStyle : 'Disciplined retakes',
     fixture.bestOf,
     fixture.id,
+    replay,
   )
   fixture.status = 'completed'
   fixture.winnerId = result.winnerId
@@ -2843,12 +3131,14 @@ function reportTournamentResult(state: GameState, fixture: Fixture, result: Matc
   )
 }
 /** Plays one fixture from the live round; once the round is finished, the rest of the
- * round (other regions) is played and the event moves on to the next round or week. */
+ * round (other regions) is played and the event moves on to the next round or week.
+ * Passing `replay` plays that one fixture with the round-by-round sim and fills it in. */
 export function simulateTournamentFixture(
   input: GameState,
   fixtureId: string,
   attackStyle: string,
   defenseStyle: string,
+  replay?: SeriesReplay,
 ): GameState {
   const phase = phaseForWeek(input.week)
   if (phase === 'Break' || phase === 'Offseason') return input
@@ -2860,7 +3150,7 @@ export function simulateTournamentFixture(
   )
   const fixture = step.find((candidate) => candidate.id === fixtureId)
   if (!fixture) return input
-  const result = playFixture(state, fixture, attackStyle, defenseStyle)
+  const result = playFixture(state, fixture, attackStyle, defenseStyle, replay)
   if (result) reportTournamentResult(state, fixture, result)
   const roundDone = step
     .filter(

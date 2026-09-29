@@ -14,7 +14,7 @@ Object.assign(globalThis, {
 beforeEach(() => memory.clear())
 
 describe('map-by-map sim', () => {
-  test('offers quick sim or map by map for a single series', () => {
+  test('offers quick sim or watching a single series', () => {
     const state = createGame('Manager', 'sen')
     const fixture = state.fixtures.find((f) => f.id === playableTournamentFixtureIds(state)[0])
     if (!fixture) throw new Error('no playable fixture')
@@ -23,12 +23,12 @@ describe('map-by-map sim', () => {
         s={state}
         fixture={fixture}
         onQuick={() => {}}
-        onMapByMap={() => {}}
+        onWatch={() => {}}
         onClose={() => {}}
       />,
     )
     expect(html).toContain('Quick sim')
-    expect(html).toContain('Map by map')
+    expect(html).toContain('Watch')
   })
   test('starts on the veto with the series score hidden', () => {
     const state = createGame('Manager', 'sen')
