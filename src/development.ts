@@ -4,7 +4,7 @@ import { skills } from './seed'
 
 type Skill = (typeof skills)[number]
 type Ratings = Record<Skill, number>
-type PlayerStatus = 'starter' | 'substitute' | 'inactive' | 'free-agent'
+type PlayerStatus = 'starter' | 'substitute' | 'inactive' | 'free-agent' | 'retired'
 type DevelopingPlayer = {
   ratings: Ratings
   age: number
@@ -39,29 +39,65 @@ export function overallRating(ratings: Ratings) {
 
 // Younger players get more headroom above their current overall.
 export function seedPotential(currentOverall: number, age: number, jitter: number) {
-  const headroom = age <= 20 ? 12 : age <= 23 ? 8 : age <= 26 ? 4 : 1
-  return Math.round(clamp(currentOverall + headroom + jitter, currentOverall, 99))
+  const headroom = age <= 20 ? 8 : age <= 23 ? 5 : age <= 26 ? 2 : 0
+  return Math.round(clamp(currentOverall + headroom + jitter, currentOverall, 90))
+}
+
+// Ceiling for a newly generated prospect. Most top out as solid pros; about one in
+// fifteen can become a star (88+) and roughly one in thirty a 90+ talent.
+export function prospectPotential(currentOverall: number, roll: number) {
+  return Math.round(clamp(67 + 28 * roll ** 2, currentOverall + 3, 94))
 }
 
 export function ageGrowthMultiplier(age: number) {
   if (age <= 20) return 1.5
   if (age <= 23) return 1.25
-  if (age <= 26) return 1
-  if (age <= 29) return 0.7
-  return 0.45
+  if (age <= 25) return 1
+  if (age <= 27) return 0.6
+  return 0.3
 }
 
 // Weekly chance of losing a point to age, independent of training.
+// Aim and clutch fade from the mid-twenties; game sense holds a few years longer.
 export function ageDeclineChance(age: number, skill: Skill) {
-  if (physicalSkills.has(skill)) return age <= 26 ? 0 : Math.min(0.14, (age - 26) * 0.02)
-  return age <= 30 ? 0 : Math.min(0.08, (age - 30) * 0.01)
+  if (physicalSkills.has(skill)) return age <= 25 ? 0 : Math.min(0.2, (age - 25) * 0.025)
+  return age <= 28 ? 0 : Math.min(0.12, (age - 28) * 0.02)
 }
 
-// Growth slows sharply once a player reaches their potential.
+// Growth stops once a player reaches their potential.
 export function potentialFactor(currentOverall: number, potential: number) {
   const gap = potential - currentOverall
-  if (gap <= 0) return 0.08
-  return Math.min(1, 0.35 + gap * 0.13)
+  if (gap <= 0) return 0
+  return Math.min(1, 0.3 + gap * 0.12)
+}
+
+// Weekly chance per skill of slipping back toward a ceiling the player has outgrown
+// (potential shrinks with age, so this is how veterans' ratings come down).
+export function overshootDeclineChance(currentOverall: number, potential: number) {
+  const over = currentOverall - potential
+  return over <= 0 ? 0 : Math.min(0.25, over * 0.03)
+}
+
+// Chance a player hangs up their mouse at season rollover. Only players whose
+// contract has run out (or who are unsigned) can retire.
+export function retirementChance(age: number, currentOverall: number, unsigned: boolean) {
+  const byAge =
+    age <= 25
+      ? 0
+      : age <= 27
+        ? 0.04
+        : age <= 29
+          ? 0.12
+          : age <= 31
+            ? 0.3
+            : age <= 33
+              ? 0.55
+              : age <= 35
+                ? 0.85
+                : 1
+  // Players nobody signs drift out of the scene, faster once they are no longer young.
+  const fringe = !unsigned || age < 20 ? 0 : age >= 24 && currentOverall < 72 ? 0.5 : 0.2
+  return Math.min(1, byAge + fringe)
 }
 
 export function moraleGrowthFactor(morale: number) {
@@ -107,10 +143,12 @@ export function developPlayer(
   allocation: Partial<Record<Skill, number>>,
   random: () => number,
 ) {
+  const overall = overallRating(player.ratings)
   const growth =
     ageGrowthMultiplier(player.age) *
-    potentialFactor(overallRating(player.ratings), player.potential) *
+    potentialFactor(overall, player.potential) *
     moraleGrowthFactor(player.morale)
+  const overshoot = overshootDeclineChance(overall, player.potential)
   skills.forEach((skill) => {
     const hours = allocation[skill] ?? 0
     if (hours < 5 && random() < 0.13) player.ratings[skill] = Math.max(1, player.ratings[skill] - 1)
@@ -119,14 +157,18 @@ export function developPlayer(
     const decline = ageDeclineChance(player.age, skill)
     if (decline && random() < decline)
       player.ratings[skill] = Math.max(1, player.ratings[skill] - 1)
+    if (overshoot && random() < overshoot)
+      player.ratings[skill] = Math.max(1, player.ratings[skill] - 1)
   })
   player.form = weeklyForm(player.form)
   player.morale = weeklyMorale(player.morale, player.status)
 }
 
-// Birthday at season rollover; veterans' ceilings shrink each year.
+// Birthday at season rollover; ceilings shrink every year from the mid-twenties.
+export function potentialDecline(age: number) {
+  return age <= 25 ? 0 : age <= 27 ? 1 : age <= 29 ? 2 : 3
+}
 export function agePlayer(player: DevelopingPlayer) {
   player.age++
-  if (player.age >= 28)
-    player.potential = Math.max(40, player.potential - (player.age >= 31 ? 2 : 1))
+  player.potential = Math.max(40, player.potential - potentialDecline(player.age))
 }

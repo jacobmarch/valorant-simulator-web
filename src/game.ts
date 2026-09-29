@@ -20,8 +20,16 @@ import {
 } from './development'
 import { bestRoleAssignment, compositionPenalty, roleRating } from './roles'
 import { attackerEdge, describeVeto, mapFit, runVeto } from './maps'
-import { iglAdjustment, refreshIgl } from './igl'
-import { recordMove, replenishFreeAgents, runAiTransfers } from './transfers'
+import { iglAdjustment, refreshIgls } from './igl'
+import {
+  addProspectClass,
+  fillAiRosters,
+  processRetirements,
+  pruneRetiredPlayers,
+  recordMove,
+  replenishFreeAgents,
+  runAiTransfers,
+} from './transfers'
 import {
   backfillSeasonStats,
   closeSeasonReview,
@@ -42,7 +50,7 @@ import {
 
 export type Skill = (typeof skills)[number]
 export type DelegationMode = 'hands-on' | 'balanced' | 'hands-off'
-export type PlayerStatus = 'starter' | 'substitute' | 'inactive' | 'free-agent'
+export type PlayerStatus = 'starter' | 'substitute' | 'inactive' | 'free-agent' | 'retired'
 export type CompetitionPhase =
   | 'Kickoff'
   | 'Masters 1'
@@ -72,6 +80,8 @@ export type Player = {
   morale: number
   /** In-game leader: earned from Tactics and Teamplay, see src/igl.ts. */
   igl: boolean
+  /** Season the player retired in; retirees are pruned once history no longer needs them. */
+  retiredSeason?: number
 }
 export type Team = {
   id: string
@@ -175,7 +185,7 @@ export type TransferRecord = {
   id: string
   season: number
   week: number
-  kind: 'signing' | 'buyout' | 'release' | 'status' | 'renewal' | 'expiry'
+  kind: 'signing' | 'buyout' | 'release' | 'status' | 'renewal' | 'expiry' | 'retirement'
   playerId: string
   playerName: string
   fromTeamId: string | null
@@ -184,7 +194,7 @@ export type TransferRecord = {
   note?: string
 }
 export type GameState = {
-  version: 16
+  version: 17
   season: number
   week: number
   managerName: string
@@ -348,7 +358,6 @@ export function createGame(managerName: string, currentTeamId: string): GameStat
         players[id].age,
         (teamIndex * 3 + playerIndex * 5) % 5,
       )
-      refreshIgl(players[id])
       return id
     })
     const lineup = playerIds.slice(0, 5)
@@ -398,10 +407,10 @@ export function createGame(managerName: string, currentTeamId: string): GameStat
       players[id].age,
       2 + (index % 3),
     )
-    refreshIgl(players[id])
   })
+  refreshIgls(Object.values(players))
   const state: GameState = {
-    version: 16,
+    version: 17,
     season: 2026,
     week: 1,
     managerName: managerName || 'Manager',
@@ -649,8 +658,8 @@ function migrateGame(raw: unknown): GameState | null {
   if (previousVersion < 15) {
     Object.values(state.players).forEach((player) => {
       player.igl = false
-      refreshIgl(player)
     })
+    refreshIgls(Object.values(state.players))
     state.inbox.push(
       'Some players are now in-game leaders (IGL). Starting one gives your team rating a boost; a lineup without one takes a small penalty.',
     )
@@ -661,7 +670,22 @@ function migrateGame(raw: unknown): GameState | null {
     state.reviews ??= []
     state.pendingReview ??= null
   }
-  state.version = 16
+  if (previousVersion < 17) {
+    // Veterans stop growing under the new aging curve, and the IGL trait is re-awarded
+    // under the scarcer rules. A first youth class arrives right away.
+    Object.values(state.players).forEach((player) => {
+      if (player.age >= 26)
+        player.potential = Math.min(player.potential, Math.round(overallRating(player.ratings)))
+      player.potential = Math.min(player.potential, 94)
+      player.igl = false
+    })
+    addProspectClass(state)
+    refreshIgls(Object.values(state.players))
+    state.inbox.push(
+      "Player careers are tougher: veterans decline from their mid-twenties and retire, a new class of prospects turns pro every offseason, and only the league's ten best shot-callers hold the IGL trait.",
+    )
+  }
+  state.version = 17
   pruneHistory(state)
   ensureWeekScheduled(state, state.week)
   return state
@@ -2651,11 +2675,14 @@ export function rolloverSeason(state: GameState) {
   closeSeasonReview(state)
   state.week = 1
   state.season++
+  pruneRetiredPlayers(state, HISTORY_SEASONS)
   Object.values(state.players).forEach((player) => {
+    if (player.status === 'retired') return
     ageDevelopment(player)
-    refreshIgl(player)
     if (player.teamId) player.years--
   })
+  reportRetirements(state, processRetirements(state))
+  refreshIgls(Object.values(state.players))
   Object.values(state.teams).forEach((team) => {
     resolveExpiredContracts(state, team)
     team.championshipPoints = 0
@@ -2664,6 +2691,8 @@ export function rolloverSeason(state: GameState) {
     team.mapWins = 0
     team.mapLosses = 0
   })
+  addProspectClass(state)
+  fillAiRosters(state)
   state.jobs.forEach((job) => {
     if (job.status === 'pending') job.status = 'declined'
   })
@@ -2677,6 +2706,26 @@ export function rolloverSeason(state: GameState) {
   state.inbox.unshift(
     `Season ${finishedSeason} is complete. Championship Points are reset, players are a year older, and the season ${state.season} Kickoff bracket is ready.`,
   )
+}
+function reportRetirements(state: GameState, retired: Player[]) {
+  const own = retired.filter((player) =>
+    state.transfers.some(
+      (move) =>
+        move.kind === 'retirement' &&
+        move.playerId === player.id &&
+        move.fromTeamId === state.currentTeamId,
+    ),
+  )
+  if (own.length)
+    state.inbox.unshift(`Retired from your roster: ${own.map((player) => player.name).join(', ')}.`)
+  const notable = retired
+    .filter((player) => !own.includes(player) && overall(player) >= 78)
+    .sort((a, b) => overall(b) - overall(a))
+    .slice(0, 5)
+  if (notable.length)
+    state.inbox.unshift(
+      `Retirements around the league: ${notable.map((player) => `${player.name} (${player.age})`).join(', ')}.`,
+    )
 }
 function tickCalendar(state: GameState) {
   updateDevelopmentAndFinances(state)
@@ -3136,6 +3185,7 @@ function finishKickoffRegion(
 }
 function updateDevelopmentAndFinances(state: GameState) {
   Object.values(state.players).forEach((player) => {
+    if (player.status === 'retired') return
     const managed = player.teamId === state.currentTeamId
     const allocation = state.training[player.id] ?? (managed ? {} : DEFAULT_TRAINING)
     developPlayer(player, allocation, () => random(state))

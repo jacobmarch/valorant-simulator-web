@@ -206,6 +206,7 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
     if (m.kind === 'release') return `${m.playerName} released by ${from}`
     if (m.kind === 'expiry') return `${m.playerName}'s contract with ${from} expired`
     if (m.kind === 'renewal') return `${m.playerName} re-signed with ${from} · ${m.note}`
+    if (m.kind === 'retirement') return `${m.playerName} retired from ${from}`
     return `${m.playerName} · ${from} → ${to} · ${money(m.fee)}`
   }
   return (
@@ -508,7 +509,7 @@ function Training({ s, setState }: { s: GameState; setState: (s: GameState) => v
 function Scouting({ s, setState }: { s: GameState; setState: (s: GameState) => void }) {
   const t = currentTeam(s)
   const targets = Object.values(s.players)
-    .filter((p) => p.teamId !== t.id)
+    .filter((p) => p.teamId !== t.id && p.status !== 'retired')
     .slice(0, 36)
   const setH = (id: string, v: number) => {
     const n = structuredClone(s)
