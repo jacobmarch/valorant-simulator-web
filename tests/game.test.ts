@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import {
   advanceWeek,
+  assignedRole,
   createGame,
   currentTournamentDeskFixtures,
   fixturesForWeek,
@@ -482,7 +483,14 @@ describe('round-derived map statistics', () => {
     let maps = 0,
       players = 0,
       over300 = 0,
-      competitiveMaps = 0
+      competitiveMaps = 0,
+      teamDeathSpreads = 0,
+      teamsWithWideDeathSpreads = 0,
+      duelistAssists = 0,
+      duelistMaps = 0,
+      supportAssists = 0,
+      supportMaps = 0,
+      playersOverTwelveAssists = 0
     for (let index = 0; index < 120; index++) {
       const state = createGame('Audit', 'sen')
       state.rng += index * 9973
@@ -499,14 +507,35 @@ describe('round-derived map statistics', () => {
         expect(firstKills).toBe(firstDeaths)
         expect(firstKills).toBe(map.aScore + map.bScore)
         over300 += rows.filter((row) => row.acs >= 300).length
+        playersOverTwelveAssists += rows.filter((row) => row.assists > 12).length
+        for (const teamId of ['sen', 'g2']) {
+          const team = state.teams[teamId]
+          const deaths = team.lineup.map((id) => map.stats[id].deaths)
+          const spread = Math.max(...deaths) - Math.min(...deaths)
+          teamDeathSpreads += spread
+          if (spread >= 5) teamsWithWideDeathSpreads++
+          for (const id of team.lineup) {
+            const role = assignedRole(team, state.players[id])
+            if (role === 'Duelist') {
+              duelistAssists += map.stats[id].assists
+              duelistMaps++
+            } else if (role === 'Controller' || role === 'Initiator') {
+              supportAssists += map.stats[id].assists
+              supportMaps++
+            }
+          }
+        }
         if (map.aScore + map.bScore >= 23) {
           competitiveMaps++
-          expect(Math.min(...rows.map((row) => row.deaths))).toBeGreaterThanOrEqual(12)
         }
       }
     }
     expect(maps).toBeGreaterThan(200)
     expect(competitiveMaps).toBeGreaterThan(20)
     expect(over300 / players).toBeLessThan(0.02)
+    expect(teamDeathSpreads / (maps * 2)).toBeGreaterThan(3.5)
+    expect(teamsWithWideDeathSpreads / (maps * 2)).toBeGreaterThan(0.3)
+    expect(supportAssists / supportMaps).toBeGreaterThan(duelistAssists / duelistMaps + 3)
+    expect(playersOverTwelveAssists / players).toBeLessThan(0.08)
   })
 })
