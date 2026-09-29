@@ -7,7 +7,7 @@ import {
   simulateTournamentFixture,
 } from '../src/game'
 import { RoundReplayView, stripRounds } from '../src/round-replay'
-import type { SeriesReplay } from '../src/round-sim'
+import { OVERTIME_CREDITS, type SeriesReplay } from '../src/round-sim'
 import { SeriesWalkthrough } from '../src/series-walkthrough'
 
 const memory = new Map<string, string>()
@@ -182,5 +182,20 @@ describe('round-by-round sim', () => {
     expect(stripRounds(overtime, 26)).toBe(28)
     overtime.rounds.push(round(14, 13), round(15, 13))
     expect(stripRounds(overtime, 28)).toBe(28)
+  })
+
+  test('every overtime round starts both teams on 5,000 credits', () => {
+    let overtimeRounds = 0
+    for (let seed = 1; seed <= 400 && overtimeRounds < 6; seed++) {
+      const { replay } = watched(seed)
+      for (const mapReplay of replay.maps)
+        for (const round of mapReplay.rounds) {
+          if (!round.overtime) continue
+          overtimeRounds++
+          expect(round.buys.map((buy) => buy.credits)).toEqual([OVERTIME_CREDITS, OVERTIME_CREDITS])
+          expect(round.buys.map((buy) => buy.buy)).toEqual(['full', 'full'])
+        }
+    }
+    expect(overtimeRounds).toBeGreaterThan(0)
   })
 })

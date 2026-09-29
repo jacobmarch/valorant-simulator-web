@@ -2388,9 +2388,9 @@ function simulateWatchedMap(
   while (round < 60) {
     if (isMapOver(aScore, bScore)) break
     round++
-    if (round === 13) {
-      economy[aId] = startingEconomy()
-      economy[bId] = startingEconomy()
+    if (round === 13 || round > 24) {
+      economy[aId] = startingEconomy(round)
+      economy[bId] = startingEconomy(round)
     }
     const aAttacking = round > 24 ? round % 2 === 1 : round <= 12
     const attackers = aAttacking ? a : b,
