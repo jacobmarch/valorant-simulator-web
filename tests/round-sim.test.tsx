@@ -6,7 +6,7 @@ import {
   simulateSeries,
   simulateTournamentFixture,
 } from '../src/game'
-import { RoundReplayView } from '../src/round-replay'
+import { RoundReplayView, stripRounds } from '../src/round-replay'
 import type { SeriesReplay } from '../src/round-sim'
 import { SeriesWalkthrough } from '../src/series-walkthrough'
 
@@ -164,5 +164,23 @@ describe('round-by-round sim', () => {
     expect(html).toContain('Pistol round.')
     expect(html).toContain('Buy phase')
     expect(html).not.toContain('win the round')
+  })
+
+  test('the round strip only adds overtime in pairs after a 12-12 tie', () => {
+    const round = (aScore: number, bScore: number) => ({ aScore, bScore }) as never
+    const regulation = { map: 'Ascent', aId: 'a', bId: 'b', rounds: [] as never[] }
+    for (let at = 1; at <= 24; at++)
+      regulation.rounds.push(round(Math.min(at, 13), at - 13 > 0 ? at - 13 : 0))
+    regulation.rounds[23] = round(13, 11)
+    expect(stripRounds(regulation, 24)).toBe(24)
+    const overtime = { ...regulation, rounds: [...regulation.rounds] }
+    overtime.rounds[23] = round(12, 12)
+    expect(stripRounds(overtime, 23)).toBe(24)
+    expect(stripRounds(overtime, 24)).toBe(26)
+    overtime.rounds.push(round(13, 12), round(13, 13))
+    expect(stripRounds(overtime, 25)).toBe(26)
+    expect(stripRounds(overtime, 26)).toBe(28)
+    overtime.rounds.push(round(14, 13), round(15, 13))
+    expect(stripRounds(overtime, 28)).toBe(28)
   })
 })

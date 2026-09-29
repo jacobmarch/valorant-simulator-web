@@ -88,6 +88,20 @@ export function roundStory(
   return null
 }
 
+/**
+ * Boxes in the round strip: 24 regulation rounds, plus overtime in pairs (25-26, 27-28, ...)
+ * only once a tie at the end of the previous pair has been seen, so it never spoils the length.
+ */
+export function stripRounds(replay: MapReplay, revealed: number) {
+  let length = 24
+  while (length <= revealed) {
+    const last = replay.rounds[length - 1]
+    if (!last || last.aScore !== last.bScore) break
+    length += 2
+  }
+  return length
+}
+
 /** Kills, deaths and alive state for everyone, up to a point in the map. */
 function tallies(replay: MapReplay, index: number, shownEvents: number) {
   const kd: Record<string, { k: number; d: number }> = {}
@@ -172,7 +186,7 @@ export function RoundReplayView({
   const shownEvents = round.events.slice(0, Math.min(step, round.events.length))
   const { kd, dead } = tallies(replay, index, shownEvents.length)
   const story = roundStory(s, replay, index, over)
-  const stripLength = Math.max(24, revealed + 1)
+  const stripLength = stripRounds(replay, revealed)
   const aAttacking = round.attackerId === a.id
   const teamClass = (id: string) => (id === a.id ? 'side-a' : 'side-b')
   const sideOf = (playerId: string) => (a.lineup.includes(playerId) ? 'side-a' : 'side-b')
