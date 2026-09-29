@@ -9,7 +9,10 @@ import {
   MORALE_MAX,
   MORALE_MIN,
   moraleAfterSeries,
+  overshootDeclineChance,
   potentialFactor,
+  prospectPotential,
+  retirementChance,
   weeklyMorale,
 } from '../src/development'
 import { createGame, loadGame, SAVE_KEY, simulateSeries, teamStrength } from '../src/game'
@@ -74,11 +77,12 @@ describe('player development', () => {
   })
   test('aging erodes mechanics before tactical skills', () => {
     expect(ageDeclineChance(25, 'Mechanics')).toBe(0)
-    expect(ageDeclineChance(29, 'Mechanics')).toBeGreaterThan(0)
-    expect(ageDeclineChance(29, 'Tactics')).toBe(0)
-    expect(ageDeclineChance(33, 'Tactics')).toBeGreaterThan(0)
+    expect(ageDeclineChance(27, 'Mechanics')).toBeGreaterThan(0)
+    expect(ageDeclineChance(28, 'Tactics')).toBe(0)
+    expect(ageDeclineChance(30, 'Tactics')).toBeGreaterThan(0)
+    expect(ageDeclineChance(30, 'Mechanics')).toBeGreaterThan(ageDeclineChance(30, 'Tactics'))
   })
-  test('a season birthday lowers veteran potential only', () => {
+  test('a season birthday lowers potential from the mid-twenties, faster with age', () => {
     const young = {
       ratings: ratings(70),
       age: 20,
@@ -87,11 +91,45 @@ describe('player development', () => {
       morale: 60,
       status: 'starter' as const,
     }
+    const prime = { ...young, ratings: ratings(70), age: 26 }
     const veteran = { ...young, ratings: ratings(70), age: 31 }
     agePlayer(young)
+    agePlayer(prime)
     agePlayer(veteran)
     expect(young).toMatchObject({ age: 21, potential: 85 })
-    expect(veteran).toMatchObject({ age: 32, potential: 83 })
+    expect(prime).toMatchObject({ age: 27, potential: 84 })
+    expect(veteran).toMatchObject({ age: 32, potential: 82 })
+  })
+  test('players stop growing at their ceiling and slide back once past it', () => {
+    expect(potentialFactor(80, 80)).toBe(0)
+    expect(overshootDeclineChance(80, 80)).toBe(0)
+    expect(overshootDeclineChance(84, 80)).toBeGreaterThan(overshootDeclineChance(82, 80))
+    const player = {
+      ratings: ratings(85),
+      age: 24,
+      potential: 78,
+      form: 0,
+      morale: 60,
+      status: 'starter' as const,
+    }
+    const random = seededRandom(7)
+    for (let week = 0; week < 52; week++) developPlayer(player, heavyTraining, random)
+    expect(Math.max(...Object.values(player.ratings))).toBeLessThan(85)
+  })
+  test('star prospects are rare', () => {
+    const ceilings = Array.from({ length: 1000 }, (_, index) => prospectPotential(64, index / 1000))
+    const stars = ceilings.filter((value) => value >= 88).length
+    expect(stars).toBeGreaterThan(40)
+    expect(stars).toBeLessThan(150)
+    expect(ceilings.filter((value) => value >= 90).length).toBeLessThan(stars)
+    expect(Math.max(...ceilings)).toBeLessThanOrEqual(94)
+  })
+  test('retirement comes with age, and sooner for players nobody signs', () => {
+    expect(retirementChance(24, 85, false)).toBe(0)
+    expect(retirementChance(30, 80, false)).toBeGreaterThan(retirementChance(27, 80, false))
+    expect(retirementChance(34, 80, false)).toBeGreaterThan(0.5)
+    expect(retirementChance(26, 68, true)).toBeGreaterThan(retirementChance(26, 68, false))
+    expect(retirementChance(18, 60, true)).toBe(0)
   })
   test('form and morale respond to results and stay bounded', () => {
     expect(formAfterSeries(0, 260, true)).toBeGreaterThan(0)
@@ -144,7 +182,7 @@ describe('development in the game', () => {
     })
     localStorage.setItem(SAVE_KEY, JSON.stringify(legacy))
     const migrated = loadGame()!
-    expect(migrated.version).toBe(16)
+    expect(migrated.version).toBe(17)
     Object.values(migrated.players).forEach((player) => {
       expect(player.age).toBeGreaterThanOrEqual(17)
       expect(player.potential).toBeGreaterThan(0)

@@ -1,7 +1,6 @@
 import type { GameState, Player, PlayerStatus, Team, TransferRecord } from './game'
-import { MORALE_DEFAULT, overallRating, seedPotential } from './development'
+import { MORALE_DEFAULT, overallRating, prospectPotential, retirementChance } from './development'
 import { bestRoleAssignment } from './roles'
-import { refreshIgl } from './igl'
 import { roles, type Region } from './seed'
 
 export const MIN_ROSTER = 5
@@ -276,7 +275,7 @@ export function statusChangeError(
   state: GameState,
   teamId: string,
   playerId: string,
-  status: Exclude<PlayerStatus, 'free-agent'>,
+  status: Exclude<PlayerStatus, 'free-agent' | 'retired'>,
 ) {
   const team = state.teams[teamId],
     player = state.players[playerId]
@@ -294,7 +293,7 @@ export function setPlayerStatus(
   input: GameState,
   teamId: string,
   playerId: string,
-  status: Exclude<PlayerStatus, 'free-agent'>,
+  status: Exclude<PlayerStatus, 'free-agent' | 'retired'>,
 ): TransferOutcome {
   const error = statusChangeError(input, teamId, playerId, status)
   if (error) return { ok: false, error }
@@ -323,47 +322,113 @@ const regionList: Region[] = ['Americas', 'EMEA', 'Pacific', 'China']
 export function replenishFreeAgents(state: GameState, minimum = MIN_FREE_AGENTS) {
   let count = freeAgents(state).length
   while (count < minimum) {
-    const index = Object.keys(state.players).filter((id) => id.startsWith('prospect-')).length
-    const base = 58 + Math.floor(random(state) * 13)
-    const name =
-      prefixes[Math.floor(random(state) * prefixes.length)] +
-      suffixes[Math.floor(random(state) * suffixes.length)]
-    const id = `prospect-${index}`
-    state.players[id] = {
-      id,
-      name,
-      age: 17 + Math.floor(random(state) * 5),
-      teamId: null,
-      region: regionList[Math.floor(random(state) * regionList.length)],
-      primaryRole: roles[Math.floor(random(state) * roles.length)],
-      secondaryRoles: [],
-      ratings: {
-        Mechanics: base + Math.floor(random(state) * 4),
-        Tactics: base - 1,
-        Utility: base - 2,
-        Consistency: base - 1,
-        Clutch: base - 3,
-        Teamplay: base - 1,
-      },
-      salary: money(28000 + (base - 58) * 2500),
-      years: 1 + Math.floor(random(state) * 2),
-      status: 'free-agent',
-      isImport: false,
-      scoutProgress: 0,
-      form: 0,
-      morale: MORALE_DEFAULT,
-      potential: 0,
-      igl: false,
-    }
-    const prospect = state.players[id]
-    prospect.potential = seedPotential(
-      overallRating(prospect.ratings),
-      prospect.age,
-      Math.floor(random(state) * 5),
-    )
-    refreshIgl(prospect)
+    createProspect(state, 17 + Math.floor(random(state) * 5))
     count++
   }
+}
+// Each offseason a new class of teenagers turns pro. Most become squad players;
+// a few have the ceiling to be stars.
+export const PROSPECT_CLASS_SIZE = 32
+export function addProspectClass(state: GameState, size = PROSPECT_CLASS_SIZE) {
+  for (let index = 0; index < size; index++)
+    createProspect(state, 17 + Math.floor(random(state) * 3))
+}
+function createProspect(state: GameState, age: number) {
+  // Retirees get pruned, so count past the highest id rather than the number of prospects.
+  const index = Object.keys(state.players)
+    .filter((id) => id.startsWith('prospect-'))
+    .reduce((max, id) => Math.max(max, Number(id.slice(9)) + 1), 0)
+  const base = 58 + Math.floor(random(state) * 13)
+  const name =
+    prefixes[Math.floor(random(state) * prefixes.length)] +
+    suffixes[Math.floor(random(state) * suffixes.length)]
+  const id = `prospect-${index}`
+  state.players[id] = {
+    id,
+    name,
+    age,
+    teamId: null,
+    region: regionList[Math.floor(random(state) * regionList.length)],
+    primaryRole: roles[Math.floor(random(state) * roles.length)],
+    secondaryRoles: [],
+    ratings: {
+      Mechanics: base + Math.floor(random(state) * 4),
+      Tactics: base - 1,
+      Utility: base - 2,
+      Consistency: base - 1,
+      Clutch: base - 3,
+      Teamplay: base - 1,
+    },
+    salary: money(28000 + (base - 58) * 2500),
+    years: 1 + Math.floor(random(state) * 2),
+    status: 'free-agent',
+    isImport: false,
+    scoutProgress: 0,
+    form: 0,
+    morale: MORALE_DEFAULT,
+    potential: 0,
+    igl: false,
+  }
+  const prospect = state.players[id]
+  // Teenagers never have the game sense to lead; see refreshIgls.
+  prospect.potential = prospectPotential(overallRating(prospect.ratings), random(state))
+  return prospect
+}
+
+/**
+ * Season rollover: veterans whose deals have run out (and unsigned players) may retire.
+ * A team never drops below five this way; the player plays one more year instead.
+ * Returns the retirees so the caller can report them.
+ */
+export function processRetirements(state: GameState) {
+  const retired: Player[] = []
+  Object.values(state.players).forEach((player) => {
+    if (player.status === 'retired') return
+    const team = player.teamId ? state.teams[player.teamId] : null
+    if (team && player.years > 0) return
+    const chance = retirementChance(player.age, overallRating(player.ratings), !team)
+    if (!chance || random(state) >= chance) return
+    if (team && team.playerIds.length <= MIN_ROSTER && team.id === state.currentTeamId) return
+    if (team) {
+      recordMove(state, {
+        kind: 'retirement',
+        playerId: player.id,
+        fromTeamId: team.id,
+        toTeamId: null,
+        fee: 0,
+      })
+      leaveTeam(state, player)
+    }
+    player.teamId = null
+    player.status = 'retired'
+    player.retiredSeason = state.season
+    player.igl = false
+    delete state.training[player.id]
+    delete state.scoutingHours[player.id]
+    retired.push(player)
+  })
+  return retired
+}
+/** Drops retirees once no kept match history can reference them. */
+export function pruneRetiredPlayers(state: GameState, keepSeasons: number) {
+  Object.values(state.players).forEach((player) => {
+    if (player.status === 'retired' && (player.retiredSeason ?? 0) <= state.season - keepSeasons)
+      delete state.players[player.id]
+  })
+}
+/** Signs the best available free agents until every AI roster can field five. */
+export function fillAiRosters(state: GameState) {
+  Object.values(state.teams)
+    .filter((team) => team.id !== state.currentTeamId)
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .forEach((team) => {
+      while (team.playerIds.length < MIN_ROSTER) {
+        const replacement = bestAffordableFreeAgent(state, team)
+        if (!replacement) break
+        applySigning(state, team.id, replacement.id)
+      }
+      repairLineup(state, team.id)
+    })
 }
 function bestAffordableFreeAgent(state: GameState, team: Team) {
   return freeAgents(state)
