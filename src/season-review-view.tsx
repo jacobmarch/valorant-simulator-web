@@ -37,7 +37,7 @@ function PlayerCard({
   highlight?: boolean
 }) {
   return (
-    <div className={`review-mvp ${highlight ? 'highlight' : ''}`}>
+    <div className={`review-mvp ${highlight ? 'featured' : ''}`}>
       <small>
         <Crown size={13} /> {label}
       </small>
@@ -160,7 +160,10 @@ function Events({ s, review }: { s: GameState; review: SeasonReview }) {
       <PlayerCard s={s} label="Global MVP" player={review.globalMvp} highlight />
       <div className="review-international">
         {international.map((event) => (
-          <div className="review-card review-trophy" key={event.phase}>
+          <div
+            className={`review-card review-trophy ${event.podium[0] === review.teamId ? 'mine' : ''}`}
+            key={event.phase}
+          >
             <small>
               <Trophy size={13} /> {event.phase}
             </small>
@@ -189,7 +192,12 @@ function Events({ s, review }: { s: GameState; review: SeasonReview }) {
             <tr key={phase}>
               <td>{phase === 'Kickoff' ? 'Kickoff (top seed)' : phase}</td>
               {regions.map((region) => (
-                <td key={region}>
+                <td
+                  key={region}
+                  className={
+                    regional(phase, region)?.podium[0] === review.teamId ? 'mine' : undefined
+                  }
+                >
                   <TeamName s={s} id={regional(phase, region)?.podium[0]} />
                 </td>
               ))}
@@ -206,11 +214,14 @@ function Podium({
   title,
   ids,
   labels,
+  teamId,
 }: {
   s: GameState
   title: string
   ids: string[]
   labels: string[]
+  /** The manager's team that season, highlighted wherever it finished. */
+  teamId: string
 }) {
   return (
     <section className="review-card">
@@ -218,7 +229,7 @@ function Podium({
       <ol className="review-podium">
         {ids.length ? (
           ids.map((id, index) => (
-            <li key={id}>
+            <li key={id} className={id === teamId ? 'mine' : undefined}>
               <small>{labels[index] ?? `${index + 1}th`}</small>
               <TeamName s={s} id={id} />
             </li>
@@ -231,21 +242,23 @@ function Podium({
   )
 }
 
-function League({ s, league }: { s: GameState; league: LeagueReview }) {
+function League({ s, league, teamId }: { s: GameState; league: LeagueReview; teamId: string }) {
   const places = ['1st', '2nd', '3rd', '4th']
   return (
     <div className="review-league">
       <div className="review-league-grid">
         <Podium
           s={s}
+          teamId={teamId}
           title="Kickoff"
           ids={league.kickoff}
           labels={['Seed #1', 'Seed #2', 'Seed #3']}
         />
-        <Podium s={s} title="Stage 1" ids={league.stage1} labels={places} />
-        <Podium s={s} title="Stage 2" ids={league.stage2} labels={places} />
+        <Podium s={s} teamId={teamId} title="Stage 1" ids={league.stage1} labels={places} />
+        <Podium s={s} teamId={teamId} title="Stage 2" ids={league.stage2} labels={places} />
         <Podium
           s={s}
+          teamId={teamId}
           title="Champions spots"
           ids={league.champions}
           labels={['Stage 2 winner', 'Stage 2 runner-up', 'Points #1', 'Points #2']}
@@ -265,7 +278,7 @@ function League({ s, league }: { s: GameState; league: LeagueReview }) {
             </thead>
             <tbody>
               {league.points.map((row, index) => (
-                <tr key={row.teamId} className={row.teamId === s.currentTeamId ? 'current' : ''}>
+                <tr key={row.teamId} className={row.teamId === teamId ? 'current' : ''}>
                   <td>{index + 1}</td>
                   <td>
                     <TeamName s={s} id={row.teamId} />
@@ -347,7 +360,7 @@ export function YearInReview({
       </div>
       {tab === 'overview' && <Overview s={s} review={review} />}
       {tab === 'events' && <Events s={s} review={review} />}
-      {league && <League s={s} league={league} />}
+      {league && <League s={s} league={league} teamId={review.teamId} />}
       <div className="modal-actions">
         <button className="primary" onClick={onClose}>
           {s.pendingReview === review.season ? `On to ${review.season + 1}` : 'Close'}
