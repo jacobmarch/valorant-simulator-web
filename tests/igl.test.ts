@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import { createGame, loadGame, rolloverSeason, teamStrength } from '../src/game'
 import {
   IGL_BONUS,
-  IGL_SLOTS,
+  IGL_EXTRA_SLOTS,
+  IGL_TEAM_TARGET,
   IGL_THRESHOLD,
   NO_IGL_PENALTY,
   gameSense,
@@ -20,32 +21,30 @@ Object.assign(globalThis, {
 beforeEach(() => memory.clear())
 
 describe('in-game leaders', () => {
-  test('only the best few shot-callers in the league are IGLs', () => {
+  test('most teams have an IGL, at most one designated per team plus a few extras', () => {
     const state = createGame('Manager', 'c9')
     const players = Object.values(state.players)
     const igls = players.filter((player) => player.igl)
-    expect(igls.length).toBeGreaterThan(0)
-    expect(igls.length).toBeLessThanOrEqual(IGL_SLOTS)
-    const weakestIgl = Math.min(...igls.map((player) => gameSense(player.ratings)))
-    players.forEach((player) => {
-      if (player.igl) expect(qualifiesAsIgl(player.ratings)).toBeTrue()
-      else expect(gameSense(player.ratings)).toBeLessThanOrEqual(weakestIgl)
-    })
+    igls.forEach((player) => expect(qualifiesAsIgl(player.ratings)).toBeTrue())
     const teamsWithIgl = Object.values(state.teams).filter((team) =>
       team.playerIds.some((id) => state.players[id].igl),
     )
-    expect(teamsWithIgl.length).toBeLessThanOrEqual(Object.keys(state.teams).length / 4)
+    expect(teamsWithIgl.length).toBeGreaterThanOrEqual(32)
+    expect(teamsWithIgl.length).toBeLessThanOrEqual(IGL_TEAM_TARGET)
+    expect(igls.length).toBeLessThanOrEqual(IGL_TEAM_TARGET + IGL_EXTRA_SLOTS)
   })
 
   test('the trait is capped league-wide even when many players qualify', () => {
     const state = createGame('Manager', 'c9')
-    const players = Object.values(state.players)
-    players.slice(0, IGL_SLOTS + 5).forEach((player) => {
+    Object.values(state.players).forEach((player) => {
       player.ratings.Tactics = 95
       player.ratings.Teamplay = 95
     })
     rolloverSeason(state)
-    expect(Object.values(state.players).filter((player) => player.igl)).toHaveLength(IGL_SLOTS)
+    const igls = Object.values(state.players).filter((player) => player.igl)
+    expect(igls).toHaveLength(IGL_TEAM_TARGET + IGL_EXTRA_SLOTS)
+    const teams = new Set(igls.map((player) => player.teamId).filter(Boolean))
+    expect(teams.size).toBeGreaterThanOrEqual(IGL_TEAM_TARGET)
   })
 
   test('an IGL in the starting five adds the bonus; none costs the penalty', () => {
@@ -108,7 +107,7 @@ describe('in-game leaders', () => {
     expect(loaded.version).toBe(17)
     const igls = Object.values(loaded.players).filter((player) => player.igl)
     expect(igls.length).toBeGreaterThan(0)
-    expect(igls.length).toBeLessThanOrEqual(IGL_SLOTS)
+    expect(igls.length).toBeLessThanOrEqual(IGL_TEAM_TARGET + IGL_EXTRA_SLOTS)
     igls.forEach((player) => {
       expect(qualifiesAsIgl(player.ratings)).toBeTrue()
     })
