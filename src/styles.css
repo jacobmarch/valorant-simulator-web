@@ -3189,3 +3189,44 @@ table {
   gap: 6px;
   align-items: center;
 }
+
+/* Roster: salary column and lineup role picker */
+.player-row .salary {
+  width: 86px;
+  text-align: right;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.player-row .salary small,
+.player-row .ovr small {
+  display: block;
+  font-size: 10px;
+  color: var(--text-3);
+}
+.player-row .ovr.off-role {
+  color: var(--warn);
+}
+.player-row .role-select {
+  width: 118px;
+  flex: none;
+}
+.roster-columns {
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 0.9fr);
+}
+.roster-list {
+  max-height: calc(100vh - 290px);
+}
+.player-row .role-select {
+  width: 112px;
+}
+.player-row select {
+  padding-left: 8px;
+  padding-right: 4px;
+}
+.roster-columns .market-list {
+  max-height: calc(100vh - 390px);
+}
+.player-row .role-select {
+  width: 128px;
+}
