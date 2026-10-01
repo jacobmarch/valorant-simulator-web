@@ -836,6 +836,16 @@ export function teamStrength(state: GameState, teamId: string) {
     iglAdjustment(players)
   )
 }
+export function setLineupRole(
+  state: GameState,
+  teamId: string,
+  playerId: string,
+  role: Role,
+): GameState {
+  const next = structuredClone(state)
+  next.teams[teamId].roleAssignments[playerId] = role
+  return next
+}
 export function assignedRole(team: Team, player: Player): Role {
   return team.roleAssignments[player.id] ?? player.primaryRole
 }

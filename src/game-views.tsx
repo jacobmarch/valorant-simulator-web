@@ -15,6 +15,7 @@ import {
   kickoffStandings,
   rankedTeams,
   saveGame,
+  setLineupRole,
   teamStrength,
   type Fixture,
   type GameState,
@@ -412,8 +413,7 @@ export function TacticsV2({
     opponentId = fixtureOpponent(fixture, team.id),
     opponent = opponentId ? s.teams[opponentId] : undefined
   const setRole = (player: Player, role: Role) => {
-    const next = structuredClone(s)
-    next.teams[team.id].roleAssignments[player.id] = role
+    const next = setLineupRole(s, team.id, player.id, role)
     saveGame(next)
     setState(next)
   }
