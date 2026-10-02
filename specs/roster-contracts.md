@@ -16,7 +16,7 @@ Make difficult roster decisions central while enforcing configured VCT roster ru
 ## Rules
 
 - Transfer actions are allowed only during configured windows.
-- Every organization must meet configured minimum/maximum roster size.
+- Every organization must have 5–10 roster players, with exactly five players in the match lineup.
 - Match lineups must be legal before a match can begin.
 - Active/inactive, starter/substitute, nationality, import, and Game Changers exemption flags are validated.
 - Buyout equals annual salary times remaining years. The buyer pays the seller immediately and takes over the contract; the player's salary rises to their asking salary if that is higher.

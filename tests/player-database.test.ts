@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { createGame } from '../src/game'
 import {
   derivePlayer,
+  importRoster,
   numeric,
   type PlayerDatabase,
   validateDatabase,
@@ -48,6 +49,62 @@ function fixture(): PlayerDatabase {
 }
 
 describe('VLR database', () => {
+  test('imports 5–10 active players while keeping exactly five game starters', () => {
+    for (const count of [5, 8, 10]) {
+      const active = Array.from({ length: count }, (_, index) => ({
+        id: String(index + 1),
+        alias: `Player ${index}`,
+      }))
+      const imported = importRoster(active, [], 'ENVY')
+      expect(imported.length).toBe(count)
+      expect(imported.filter((row) => row.status === 'starter').length).toBe(5)
+      expect(imported.map((row) => row.member.id)).toEqual(active.map((row) => row.id))
+    }
+  })
+  test('excludes staff, preserves bench players, and rejects rosters outside the limits', () => {
+    const active = Array.from({ length: 8 }, (_, index) => ({
+      id: String(index + 1),
+      alias: `Player ${index}`,
+    }))
+    const imported = importRoster(
+      [...active, { id: '100', alias: 'Coach', is_staff: true }],
+      [{ id: '9', alias: 'Reserve' }],
+      'ENVY',
+    )
+    expect(imported.length).toBe(9)
+    expect(imported[8].status).toBe('substitute')
+    expect(() => importRoster(active.slice(0, 4), [], 'ENVY')).toThrow()
+    expect(() => importRoster([...active, ...active.slice(0, 3)], [], 'ENVY')).toThrow()
+    expect(() => importRoster(active, active.slice(0, 3), 'ENVY')).toThrow()
+  })
+  test('eight and ten player careers retain reserves and field five players', () => {
+    for (const count of [8, 10]) {
+      const db = fixture()
+      for (let index = 5; index < count; index++)
+        db.players.push({
+          ...structuredClone(db.players[0]),
+          id: `vlr-${1000 + index}`,
+          status: 'substitute',
+        })
+      const teamId = db.players[0].teamId
+      validateDatabase(db)
+      const state = createGame('Manager', teamId, db)
+      expect(state.teams[teamId].playerIds.length).toBe(count)
+      expect(state.teams[teamId].lineup.length).toBe(5)
+      expect(
+        state.teams[teamId].playerIds.filter((id) => state.players[id].status === 'substitute')
+          .length,
+      ).toBe(count - 5)
+    }
+    const oversized = fixture()
+    for (let index = 0; index < 6; index++)
+      oversized.players.push({
+        ...structuredClone(oversized.players[0]),
+        id: `vlr-${2000 + index}`,
+        status: 'substitute',
+      })
+    expect(() => validateDatabase(oversized)).toThrow()
+  })
   test('parses percentages and missing values without inventing zeros', () => {
     expect(numeric('71%')).toBe(71)
     expect(numeric('1,200')).toBe(1200)

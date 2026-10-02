@@ -1,11 +1,11 @@
-import type { GameState, Player, PlayerStatus, Team, TransferRecord } from './game'
 import { MORALE_DEFAULT, overallRating, prospectPotential, retirementChance } from './development'
+import type { GameState, Player, PlayerStatus, Team, TransferRecord } from './game'
 import { bestRoleAssignment } from './roles'
-import { roles, type Region } from './seed'
+import { MAX_ROSTER, MIN_ROSTER } from './roster-limits'
+import { type Region, roles } from './seed'
 import { payroll } from './sponsors'
 
-export const MIN_ROSTER = 5
-export const MAX_ROSTER = 7
+export { MAX_ROSTER, MIN_ROSTER } from './roster-limits'
 export const MAX_IMPORTS = 1
 const MIN_FREE_AGENTS = 12
 const AI_CASH_RESERVE = 300000

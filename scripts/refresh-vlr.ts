@@ -2,6 +2,7 @@ import { mkdir, rename } from 'node:fs/promises'
 import {
   type AgentStats,
   derivePlayer,
+  importRoster,
   type PlayerDatabase,
   validateDatabase,
 } from '../src/player-database'
@@ -75,16 +76,8 @@ for (const team of seedTeams) {
   const roster = segment(await request('/v2/team', { id: String(vlrId), q: 'roster' }))
   if (!Array.isArray(roster.active) || !Array.isArray(roster.benched))
     throw new Error(`Roster schema changed for ${team.name}`)
-  const active = roster.active.filter(
-    (player: any) => !player.is_staff && !/coach|staff|manager|analyst/i.test(player.role ?? ''),
-  )
-  // Do not invent a starting five or silently trim a large roster.
-  if (active.length !== 5)
-    throw new Error(
-      `${team.name} has ${active.length} active players; review its roster before importing.`,
-    )
-  const benched = roster.benched.filter((player: any) => !player.is_staff)
-  for (const member of [...active, ...benched]) {
+  const members = importRoster(roster.active, roster.benched, team.name)
+  for (const { member, status } of members) {
     if (!/^\d+$/.test(String(member.id)) || Number(member.id) <= 0)
       throw new Error(`Missing player ID for ${member.alias}`)
     const profile = segment(
@@ -100,7 +93,7 @@ for (const team of seedTeams) {
       id: `vlr-${member.id}`,
       name: profile.name,
       teamId: team.id,
-      status: active.includes(member) ? 'starter' : 'substitute',
+      status,
       primaryRole: derived.primaryRole,
       secondaryRoles: derived.secondaryRoles,
       ratings: derived.ratings,
@@ -122,7 +115,7 @@ for (const team of seedTeams) {
     })
   }
   db.teams.push({ id: team.id, vlrId: String(vlrId), name: team.name })
-  console.log(`${team.name}: ${active.length} starters, ${benched.length} substitutes`)
+  console.log(`${team.name}: 5 starters, ${members.length - 5} substitutes`)
 }
 db.fetchedAt = new Date().toISOString()
 validateDatabase(db)

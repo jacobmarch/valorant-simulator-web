@@ -1,5 +1,38 @@
 import type { Ratings } from './game'
+import { MAX_ROSTER, MIN_ROSTER } from './roster-limits'
 import { type Role, roles, seedTeams, skills } from './seed'
+
+export type VlrRosterMember = {
+  id: string
+  alias: string
+  role?: string
+  is_staff?: boolean
+}
+
+/** VLR active membership is a roster, not a confirmed match starting five. */
+export function importRoster(
+  active: VlrRosterMember[],
+  benched: VlrRosterMember[],
+  teamName: string,
+) {
+  const isPlayer = (member: VlrRosterMember) =>
+    !member.is_staff && !/coach|staff|manager|analyst/i.test(member.role ?? '')
+  const eligible = active.filter(isPlayer)
+  if (eligible.length < MIN_ROSTER || eligible.length > MAX_ROSTER)
+    throw new Error(
+      `${teamName} has ${eligible.length} active players; expected ${MIN_ROSTER}–${MAX_ROSTER}.`,
+    )
+  const reserves = benched.filter(isPlayer)
+  if (eligible.length + reserves.length > MAX_ROSTER)
+    throw new Error(
+      `${teamName} has ${eligible.length + reserves.length} roster players including benched players; maximum ${MAX_ROSTER}.`,
+    )
+  // Use VLR display order as a default lineup; reserve status here is a game choice.
+  return [...eligible, ...reserves].map((member, index) => ({
+    member,
+    status: (index < MIN_ROSTER ? 'starter' : 'substitute') as DatabasePlayer['status'],
+  }))
+}
 
 export type AgentStats = Record<string, unknown> & { agent: string }
 export type DatabasePlayer = {
@@ -137,9 +170,12 @@ export function validateDatabase(value: unknown): PlayerDatabase {
   }
   for (const team of db.teams) {
     const roster = db.players.filter((player) => player.teamId === team.id)
-    if (roster.filter((player) => player.status === 'starter').length !== 5 || roster.length > 7)
+    if (
+      roster.filter((player) => player.status === 'starter').length !== MIN_ROSTER ||
+      roster.length > MAX_ROSTER
+    )
       throw new Error(
-        `Invalid roster for ${team.id}: needs five starters and at most seven players.`,
+        `Invalid roster for ${team.id}: needs ${MIN_ROSTER} starters and at most ${MAX_ROSTER} players.`,
       )
   }
   return db
