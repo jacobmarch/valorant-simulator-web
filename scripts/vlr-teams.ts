@@ -5,6 +5,7 @@ const teamAliases: Record<string, string[]> = {
   tyloo: ['TYLOO'],
   gen: ['Gen.G Esports'],
   jdg: ['JDG Esports', 'JD Gaming'],
+  navi: ['NAVI', 'Natus Vincere'],
 }
 
 export function normalizedTeamName(name: string) {
