@@ -26,6 +26,18 @@ Object.assign(globalThis, {
 beforeEach(() => memory.clear())
 
 describe('competition fixtures', () => {
+  test('existing ULF saves become Eternal Fire without changing roster or fixture references', () => {
+    const legacy = createGame('Manager', 'ulf')
+    legacy.teams.ulf.name = 'ULF Esports'
+    legacy.teams.ulf.short = 'ULF'
+    localStorage.setItem(SAVE_KEY, JSON.stringify(legacy))
+    const migrated = loadGame()!
+    expect(migrated.teams.ulf.name).toBe('Eternal Fire')
+    expect(migrated.teams.ulf.short).toBe('EF')
+    expect(migrated.currentTeamId).toBe('ulf')
+    expect(migrated.teams.ulf.playerIds).toEqual(legacy.teams.ulf.playerIds)
+    expect(migrated.fixtures).toEqual(legacy.fixtures)
+  })
   test('the dashboard source has a real Kickoff opponent after preseason', () => {
     const state = createKickoffGame('Manager', 'c9')
     const fixture = nextFixtureForTeam(state, 'c9', 2)

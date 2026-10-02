@@ -531,6 +531,10 @@ function migrateGame(raw: unknown): GameState | null {
   const legacy = raw as Partial<GameState> & { teams?: Record<string, Team> }
   if (!legacy.teams || !legacy.players || !legacy.currentTeamId) return null
   const state = legacy as GameState
+  if (state.teams.ulf?.name === 'ULF Esports') {
+    state.teams.ulf.name = 'Eternal Fire'
+    state.teams.ulf.short = 'EF'
+  }
   const previousVersion = Number(state.version ?? 1)
   state.fixtures ??= []
   state.fixtures.forEach((fixture) => {

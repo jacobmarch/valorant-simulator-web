@@ -34,6 +34,8 @@ The importer uses `/v2/team?id=…&q=roster` for active/benched membership, excl
 
 Important: actual current source returns `data.segments[0]` for profiles, with `usage_count`, `usage_pct`, and `current_team`; several README examples show a different shape. The importer follows source, and fails explicitly if that shape changes. Pin a reviewed upstream commit in your deployment for reproducibility.
 
+Eternal Fire replaces inactive ULF Esports in the EMEA slot. The internal ID remains `ulf` to preserve save and database references; searches now use Eternal Fire. If an existing mapping file contains an `ulf` override for ULF, remove it to use name discovery or replace it with Eternal Fire's verified VLR ID. Refresh the database and start a new career to use Eternal Fire's current roster. Existing saves update the organization name and abbreviation while retaining their simulated rosters.
+
 ### Request rate limits
 
 The upstream API shares a 20-requests-per-minute tier across `/v2/player` and `/v2/team`, so those endpoints cannot each use a separate 20-call allowance. The default four-second spacing stays below that limit for one importer. Other callers from the same client address also consume that allowance; 429 cooldowns handle an already-used window.
