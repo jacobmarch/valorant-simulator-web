@@ -30,9 +30,21 @@ For deployment, serve the rebuilt `dist/`. The game browser never calls VLR or t
 
 Team discovery uses `/v2/search` with a unique exact name. Renamed or ambiguous teams cause an explicit failure. Create a JSON file mapping game organization IDs to verified numeric VLR team IDs, then supply `VLR_TEAM_MAPPING=/absolute/path/teams.json`. IDs are available in VLR team URLs. Example shape: `{ "sen": "2" }`; include other overrides when needed. No fuzzy name matching or guessed IDs are used. Teams absent from current VLR rosters need review; the game retains its fixed 2026 league membership and calendar.
 
-The importer uses `/v2/team?id=…&q=roster` for active/benched membership, excludes staff/former members, and fetches `/v2/player?id=…&q=profile&timespan=90d` for each player. Stable `vlr-N` IDs prevent one transferred player appearing on two teams. It accepts 5–10 active players and at most 10 total players including benched members for every game team. All accepted members are retained. The first five active players in VLR display order form the default game lineup; other active players and benched members become game substitutes. This is a configurable game lineup, not a claim about the real match starting five. Rosters outside those limits fail for review. The latest valid file stays intact on failure. Each successful refresh archives raw responses in `data/vlr/`, then atomically replaces the validated database file. Requests run sequentially with a one-second delay, a 30-second timeout, and up to three attempts.
+The importer uses `/v2/team?id=…&q=roster` for active/benched membership, excludes staff/former members, and fetches `/v2/player?id=…&q=profile&timespan=90d` for each player. Stable `vlr-N` IDs prevent one transferred player appearing on two teams. It accepts 5–10 active players and at most 10 total players including benched members for every game team. All accepted members are retained. The first five active players in VLR display order form the default game lineup; other active players and benched members become game substitutes. This is a configurable game lineup, not a claim about the real match starting five. Rosters outside those limits fail for review. The latest valid file stays intact on failure. Each successful refresh archives raw responses in `data/vlr/`, then atomically replaces the validated database file. Requests run sequentially with at least four seconds between attempts (about 15 calls/minute), a 30-second timeout, and up to six attempts. Retries share the same pacing clock. HTTP 429 honors Retry-After (seconds or HTTP date) plus a one-second margin; without a valid header it starts with a 60-second cooldown and backs off exponentially. Permanent HTTP errors such as 400/404 fail immediately.
 
 Important: actual current source returns `data.segments[0]` for profiles, with `usage_count`, `usage_pct`, and `current_team`; several README examples show a different shape. The importer follows source, and fails explicitly if that shape changes. Pin a reviewed upstream commit in your deployment for reproducibility.
+
+### Request rate limits
+
+The upstream API shares a 20-requests-per-minute tier across `/v2/player` and `/v2/team`, so those endpoints cannot each use a separate 20-call allowance. The default four-second spacing stays below that limit for one importer. Other callers from the same client address also consume that allowance; 429 cooldowns handle an already-used window.
+
+For a slower run, set the interval in milliseconds:
+
+```bash
+VLR_REQUEST_INTERVAL_MS=6000 bun run data:refresh
+```
+
+This allows about 10 calls/minute. Keep the interval at least 4000 ms for the upstream default limit; increase it for a stricter deployment or shared traffic. A full 48-team import will take roughly 20–40 minutes depending on roster sizes and server latency, plus any cooldowns. The importer logs its spacing at startup and warns when it pauses after a rate limit. Run a single refresh process at a time.
 
 ## Ratings and roles
 
@@ -55,6 +67,6 @@ For stronger ratings later, ingest completed match details and estimate match va
 
 ## Validation and current limitation
 
-Run `bun test tests/player-database.test.ts`, `bun run lint`, `bun test`, and `bun run build`. Tests use deliberately synthetic fixtures; they are not shipped as real player data.
+Run `bun test tests/player-database.test.ts tests/vlr-client.test.ts`, `bun run lint`, `bun test`, and `bun run build`. Tests use deliberately synthetic fixtures; they are not shipped as real player data.
 
 The development workspace's outbound proxy was unreachable during implementation, so no current VLR payload was retrieved and no real database was published. Complete a refresh on a network-enabled host before selecting VLR data in a new career.

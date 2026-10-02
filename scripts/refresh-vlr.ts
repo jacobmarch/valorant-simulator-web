@@ -7,8 +7,10 @@ import {
   validateDatabase,
 } from '../src/player-database'
 import { seedTeams } from '../src/seed'
+import { createVlrClient, requestInterval } from './vlr-client'
 
 const base = process.env.VLR_API_BASE_URL ?? 'http://127.0.0.1:3001'
+const intervalMs = requestInterval(process.env.VLR_REQUEST_INTERVAL_MS)
 const timespan = process.env.VLR_TIMESPAN ?? '90d'
 if (!['30d', '60d', '90d', 'all'].includes(timespan))
   throw new Error('VLR_TIMESPAN must be 30d, 60d, 90d, or all.')
@@ -16,30 +18,17 @@ if (!['30d', '60d', '90d', 'all'].includes(timespan))
 const mappingPath = process.env.VLR_TEAM_MAPPING
 const mapping: Record<string, string> = mappingPath ? await Bun.file(mappingPath).json() : {}
 const raw: { url: string; fetchedAt: string; payload: unknown }[] = []
-async function request(path: string, params: Record<string, string>) {
-  const url = new URL(path, base)
-  url.search = new URLSearchParams(params).toString()
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const response = await fetch(url, { signal: AbortSignal.timeout(30_000) })
-      if (!response.ok) throw new Error(`HTTP ${response.status} from ${url}`)
-      const payload = await response.json()
-      if (
-        payload.status !== 'success' ||
-        !payload.data ||
-        (payload.data.status && payload.data.status !== 200)
-      )
-        throw new Error(`Invalid API response from ${url}`)
-      raw.push({ url: url.toString(), fetchedAt: new Date().toISOString(), payload })
-      await Bun.sleep(1000)
-      return payload.data
-    } catch (error) {
-      if (attempt === 2) throw error
-      await Bun.sleep(1000 * 2 ** attempt)
-    }
-  }
-  throw new Error('Unreachable')
-}
+const request = createVlrClient({
+  base,
+  intervalMs,
+  fetch,
+  sleep: Bun.sleep,
+  warn: console.warn,
+  onSuccess: (url, payload) => raw.push({ url, fetchedAt: new Date().toISOString(), payload }),
+})
+console.log(
+  `VLR requests spaced at least ${intervalMs / 1000}s apart (${Math.round(60_000 / intervalMs)} calls/minute).`,
+)
 function segment(data: any) {
   if (!Array.isArray(data.segments) || data.segments.length !== 1)
     throw new Error('Expected one profile segment; upstream schema may have changed.')
