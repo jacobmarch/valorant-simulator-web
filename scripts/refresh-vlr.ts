@@ -8,6 +8,7 @@ import {
 } from '../src/player-database'
 import { seedTeams } from '../src/seed'
 import { createVlrClient, requestInterval } from './vlr-client'
+import { resolveTeamId } from './vlr-teams'
 
 const base = process.env.VLR_API_BASE_URL ?? 'http://127.0.0.1:3001'
 const intervalMs = requestInterval(process.env.VLR_REQUEST_INTERVAL_MS)
@@ -44,22 +45,7 @@ const db: PlayerDatabase = {
   players: [],
 }
 for (const team of seedTeams) {
-  let vlrId = mapping[team.id]
-  if (!vlrId) {
-    const data = await request('/v2/search', { q: team.name })
-    const results = data.segments?.results?.teams
-    if (!Array.isArray(results)) throw new Error('Search response schema changed.')
-    const exact = results.filter(
-      (result: any) =>
-        result.name?.toLowerCase().trim() === team.name.toLowerCase().trim() &&
-        !/inactive/i.test(result.tag ?? ''),
-    )
-    if (exact.length !== 1)
-      throw new Error(
-        `Cannot uniquely resolve ${team.name}. Set its VLR ID in VLR_TEAM_MAPPING (${team.id}).`,
-      )
-    vlrId = exact[0].id
-  }
+  const vlrId = mapping[team.id] ?? (await resolveTeamId(team, request))
   if (!/^\d+$/.test(String(vlrId)) || Number(vlrId) <= 0)
     throw new Error(`Invalid VLR team ID for ${team.id}`)
   const roster = segment(await request('/v2/team', { id: String(vlrId), q: 'roster' }))
