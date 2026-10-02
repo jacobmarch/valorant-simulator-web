@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import { renderToStaticMarkup } from 'react-dom/server'
 import {
-  createGame,
   playableTournamentFixtureIds,
   simulateSeries,
   simulateTournamentFixture,
@@ -9,6 +8,7 @@ import {
 import { RoundReplayView, stripRounds } from '../src/round-replay'
 import { OVERTIME_CREDITS, type SeriesReplay } from '../src/round-sim'
 import { SeriesWalkthrough } from '../src/series-walkthrough'
+import { createKickoffGame } from './helpers'
 
 const memory = new Map<string, string>()
 Object.assign(globalThis, {
@@ -21,7 +21,7 @@ Object.assign(globalThis, {
 beforeEach(() => memory.clear())
 
 function watched(seed = 1) {
-  const state = createGame('Manager', 'sen')
+  const state = createKickoffGame('Manager', 'sen')
   state.rng = seed
   const replay: SeriesReplay = { maps: [] }
   const [aId, bId] = Object.keys(state.teams)
@@ -107,7 +107,7 @@ describe('round-by-round sim', () => {
   })
 
   test('watching the series keeps round detail out of the save', () => {
-    const state = createGame('Manager', 'sen')
+    const state = createKickoffGame('Manager', 'sen')
     const fixtureId = playableTournamentFixtureIds(state)[0]
     const replay: SeriesReplay = { maps: [] }
     const next = simulateTournamentFixture(
@@ -129,7 +129,7 @@ describe('round-by-round sim', () => {
   })
 
   test('the walkthrough offers to watch each map round by round', () => {
-    const state = createGame('Manager', 'sen')
+    const state = createKickoffGame('Manager', 'sen')
     const fixtureId = playableTournamentFixtureIds(state)[0]
     const replay: SeriesReplay = { maps: [] }
     const next = simulateTournamentFixture(

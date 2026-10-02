@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
-import { stepWeek } from './helpers'
-import { createGame, eventFinish, type GameState, loadGame } from '../src/game'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { createGame, eventFinish, type GameState, loadGame } from '../src/game'
 import { YearInReview } from '../src/season-review-view'
 import type { Region } from '../src/seed'
+import { stepWeek } from './helpers'
 
 const memory = new Map<string, string>()
 Object.assign(globalThis, {
@@ -100,7 +100,7 @@ describe('year in review', () => {
     delete legacy.pendingReview
     memory.set(SAVE_KEY, JSON.stringify(legacy))
     const loaded = loadGame()
-    expect(loaded?.version).toBe(17)
+    expect(loaded?.version).toBe(18)
     expect(loaded?.reviews).toEqual([])
     expect(loaded?.pendingReview).toBeNull()
     expect(Object.keys(loaded?.seasonStats ?? {}).length).toBeGreaterThan(0)

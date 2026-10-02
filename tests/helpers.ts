@@ -1,4 +1,10 @@
-import { advanceWeek, type GameState } from '../src/game'
+import { advanceWeek, createGame, type GameState } from '../src/game'
+
+/** Competition tests start after the match-free preseason week. */
+export function createKickoffGame(name: string, teamId: string) {
+  return advanceWeek(createGame(name, teamId), 'Measured defaults', 'Disciplined retakes')
+}
+
 import { freeAgents, playerOverall, rosterShortfall, signFreeAgent } from '../src/transfers'
 
 /** Signs the best free agents until the managed team can field five, as a manager would in preseason. */

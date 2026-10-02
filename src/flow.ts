@@ -2,14 +2,14 @@
 // what the manager should look at before pressing it, and what changed afterwards.
 import {
   currentTeam,
+  type Fixture,
   fixturesForWeek,
+  type GameState,
   isInternationalPhase,
+  type MatchResult,
   phaseForWeek,
   playableTournamentFixtureIds,
   teamPlayers,
-  type Fixture,
-  type GameState,
-  type MatchResult,
 } from './game'
 import { skills } from './seed'
 import { pendingSponsorOffers } from './sponsors'
@@ -52,7 +52,7 @@ export type NextAction = {
 export function nextAction(s: GameState): NextAction {
   const team = currentTeam(s)
   const missing = rosterShortfall(s)
-  if (missing)
+  if (missing && rosterBlock(s))
     return {
       mode: 'week',
       label: `Sign ${missing} more`,
@@ -124,7 +124,7 @@ export function attentionItems(s: GameState): AttentionItem[] {
       id: 'roster-short',
       level: 'urgent',
       title: `Sign ${missing} more player${missing === 1 ? '' : 's'} before Kickoff`,
-      detail: `Only ${players.length} on contract. The season cannot start until you can field five.`,
+      detail: `Only ${players.length} on contract. Kickoff requires five eligible players; use preseason to finish your roster.`,
       view: 'roster',
     })
   else if (team.lineup.length < 5)

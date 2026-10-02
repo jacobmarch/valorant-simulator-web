@@ -7,6 +7,7 @@ import {
   regionalPlayoffQualifiers,
   stagePlayoffSeeds,
 } from '../src/game'
+import { createKickoffGame } from './helpers'
 
 const memory = new Map<string, string>()
 Object.assign(globalThis, {
@@ -26,12 +27,12 @@ const advance = (weeks: number) => {
 
 describe('regional split playoffs', () => {
   test('Kickoff gives prior Champions teams round-one byes', () => {
-    const state = createGame('Regional test', 'sen')
+    const state = createKickoffGame('Regional test', 'sen')
     ;(['Americas', 'EMEA', 'Pacific', 'China'] as const).forEach((region) => {
       const byes = Object.values(state.teams)
         .filter((team) => team.region === region && state.kickoff[team.id].openingBye)
         .map((team) => team.id)
-      const weekOne = fixturesForWeek(state, 1).filter(
+      const weekOne = fixturesForWeek(state, 2).filter(
         (fixture) => fixture.region === region && fixture.bId,
       )
       expect(byes).toHaveLength(4)
@@ -41,15 +42,15 @@ describe('regional split playoffs', () => {
         weekOne.every((fixture) => !byes.includes(fixture.aId) && !byes.includes(fixture.bId!)),
       ).toBeTrue()
     })
-    const weekTwo = advance(1)
+    const weekTwo = advance(2)
     ;(['Americas', 'EMEA', 'Pacific', 'China'] as const).forEach((region) => {
-      const fixtures = fixturesForWeek(weekTwo, 2).filter((fixture) => fixture.region === region)
+      const fixtures = fixturesForWeek(weekTwo, 3).filter((fixture) => fixture.region === region)
       expect(fixtures.filter((fixture) => fixture.label === 'Upper Round 2')).toHaveLength(4)
       expect(fixtures.filter((fixture) => fixture.label === 'Middle Round 1')).toHaveLength(0)
     })
   })
   test('Upper Round 1 and Upper Round 2 losers meet in Middle Round 1', () => {
-    const state = advance(2)
+    const state = advance(3)
     ;(['Americas', 'EMEA', 'Pacific', 'China'] as const).forEach((region) => {
       const upperOne = state.fixtures.filter(
         (fixture) => fixture.region === region && fixture.label === 'Upper Round 1',
@@ -57,7 +58,7 @@ describe('regional split playoffs', () => {
       const upperTwo = state.fixtures.filter(
         (fixture) => fixture.region === region && fixture.label === 'Upper Round 2',
       )
-      const middleOne = fixturesForWeek(state, 3).filter(
+      const middleOne = fixturesForWeek(state, 4).filter(
         (fixture) => fixture.region === region && fixture.label === 'Middle Round 1',
       )
       const expected = new Set(
@@ -85,7 +86,7 @@ describe('regional split playoffs', () => {
     ).toBeTrue()
   })
   test('Kickoff Round 2 pairs each Round 1 winner with a bye team', () => {
-    const state = advance(1),
+    const state = advance(2),
       region = 'Americas'
     const byes = Object.values(state.teams)
       .filter((team) => team.region === region && state.kickoff[team.id].openingBye)
@@ -197,7 +198,7 @@ describe('regional split playoffs', () => {
               fixture.region === region &&
               (fixture.aId === upperWinner || fixture.bId === upperWinner),
           )
-          .every((fixture) => fixture.week <= 4),
+          .every((fixture) => fixture.week <= 5),
       ).toBeTrue()
       expect(
         Object.values(state.teams).filter(

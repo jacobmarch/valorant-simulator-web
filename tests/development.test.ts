@@ -182,7 +182,7 @@ describe('development in the game', () => {
     })
     localStorage.setItem(SAVE_KEY, JSON.stringify(legacy))
     const migrated = loadGame()!
-    expect(migrated.version).toBe(17)
+    expect(migrated.version).toBe(18)
     Object.values(migrated.players).forEach((player) => {
       expect(player.age).toBeGreaterThanOrEqual(17)
       expect(player.potential).toBeGreaterThan(0)

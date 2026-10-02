@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { createGame, playableTournamentFixtureIds, simulateTournamentFixture } from '../src/game'
+import { playableTournamentFixtureIds, simulateTournamentFixture } from '../src/game'
 import { SeriesWalkthrough, SimChoice } from '../src/series-walkthrough'
+import { createKickoffGame } from './helpers'
 
 const memory = new Map<string, string>()
 Object.assign(globalThis, {
@@ -15,7 +16,7 @@ beforeEach(() => memory.clear())
 
 describe('map-by-map sim', () => {
   test('offers quick sim or watching a single series', () => {
-    const state = createGame('Manager', 'sen')
+    const state = createKickoffGame('Manager', 'sen')
     const fixture = state.fixtures.find((f) => f.id === playableTournamentFixtureIds(state)[0])
     if (!fixture) throw new Error('no playable fixture')
     const html = renderToStaticMarkup(
@@ -31,7 +32,7 @@ describe('map-by-map sim', () => {
     expect(html).toContain('Watch')
   })
   test('starts on the veto with the series score hidden', () => {
-    const state = createGame('Manager', 'sen')
+    const state = createKickoffGame('Manager', 'sen')
     const fixtureId = playableTournamentFixtureIds(state)[0]
     const next = simulateTournamentFixture(
       state,

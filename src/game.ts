@@ -1,3 +1,4 @@
+import { KICKOFF_START_WEEK } from './calendar'
 import {
   agePlayer as ageDevelopment,
   conditionBonus,
@@ -219,7 +220,7 @@ export type TransferRecord = {
   note?: string
 }
 export type GameState = {
-  version: 17
+  version: 18
   season: number
   week: number
   managerName: string
@@ -251,6 +252,7 @@ const SAVE_KEY = 'vct-manager-mvp-save-v1'
 export const regions: Region[] = ['Americas', 'EMEA', 'Pacific', 'China']
 const openingKickoffByes = new Set(Object.values(previousChampionsByRegion).flat())
 const breakWeeks: Record<number, string> = {
+  1: 'Kickoff',
   7: 'Masters 1',
   19: 'Masters 2',
   23: 'Stage 2',
@@ -323,6 +325,7 @@ export function activePhaseForWeek(week: number): Exclude<CompetitionPhase, 'Bre
   return phaseForWeek(week) as Exclude<CompetitionPhase, 'Break'>
 }
 export function phaseLabel(week: number) {
+  if (week < KICKOFF_START_WEEK) return `Preseason · Kickoff starts week ${KICKOFF_START_WEEK}`
   const phase = phaseForWeek(week)
   if (phase === 'Break') return `Break before ${breakWeeks[week]}`
   if (phase === 'Masters 1') return 'Masters 1 · São Paulo'
@@ -472,13 +475,17 @@ export function createGame(
     }
     for (const team of Object.values(teams)) {
       team.playerIds = database.players.filter((row) => row.teamId === team.id).map((row) => row.id)
-      team.lineup = team.playerIds.filter((id) => players[id].status === 'starter')
+      const starters = team.playerIds.filter((id) => players[id].status === 'starter')
+      team.lineup = [...starters, ...team.playerIds.filter((id) => !starters.includes(id))].slice(
+        0,
+        5,
+      )
       team.roleAssignments = bestRoleAssignment(team.lineup.map((id) => players[id]))
     }
   }
   refreshIgls(Object.values(players))
   const state: GameState = {
-    version: 17,
+    version: 18,
     season: 2026,
     week: 1,
     managerName: managerName || 'Manager',
@@ -494,7 +501,7 @@ export function createGame(
       ]),
     ),
     inbox: [
-      'Welcome to the 2026 VCT season. Your first Kickoff matchup is on the competition board.',
+      `Welcome to preseason. Complete your roster before Kickoff starts in week ${KICKOFF_START_WEEK}.`,
     ],
     jobs: [],
     transfers: [],
@@ -514,7 +521,7 @@ export function createGame(
     reviews: [],
     pendingReview: null,
   }
-  replenishFreeAgents(state)
+  replenishFreeAgents(state, undefined, currentTeam(state).region, rosterShortfall(state))
   seedSponsors(state)
   ensureWeekScheduled(state, 1)
   return state
@@ -753,7 +760,18 @@ function migrateGame(raw: unknown): GameState | null {
       'Player careers are tougher: veterans decline from their mid-twenties and retire, a new class of prospects turns pro every offseason, and the IGL trait goes to the best shot-caller on about 38 teams.',
     )
   }
-  state.version = 17
+  if (previousVersion < 18) {
+    // Preserve completed Kickoff history while moving its opening rounds after preseason.
+    for (const fixture of state.fixtures) {
+      if (fixture.season === state.season && fixture.phase === 'Kickoff' && fixture.week < 6)
+        fixture.week++
+    }
+    for (const match of state.matches) {
+      if (match.season === state.season && match.phase === 'Kickoff' && match.week < 6) match.week++
+    }
+    if (state.week < 6) state.week++
+  }
+  state.version = 18
   pruneHistory(state)
   ensureWeekScheduled(state, state.week)
   return state
@@ -887,7 +905,7 @@ export function assignedRole(team: Team, player: Player): Role {
 
 function phaseRound(week: number, phase: CompetitionPhase) {
   const starts: Partial<Record<CompetitionPhase, number>> = {
-    Kickoff: 1,
+    Kickoff: KICKOFF_START_WEEK,
     'Masters 1': 8,
     'Stage 1': 11,
     'Masters 2': 20,
@@ -2133,29 +2151,6 @@ export function ensureWeekScheduled(state: GameState, week = state.week) {
         }
         return
       }
-      if (round === 6) {
-        if (completed('Middle Round 3').length === 2 && completed('Lower Round 2').length === 2) {
-          addKickoffFixtures(
-            state,
-            region,
-            week,
-            6,
-            'Middle Round 4',
-            adjacentKickoffPairs(winners('Middle Round 3')),
-          )
-          addKickoffFixtures(
-            state,
-            region,
-            week,
-            6,
-            'Lower Round 3',
-            losers('Middle Round 3').map((teamId, index) => [
-              teamId,
-              winners('Lower Round 2')[1 - index],
-            ]),
-          )
-        }
-      }
     })
     return
   }
@@ -2912,6 +2907,8 @@ function finalizeCalendarWeek(state: GameState) {
   }
   payEventPrizes(state)
   runAiTransfers(state)
+  if (state.week < KICKOFF_START_WEEK)
+    replenishFreeAgents(state, undefined, managedTeam.region, rosterShortfall(state))
   enforceSponsorDeadline(state)
   state.week++
   if (state.week === SPONSOR_SETTLE_WEEK) settleSponsorSeason(state)
@@ -3028,7 +3025,7 @@ function resolveExpiredContracts(state: GameState, team: Team) {
     const missing = rosterShortfall(state)
     if (missing)
       state.inbox.unshift(
-        `${team.name} has ${team.playerIds.length} players. Sign ${missing} more from free agency before Kickoff; the season cannot start until you can field five.`,
+        `${team.name} has ${team.playerIds.length} players. Sign ${missing} more from free agency during preseason; Kickoff requires five eligible players.`,
       )
   }
 }
@@ -3503,6 +3500,37 @@ function finishKickoffRegion(
         .forEach((fixture) => playFixture(state, fixture, attackStyle, defenseStyle))
   }
 
+  if (state.week !== 6) return
+  // The extra preseason week moves round six into the closing tournament week.
+  if (completed('Middle Round 3').length === 2 && completed('Lower Round 2').length === 2) {
+    if (!existing('Middle Round 4').length)
+      addKickoffFixtures(
+        state,
+        region,
+        6,
+        6,
+        'Middle Round 4',
+        adjacentKickoffPairs(
+          completed('Middle Round 3')
+            .map(resultWinner)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      )
+    if (!existing('Lower Round 3').length)
+      addKickoffFixtures(
+        state,
+        region,
+        6,
+        6,
+        'Lower Round 3',
+        [0, 1].map((index) => [
+          loser('Middle Round 3', index)!,
+          winner('Lower Round 2', 1 - index)!,
+        ]),
+      )
+    playNew(existing('Middle Round 4'))
+    playNew(existing('Lower Round 3'))
+  }
   if (completed('Middle Round 4').length !== 1 || completed('Lower Round 3').length !== 2) return
   if (!existing('Lower Round 4').length) {
     addKickoffFixtures(state, region, 6, 7, 'Lower Round 4', [

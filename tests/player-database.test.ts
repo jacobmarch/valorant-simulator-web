@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
-import { createGame } from '../src/game'
+import { nextAction } from '../src/flow'
+import { advanceWeek, createGame, phaseForWeek } from '../src/game'
 import {
   derivePlayer,
   importRoster,
@@ -8,6 +9,17 @@ import {
   validateDatabase,
 } from '../src/player-database'
 import { seedTeams } from '../src/seed'
+import { rosterViolations } from '../src/transfers'
+import { fillRoster } from './helpers'
+
+const memory = new Map<string, string>()
+Object.assign(globalThis, {
+  localStorage: {
+    setItem: (key: string, value: string) => memory.set(key, value),
+    getItem: (key: string) => memory.get(key) ?? null,
+    removeItem: (key: string) => memory.delete(key),
+  },
+})
 
 function fixture(): PlayerDatabase {
   return {
@@ -73,7 +85,8 @@ describe('VLR database', () => {
     )
     expect(imported.length).toBe(9)
     expect(imported[8].status).toBe('substitute')
-    expect(() => importRoster(active.slice(0, 4), [], 'ENVY')).toThrow()
+    expect(importRoster(active.slice(0, 3), [], 'ENVY').length).toBe(3)
+    expect(importRoster([], [], 'ENVY')).toEqual([])
     expect(() => importRoster([...active, ...active.slice(0, 3)], [], 'ENVY')).toThrow()
     expect(() => importRoster(active, active.slice(0, 3), 'ENVY')).toThrow()
   })
@@ -137,9 +150,9 @@ describe('VLR database', () => {
     const missing = fixture()
     missing.teams.pop()
     expect(() => validateDatabase(missing)).toThrow()
-    const short = fixture()
-    short.players.pop()
-    expect(() => validateDatabase(short)).toThrow()
+    const starters = fixture()
+    starters.players.push({ ...structuredClone(starters.players[0]), id: 'vlr-999' })
+    expect(() => validateDatabase(starters)).toThrow()
     const invalid = fixture()
     invalid.players[0].ratings.Mechanics = NaN
     expect(() => validateDatabase(invalid)).toThrow()
@@ -156,5 +169,67 @@ describe('VLR database', () => {
     expect(state.players[id].realData?.fetchedAt).toBe(db.fetchedAt)
     state.players[id].ratings.Mechanics = 99
     expect(JSON.stringify(db)).toBe(original)
+  })
+  test('offseason rosters import unchanged and AI teams fill vacancies before Kickoff', () => {
+    const db = fixture()
+    db.players = db.players.filter((player) => Number(player.id.slice(4)) % 5 < 3)
+    const original = JSON.stringify(db)
+    validateDatabase(db)
+    const initial = createGame('Manager', 'c9', db)
+    expect(initial.week).toBe(1)
+    expect(phaseForWeek(initial.week)).toBe('Break')
+    expect(initial.fixtures.length).toBe(0)
+    expect(initial.teams.c9.playerIds.length).toBe(3)
+    expect(nextAction(initial).blocked).toBeUndefined()
+    const kickoff = advanceWeek(initial, 'Measured defaults', 'Disciplined retakes')
+    expect(kickoff.week).toBe(2)
+    expect(kickoff.matches.length).toBe(0)
+    for (const team of Object.values(kickoff.teams).filter((team) => team.id !== 'c9')) {
+      expect(team.playerIds.length).toBeGreaterThanOrEqual(5)
+      expect(team.lineup.length).toBe(5)
+      expect(rosterViolations(kickoff, team.id)).toEqual([])
+    }
+    expect(kickoff.transfers.filter((move) => move.kind === 'signing').length).toBeGreaterThan(12)
+    expect(kickoff.teams.c9.playerIds.length).toBe(3)
+    expect(nextAction(kickoff).blocked).toBeTrue()
+    expect(advanceWeek(kickoff, 'Measured defaults', 'Disciplined retakes')).toBe(kickoff)
+    const ready = fillRoster(kickoff)
+    expect(nextAction(ready).blocked).toBeUndefined()
+    expect(
+      advanceWeek(ready, 'Measured defaults', 'Disciplined retakes').matches.length,
+    ).toBeGreaterThan(0)
+    expect(JSON.stringify(db)).toBe(original)
+  })
+  test('allows an empty roster in the offseason database', () => {
+    const db = fixture()
+    db.players = db.players.filter((player) => player.teamId !== 'envy')
+    validateDatabase(db)
+    const initial = createGame('Manager', 'c9', db)
+    expect(initial.teams.envy.playerIds).toEqual([])
+    const kickoff = advanceWeek(initial, 'Measured defaults', 'Disciplined retakes')
+    expect(kickoff.teams.envy.playerIds.length).toBeGreaterThanOrEqual(5)
+    expect(kickoff.teams.envy.lineup.length).toBe(5)
+  })
+  test('eligible reserves can complete the game lineup without inventing players', () => {
+    const db = fixture()
+    for (const player of db.players.filter((player) => player.teamId === 'c9').slice(3))
+      player.status = 'substitute'
+    const state = createGame('Manager', 'c9', db)
+    expect(state.teams.c9.playerIds.length).toBe(5)
+    expect(state.teams.c9.lineup.length).toBe(5)
+    expect(rosterViolations(state, 'c9')).toEqual([])
+  })
+  test('an empty managed roster has enough eligible free agents to enter Kickoff', () => {
+    const db = fixture()
+    db.players = db.players.filter((player) => player.teamId !== 'c9')
+    const state = advanceWeek(
+      createGame('Manager', 'c9', db),
+      'Measured defaults',
+      'Disciplined retakes',
+    )
+    expect(state.teams.c9.playerIds.length).toBe(0)
+    const ready = fillRoster(state)
+    expect(ready.teams.c9.lineup.length).toBe(5)
+    expect(rosterViolations(ready, 'c9')).toEqual([])
   })
 })

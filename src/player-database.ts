@@ -18,10 +18,8 @@ export function importRoster(
   const isPlayer = (member: VlrRosterMember) =>
     !member.is_staff && !/coach|staff|manager|analyst/i.test(member.role ?? '')
   const eligible = active.filter(isPlayer)
-  if (eligible.length < MIN_ROSTER || eligible.length > MAX_ROSTER)
-    throw new Error(
-      `${teamName} has ${eligible.length} active players; expected ${MIN_ROSTER}–${MAX_ROSTER}.`,
-    )
+  if (eligible.length > MAX_ROSTER)
+    throw new Error(`${teamName} has ${eligible.length} active players; maximum ${MAX_ROSTER}.`)
   const reserves = benched.filter(isPlayer)
   if (eligible.length + reserves.length > MAX_ROSTER)
     throw new Error(
@@ -30,7 +28,9 @@ export function importRoster(
   // Use VLR display order as a default lineup; reserve status here is a game choice.
   return [...eligible, ...reserves].map((member, index) => ({
     member,
-    status: (index < MIN_ROSTER ? 'starter' : 'substitute') as DatabasePlayer['status'],
+    status: (index < eligible.length && index < MIN_ROSTER
+      ? 'starter'
+      : 'substitute') as DatabasePlayer['status'],
   }))
 }
 
@@ -171,11 +171,11 @@ export function validateDatabase(value: unknown): PlayerDatabase {
   for (const team of db.teams) {
     const roster = db.players.filter((player) => player.teamId === team.id)
     if (
-      roster.filter((player) => player.status === 'starter').length !== MIN_ROSTER ||
+      roster.filter((player) => player.status === 'starter').length > MIN_ROSTER ||
       roster.length > MAX_ROSTER
     )
       throw new Error(
-        `Invalid roster for ${team.id}: needs ${MIN_ROSTER} starters and at most ${MAX_ROSTER} players.`,
+        `Invalid roster for ${team.id}: maximum ${MIN_ROSTER} starters and ${MAX_ROSTER} players.`,
       )
   }
   return db

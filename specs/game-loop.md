@@ -13,7 +13,7 @@ Allow a user to start with any VCT organization and play the complete 2026 seaso
 
 ## Behavior
 
-- Start date is 2026-01-01.
+- Start date is 2026-01-01 (week 1 preseason). Kickoff starts in week 2. Incomplete rosters are allowed during preseason; AI teams sign free agents before their first match, and the manager must field five before playing Kickoff.
 - Current organization may change through an accepted job offer.
 - Advance Week is disabled when a required hands-on decision is unresolved.
 - Advance resolves the current week exactly once, then persists the result.

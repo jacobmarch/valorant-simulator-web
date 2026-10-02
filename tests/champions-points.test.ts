@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
-import { stepWeek } from './helpers'
 import {
   CHAMPIONSHIP_POINTS,
   championshipPointsStandings,
@@ -12,6 +11,7 @@ import {
   SAVE_KEY,
 } from '../src/game'
 import type { Region } from '../src/seed'
+import { stepWeek } from './helpers'
 
 const memory = new Map<string, string>()
 Object.assign(globalThis, {
@@ -179,7 +179,7 @@ describe('Championship Points', () => {
     })
     localStorage.setItem(SAVE_KEY, JSON.stringify(legacy))
     const loaded = loadGame()!
-    expect(loaded.version).toBe(17)
+    expect(loaded.version).toBe(18)
     Object.values(loaded.teams).forEach((team) =>
       expect(team.championshipPoints).toBe(state.teams[team.id].championshipPoints),
     )

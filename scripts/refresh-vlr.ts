@@ -90,7 +90,8 @@ for (const team of seedTeams) {
     })
   }
   db.teams.push({ id: team.id, vlrId: String(vlrId), name: team.name })
-  console.log(`${team.name}: 5 starters, ${members.length - 5} substitutes`)
+  const starters = members.filter((member) => member.status === 'starter').length
+  console.log(`${team.name}: ${starters} starters, ${members.length - starters} substitutes`)
 }
 db.fetchedAt = new Date().toISOString()
 validateDatabase(db)

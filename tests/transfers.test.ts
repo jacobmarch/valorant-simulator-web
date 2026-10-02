@@ -44,7 +44,7 @@ const allLegal = (state: GameState) =>
 describe('transfer windows', () => {
   test('windows are configured by calendar week', () => {
     expect(transferWindowForWeek(1)?.label).toBe('Preseason window')
-    expect(transferWindowForWeek(2)).toBeNull()
+    expect(transferWindowForWeek(2)?.label).toBe('Preseason window')
     expect(transferWindowForWeek(11)?.label).toBe('Stage 1 window')
     expect(transferWindowForWeek(45)?.label).toBe('Offseason window')
   })

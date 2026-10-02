@@ -1,30 +1,30 @@
-import { createContext, useContext, useState, type ReactNode } from 'react'
+import { Info } from 'lucide-react'
+import { createContext, type ReactNode, useContext, useState } from 'react'
 import {
   activePhaseForWeek,
   CHAMPIONSHIP_POINTS,
+  type CompetitionPhase,
   championshipPointsStandings,
   championshipPointsTable,
   championsQualifiers,
   competitionRecord,
   currentTeam,
-  dateForWeek,
-  fixturesForWeek,
   currentTournamentDeskFixtures,
+  dateForWeek,
+  type Fixture,
+  fixturesForWeek,
+  type GameState,
+  kickoffQualifiers,
+  kickoffStandings,
   liveTournamentRoundFixtures,
   phaseForWeek,
   playableTournamentFixtureIds,
-  kickoffQualifiers,
-  kickoffStandings,
   rankedTeams,
   regionalPlayoffQualifiers,
   stageGroups,
-  type CompetitionPhase,
-  type Fixture,
-  type GameState,
 } from './game'
 import { type Region } from './seed'
-import { Info } from 'lucide-react'
-import { Badge, Modal, PanelTitle, regionColors as colors, tone } from './ui'
+import { Badge, regionColors as colors, Modal, PanelTitle, tone } from './ui'
 
 type PlayablePhase = Exclude<CompetitionPhase, 'Break' | 'Offseason'>
 type EventInfo = {
@@ -43,7 +43,7 @@ const SimMatchContext = createContext<{
 }>({ playable: new Set() })
 const events: Record<PlayablePhase, EventInfo> = {
   Kickoff: {
-    start: 1,
+    start: 2,
     end: 6,
     type: 'regional',
     location: 'Regional studios',

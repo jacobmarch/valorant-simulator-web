@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import { attentionItems, continueReport, nextAction } from '../src/flow'
 import { createGame, simulateTournamentRound } from '../src/game'
+import { createKickoffGame } from './helpers'
 
 const memory = new Map<string, string>()
 Object.assign(globalThis, {
@@ -14,7 +15,7 @@ beforeEach(() => memory.clear())
 
 describe('game flow helpers', () => {
   test('Kickoff is played a round at a time', () => {
-    const action = nextAction(createGame('Manager', 'envy'))
+    const action = nextAction(createKickoffGame('Manager', 'envy'))
     expect(action.mode).toBe('round')
     expect(action.label.length).toBeGreaterThan(0)
   })
@@ -25,7 +26,7 @@ describe('game flow helpers', () => {
   })
 
   test('continue report counts the series a step produced', () => {
-    const before = createGame('Manager', 'envy')
+    const before = createKickoffGame('Manager', 'envy')
     const after = simulateTournamentRound(before, 'Measured defaults', 'Disciplined retakes')
     const report = continueReport(before, after)
     expect(report.managed.length + report.others).toBe(after.matches.length - before.matches.length)
