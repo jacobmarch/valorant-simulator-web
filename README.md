@@ -6,6 +6,7 @@ VCT Manager is a single-player browser game where you run a real 2026 VCT organi
 
 - All 48 2026 VCT organizations across Americas, EMEA, Pacific, and China.
 - Static 2026 team/player seed with starters and roles.
+- Optional refreshed VLR rosters and statistics-derived player ratings ([setup guide](./docs/vlr-data.md)).
 - Weekly 2026 calendar and automatic background matches.
 - Roster moves, free agents, buyouts, contracts, salary burn, and cash.
 - Individual 40-hour training and gradual scouting.

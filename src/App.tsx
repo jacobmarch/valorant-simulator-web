@@ -1,4 +1,3 @@
-import { useState, type ReactNode } from 'react'
 import {
   ArrowRight,
   Binoculars,
@@ -15,75 +14,77 @@ import {
   Wallet,
   X,
 } from 'lucide-react'
+import { type ReactNode, useEffect, useState } from 'react'
+import { CompetitionV2 } from './competition-view'
+import { DEFAULT_TRAINING } from './development'
+import { Finances } from './finances-view'
+import {
+  attentionItems,
+  type ContinueReport,
+  continueReport,
+  nextAction,
+  SCOUTING_HOURS,
+  TRAINING_HOURS,
+  trainingGaps,
+} from './flow'
 import {
   advanceWeek,
   createGame,
   currentTeam,
+  type DelegationMode,
   dateForWeek,
+  type GameState,
   loadGame,
+  type MatchResult,
   resetGame,
+  type Skill,
   saveGame,
   simulateTournamentFixture,
   simulateTournamentRound,
-  teamPlayers,
-  type DelegationMode,
-  type GameState,
-  type MatchResult,
-  type Skill,
   type TransferRecord,
+  teamPlayers,
 } from './game'
+import { DashboardV2, MatchesV2, MatchPreview, TacticsV2 } from './game-views'
+import { type PlayerDatabase, validateDatabase } from './player-database'
+import { Results } from './results-view'
+import type { SeriesReplay } from './round-sim'
+import { YearInReview } from './season-review-view'
+import { type Region, seedTeams, skills } from './seed'
+import { SeriesWalkthrough, SimChoice } from './series-walkthrough'
 import {
-  MAX_ROSTER,
+  askingSalary,
   buyOutError,
   buyOutPlayer,
-  askingSalary,
   cancelRenewal,
   canRenegotiate,
-  maxRenewalYears,
-  renegotiateContract,
-  rosterShortfall,
-  salaryDemand,
-  contractValue,
-  newContractSalary,
   contractedPlayers,
+  contractValue,
   freeAgents,
+  MAX_ROSTER,
+  maxRenewalYears,
+  newContractSalary,
   nextTransferWindow,
   playerOverall,
   releaseError,
   releasePlayer,
+  renegotiateContract,
   rosterHistory,
+  rosterShortfall,
+  salaryDemand,
   salaryForOverall,
   setPlayerStatus,
   signFreeAgent,
   signFreeAgentError,
+  type TransferOutcome,
   transferWindowForWeek,
   transferWindows,
-  type TransferOutcome,
 } from './transfers'
-import { DashboardV2, MatchPreview, MatchesV2, TacticsV2 } from './game-views'
-import { CompetitionV2 } from './competition-view'
-import { Finances } from './finances-view'
-import { Results } from './results-view'
-import { YearInReview } from './season-review-view'
-import type { SeriesReplay } from './round-sim'
-import { SeriesWalkthrough, SimChoice } from './series-walkthrough'
-import { DEFAULT_TRAINING } from './development'
-import {
-  SCOUTING_HOURS,
-  TRAINING_HOURS,
-  attentionItems,
-  continueReport,
-  nextAction,
-  trainingGaps,
-  type ContinueReport,
-} from './flow'
-import { seedTeams, skills, type Region } from './seed'
 import {
   Badge,
   Modal,
-  PanelTitle,
-  Page,
   money,
+  Page,
+  PanelTitle,
   phaseName,
   regionColors,
   tone,
@@ -120,9 +121,38 @@ const navGroups: Array<{ label: string; items: Array<[View, string, ReactNode]> 
     ],
   },
 ]
-function Start({ start }: { start: (name: string, team: string) => void }) {
+function Start({
+  start,
+}: {
+  start: (name: string, team: string, database?: PlayerDatabase) => void
+}) {
   const [name, setName] = useState('Alex Mercer')
   const [region, setRegion] = useState<Region | 'All'>('All')
+  const [database, setDatabase] = useState<PlayerDatabase>()
+  const [dataStatus, setDataStatus] = useState('Checking for a refreshed VLR database…')
+  const [useVlr, setUseVlr] = useState(true)
+  useEffect(() => {
+    const controller = new AbortController()
+    fetch(`${import.meta.env.BASE_URL}data/players.json`, {
+      cache: 'no-store',
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('No refreshed VLR database is available.')
+        const db = validateDatabase(await response.json())
+        setDatabase(db)
+        setDataStatus(
+          `VLR database refreshed ${new Date(db.fetchedAt).toLocaleString()} · ${db.timespan} stats · ${db.players.length} players. Ratings are statistical estimates; clutch and personal/contract details use game assumptions.`,
+        )
+      })
+      .catch(() => {
+        if (!controller.signal.aborted)
+          setDataStatus(
+            'VLR database unavailable or invalid. The original database uses static rosters and generated ratings.',
+          )
+      })
+    return () => controller.abort()
+  }, [])
   const teams = seedTeams.filter((t) => region === 'All' || t.region === region)
   return (
     <main className="start">
@@ -166,9 +196,26 @@ function Start({ start }: { start: (name: string, team: string) => void }) {
             </button>
           ))}
         </div>
+        <p className="muted" role="status">
+          {dataStatus}
+        </p>
+        {database && (
+          <label>
+            <input
+              type="checkbox"
+              checked={useVlr}
+              onChange={(event) => setUseVlr(event.target.checked)}
+            />{' '}
+            Use refreshed VLR players for this career
+          </label>
+        )}
         <div className="team-grid">
           {teams.map((t) => (
-            <button className="team-card" onClick={() => start(name, t.id)} key={t.id}>
+            <button
+              className="team-card"
+              onClick={() => start(name, t.id, useVlr ? database : undefined)}
+              key={t.id}
+            >
               <b style={{ background: t.color }}>{t.short.slice(0, 3)}</b>
               <span>
                 <strong>{t.name}</strong>
@@ -794,8 +841,8 @@ export default function App() {
     matchId: string
     replay: SeriesReplay
   }>()
-  const start = (name: string, team: string) => {
-    const n = createGame(name, team)
+  const start = (name: string, team: string, database?: PlayerDatabase) => {
+    const n = createGame(name, team, database)
     saveGame(n)
     setS(n)
     setView('dashboard')

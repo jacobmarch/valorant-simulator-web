@@ -1,25 +1,19 @@
 import {
-  previousChampionsByRegion,
-  roles,
-  seedTeams,
-  skills,
-  tier2Targets,
-  type Region,
-  type Role,
-} from './seed'
-import {
-  DEFAULT_TRAINING,
-  MORALE_DEFAULT,
   agePlayer as ageDevelopment,
   conditionBonus,
+  DEFAULT_TRAINING,
   developPlayer,
   formAfterSeries,
+  MORALE_DEFAULT,
   moraleAfterSeries,
   overallRating,
   seedPotential,
 } from './development'
-import { bestRoleAssignment, compositionPenalty, roleRating } from './roles'
+import { iglAdjustment, refreshIgls } from './igl'
 import { attackerEdge, describeVeto, mapFit, runVeto } from './maps'
+import { type DatabasePlayer, type PlayerDatabase, validateDatabase } from './player-database'
+import { payEventPrizes } from './prizes'
+import { bestRoleAssignment, compositionPenalty, roleRating } from './roles'
 import {
   buyStrength,
   chooseBuy,
@@ -33,8 +27,32 @@ import {
   startingEconomy,
   weaponFor,
 } from './round-sim'
-import { iglAdjustment, refreshIgls } from './igl'
-import { payEventPrizes } from './prizes'
+import {
+  backfillSeasonStats,
+  closeSeasonReview,
+  type PlayerSeasonLine,
+  recordSeasonStats,
+  type SeasonReview,
+} from './season-review'
+import {
+  previousChampionsByRegion,
+  type Region,
+  type Role,
+  roles,
+  seedTeams,
+  skills,
+  tier2Targets,
+} from './seed'
+import {
+  enforceSponsorDeadline,
+  paySponsors,
+  type SeasonSummary,
+  SPONSOR_SETTLE_WEEK,
+  type SponsorContract,
+  type SponsorOffers,
+  seedSponsors,
+  settleSponsorSeason,
+} from './sponsors'
 import {
   addProspectClass,
   fillAiRosters,
@@ -48,23 +66,6 @@ import {
   runAiTransfers,
   salaryDemand,
 } from './transfers'
-import {
-  backfillSeasonStats,
-  closeSeasonReview,
-  type PlayerSeasonLine,
-  recordSeasonStats,
-  type SeasonReview,
-} from './season-review'
-import {
-  enforceSponsorDeadline,
-  paySponsors,
-  seedSponsors,
-  settleSponsorSeason,
-  SPONSOR_SETTLE_WEEK,
-  type SeasonSummary,
-  type SponsorContract,
-  type SponsorOffers,
-} from './sponsors'
 
 export type Skill = (typeof skills)[number]
 export type DelegationMode = 'hands-on' | 'balanced' | 'hands-off'
@@ -98,6 +99,8 @@ export type Player = {
   morale: number
   /** In-game leader: earned from Tactics and Teamplay, see src/igl.ts. */
   igl: boolean
+  /** Original VLR evidence. Career development may subsequently change these ratings. */
+  realData?: DatabasePlayer['evidence'] & { fetchedAt: string; model: string }
   /** New terms agreed in the offseason; they replace the contract when it expires at rollover. */
   renewal?: { years: number; salary: number }
   /** Season the player retired in; retirees are pruned once history no longer needs them. */
@@ -342,7 +345,12 @@ export function dateForWeek(week: number) {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-export function createGame(managerName: string, currentTeamId: string): GameState {
+export function createGame(
+  managerName: string,
+  currentTeamId: string,
+  database?: PlayerDatabase,
+): GameState {
+  if (database) validateDatabase(database)
   const players: Record<string, Player> = {}
   const teams: Record<string, Team> = {}
   seedTeams.forEach((seed, teamIndex) => {
@@ -431,6 +439,43 @@ export function createGame(managerName: string, currentTeamId: string): GameStat
     )
     players[id].salary = salaryDemand(players[id])
   })
+  if (database) {
+    // Replace the entire seed roster so transferred players cannot appear twice.
+    for (const id of Object.keys(players)) delete players[id]
+    for (const row of database.players) {
+      const age = 23 // Game assumption: this API does not expose birth dates.
+      players[row.id] = {
+        id: row.id,
+        name: row.name,
+        teamId: row.teamId,
+        region: teams[row.teamId].region,
+        primaryRole: row.primaryRole,
+        secondaryRoles: [...row.secondaryRoles],
+        ratings: { ...row.ratings },
+        age,
+        salary: 0,
+        years: 1,
+        status: row.status,
+        isImport: false,
+        scoutProgress: 100,
+        potential: seedPotential(overallRating(row.ratings), age, 0),
+        form: 0,
+        morale: MORALE_DEFAULT,
+        igl: false,
+        realData: {
+          ...structuredClone(row.evidence),
+          fetchedAt: database.fetchedAt,
+          model: database.model,
+        },
+      }
+      players[row.id].salary = salaryDemand(players[row.id])
+    }
+    for (const team of Object.values(teams)) {
+      team.playerIds = database.players.filter((row) => row.teamId === team.id).map((row) => row.id)
+      team.lineup = team.playerIds.filter((id) => players[id].status === 'starter')
+      team.roleAssignments = bestRoleAssignment(team.lineup.map((id) => players[id]))
+    }
+  }
   refreshIgls(Object.values(players))
   const state: GameState = {
     version: 17,
