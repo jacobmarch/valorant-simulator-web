@@ -7,6 +7,13 @@ function search(results: { id: string; name: string; tag?: string }[]) {
 }
 
 describe('VLR team identities', () => {
+  test('uses the confirmed ALL GAMERS ID without an ambiguous search', async () => {
+    const team = seedTeams.find((team) => team.id === 'ag')!
+    const id = await resolveTeamId(team, async () => {
+      throw new Error('ALL GAMERS must not depend on duplicate search results')
+    })
+    expect(id).toBe('1119')
+  })
   test('searches Eternal Fire for the former ULF slot and excludes inactive ULF', async () => {
     const team = seedTeams.find((team) => team.id === 'ulf')!
     expect(team.name).toBe('Eternal Fire')

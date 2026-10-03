@@ -1,3 +1,9 @@
+// Confirmed source identities for organizations with duplicate VLR search names.
+// VLR_TEAM_MAPPING overrides these defaults in the importer.
+const confirmedTeamIds: Record<string, string> = {
+  ag: '1119', // ALL GAMERS, confirmed by the user from VLR's duplicate results.
+}
+
 // Explicit identity aliases for game display names that include sponsors or differ on VLR.
 const teamAliases: Record<string, string[]> = {
   kru: ['KRÜ Esports', 'KRU Esports', 'KRÜ', 'KRU'],
@@ -21,6 +27,7 @@ export async function resolveTeamId(
   team: { id: string; name: string },
   request: (path: string, params: Record<string, string>) => Promise<any>,
 ) {
+  if (confirmedTeamIds[team.id]) return confirmedTeamIds[team.id]
   const names = [team.name, ...(teamAliases[team.id] ?? [])]
   const accepted = new Set(names.map(normalizedTeamName))
   const queries = [...new Set([...names, team.name.normalize('NFKD').replace(/\p{M}/gu, '')])]
