@@ -7,6 +7,13 @@ function search(results: { id: string; name: string; tag?: string }[]) {
 }
 
 describe('VLR team identities', () => {
+  test('uses the confirmed NOVA ESPORTS ID without an ambiguous search', async () => {
+    const team = seedTeams.find((team) => team.id === 'nova')!
+    const id = await resolveTeamId(team, async () => {
+      throw new Error('NOVA ESPORTS must not depend on duplicate search results')
+    })
+    expect(id).toBe('12064')
+  })
   test('uses the confirmed ALL GAMERS ID without an ambiguous search', async () => {
     const team = seedTeams.find((team) => team.id === 'ag')!
     const id = await resolveTeamId(team, async () => {

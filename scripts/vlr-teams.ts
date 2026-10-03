@@ -2,6 +2,7 @@
 // VLR_TEAM_MAPPING overrides these defaults in the importer.
 const confirmedTeamIds: Record<string, string> = {
   ag: '1119', // ALL GAMERS, confirmed by the user from VLR's duplicate results.
+  nova: '12064', // NOVA ESPORTS, confirmed by the user from VLR's duplicate results.
 }
 
 // Explicit identity aliases for game display names that include sponsors or differ on VLR.

@@ -36,7 +36,7 @@ Important: actual current source returns `data.segments[0]` for profiles, with `
 
 Eternal Fire replaces inactive ULF Esports in the EMEA slot. The internal ID remains `ulf` to preserve save and database references; searches now use Eternal Fire. If an existing mapping file contains an `ulf` override for ULF, remove it to use name discovery or replace it with Eternal Fire's verified VLR ID. Refresh the database and start a new career to use Eternal Fire's current roster. Existing saves update the organization name and abbreviation while retaining their simulated rosters.
 
-ALL GAMERS (`ag`) uses the confirmed VLR team ID `1119` by default because VLR search also returns `22257` with the same name. This default skips name discovery for that team. `VLR_TEAM_MAPPING` still takes precedence if you supply an explicit override.
+ALL GAMERS (`ag`) uses the confirmed VLR team ID `1119` by default because VLR search also returns `22257` with the same name. NOVA ESPORTS (`nova`) uses the confirmed ID `12064`, avoiding the duplicate names at `19269` and `20630`. These defaults skip name discovery for those teams. `VLR_TEAM_MAPPING` still takes precedence if you supply an explicit override.
 
 ### Request rate limits
 
