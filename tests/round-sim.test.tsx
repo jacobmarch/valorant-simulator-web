@@ -6,7 +6,7 @@ import {
   simulateTournamentFixture,
 } from '../src/game'
 import { RoundReplayView, stripRounds } from '../src/round-replay'
-import { OVERTIME_CREDITS, type SeriesReplay } from '../src/round-sim'
+import { chooseBuy, OVERTIME_CREDITS, type SeriesReplay } from '../src/round-sim'
 import { SeriesWalkthrough } from '../src/series-walkthrough'
 import { createKickoffGame } from './helpers'
 
@@ -197,5 +197,67 @@ describe('round-by-round sim', () => {
         }
     }
     expect(overtimeRounds).toBeGreaterThan(0)
+  })
+})
+
+describe('buy decisions', () => {
+  const level = { own: 0, opp: 0 }
+  const bank = (credits: number, lossStreak = 0) => ({ credits, lossStreak })
+
+  test('a team that loses pistol saves instead of forcing', () => {
+    expect(chooseBuy(bank(2100, 1), 2, level).buy).toBe('eco')
+    expect(chooseBuy(bank(2100, 1), 14, { own: 0, opp: 12 }).buy).toBe('force')
+    expect(chooseBuy(bank(2100, 1), 14, { own: 12, opp: 3 }).buy).toBe('eco')
+  })
+
+  test('a lost pistol still full buys with a full bank', () => {
+    expect(chooseBuy(bank(3900, 1), 2, level).buy).toBe('full')
+  })
+
+  test('half buy or better forces when there is no losing streak', () => {
+    const buy = chooseBuy(bank(2000, 0), 5, level)
+    expect(buy.buy).toBe('force')
+    expect(buy.spend).toBeLessThanOrEqual(2600)
+  })
+
+  test('two or more losses in a row save for a full buy', () => {
+    expect(chooseBuy(bank(2500, 2), 6, level).buy).toBe('eco')
+    expect(chooseBuy(bank(2500, 3), 9, level).buy).toBe('eco')
+  })
+
+  test('on the brink of losing the map, a team spends what it has', () => {
+    const brink = chooseBuy(bank(1600, 2), 20, { own: 8, opp: 11 })
+    expect(brink.buy).toBe('force')
+    expect(brink.spend).toBe(1600)
+    expect(chooseBuy(bank(1000, 2), 20, { own: 8, opp: 11 }).buy).toBe('eco')
+  })
+
+  test('low bank with no brink is eco', () => {
+    expect(chooseBuy(bank(900, 0), 4, level).buy).toBe('eco')
+  })
+
+  test('pistols and overtime are unchanged', () => {
+    expect(chooseBuy(bank(800, 0), 1, level).buy).toBe('pistol')
+    expect(chooseBuy(bank(800, 0), 13, level).buy).toBe('pistol')
+    expect(chooseBuy(bank(5000, 4), 25, level).buy).toBe('full')
+  })
+
+  test('watched maps never force on the round after a lost pistol unless on the brink', () => {
+    let checked = 0
+    for (let seed = 1; seed <= 12; seed++) {
+      const { replay } = watched(seed)
+      for (const map of replay.maps)
+        for (const index of [1, 13]) {
+          const pistol = map.rounds[index - 1],
+            round = map.rounds[index]
+          if (!pistol || !round) continue
+          const loserIsA = pistol.winnerId !== map.aId
+          const loserBuy = loserIsA ? round.buys[0] : round.buys[1]
+          const opp = loserIsA ? pistol.bScore : pistol.aScore
+          checked++
+          if (opp < 11) expect(loserBuy.buy).not.toBe('force')
+        }
+    }
+    expect(checked).toBeGreaterThan(0)
   })
 })

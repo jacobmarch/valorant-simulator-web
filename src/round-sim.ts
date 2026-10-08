@@ -45,25 +45,43 @@ const START_CREDITS = 800
 export const OVERTIME_CREDITS = 5000
 const MAX_CREDITS = 9000
 const FULL_BUY = 3900
-const FORCE_MIN = 2000
+/** A half buy or better: enough to force with a rifle-and-utility-light loadout. */
+const HALF_BUY = 2000
+const HALF_BUY_SPEND = 2600
+/** Below a half buy, a team on the brink still spends what it has rather than save. */
+const BRINK_MIN = 1500
+/** Opponent's map score at which losing this round puts the team on the brink of losing. */
+const BRINK_SCORE = 11
 const LOSS_BONUS = [1900, 2400, 2900]
 
 export function startingEconomy(round = 1): Economy {
   return { credits: round > 24 ? OVERTIME_CREDITS : START_CREDITS, lossStreak: 0 }
 }
 
-/** Team buy for the round, and what it leaves in the bank. Credits are a per-player average. */
+/**
+ * Team buy for the round, and what it leaves in the bank. Credits are a per-player average.
+ *
+ * Teams save by default rather than forcing: they full buy when they can afford it, half buy
+ * (force) when the bank allows it, and only spend an under-funded bank when losing this round
+ * would leave them on the brink of losing the map. A team that just lost pistol plays eco
+ * unless it is on the brink, so it does not keep forcing into a streak of losses.
+ */
 export function chooseBuy(
   economy: Economy,
   round: number,
-  mustSpend: boolean,
+  score: { own: number; opp: number },
 ): TeamBuy & { spend: number } {
   const credits = Math.round(economy.credits)
   if (round > 24) return { buy: 'full', credits, spend: Math.min(credits, FULL_BUY) }
   if (round === 1 || round === 13) return { buy: 'pistol', credits, spend: Math.min(credits, 650) }
   if (credits >= FULL_BUY) return { buy: 'full', credits, spend: FULL_BUY }
-  if (credits >= FORCE_MIN && (mustSpend || economy.lossStreak >= 2 || round === 2 || round === 14))
-    return { buy: 'force', credits, spend: Math.min(credits, 2600) }
+  const brink = score.opp >= BRINK_SCORE
+  const lostPistol = (round === 2 || round === 14) && economy.lossStreak > 0
+  if (brink && credits >= BRINK_MIN) return { buy: 'force', credits, spend: credits }
+  // Two or more losses in a row: save for a full buy rather than keep half-buying into a loss.
+  const saving = economy.lossStreak >= 2 || lostPistol
+  if (credits >= HALF_BUY && !saving)
+    return { buy: 'force', credits, spend: Math.min(credits, HALF_BUY_SPEND) }
   return { buy: 'eco', credits, spend: Math.min(credits, 400) }
 }
 

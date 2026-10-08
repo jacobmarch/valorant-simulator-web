@@ -2506,9 +2506,8 @@ function simulateWatchedMap(
     const aAttacking = round > 24 ? round % 2 === 1 : round <= 12
     const attackers = aAttacking ? a : b,
       defenders = aAttacking ? b : a
-    const mustSpend = round === 12 || round === 24 || aScore === 12 || bScore === 12
-    const aBuy = chooseBuy(economy[aId], round, mustSpend),
-      bBuy = chooseBuy(economy[bId], round, mustSpend)
+    const aBuy = chooseBuy(economy[aId], round, { own: aScore, opp: bScore }),
+      bBuy = chooseBuy(economy[bId], round, { own: bScore, opp: aScore })
     const probability = clamp(
       odds(aAttacking) + (buyStrength[aBuy.buy] - buyStrength[bBuy.buy]) * ECONOMY_SWING,
       0.06,
