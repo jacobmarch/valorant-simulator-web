@@ -29,6 +29,7 @@ import {
 } from './flow'
 import {
   advanceWeek,
+  assignedRole,
   createGame,
   currentTeam,
   type DelegationMode,
@@ -39,6 +40,7 @@ import {
   resetGame,
   type Skill,
   saveGame,
+  setLineupRole,
   simulateTournamentFixture,
   simulateTournamentRound,
   type TransferRecord,
@@ -47,9 +49,10 @@ import {
 import { DashboardV2, MatchesV2, MatchPreview, TacticsV2 } from './game-views'
 import { type PlayerDatabase, validateDatabase } from './player-database'
 import { Results } from './results-view'
+import { rolePenalty } from './roles'
 import type { SeriesReplay } from './round-sim'
 import { YearInReview } from './season-review-view'
-import { type Region, seedTeams, skills } from './seed'
+import { type Region, type Role, roles, seedTeams, skills } from './seed'
 import { SeriesWalkthrough, SimChoice } from './series-walkthrough'
 import {
   askingSalary,
@@ -348,7 +351,7 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
           ))}
         </section>
       )}
-      <div className="columns">
+      <div className="columns roster-columns">
         <section className="panel">
           <PanelTitle
             eyebrow="CURRENT ROSTER"
@@ -359,62 +362,94 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
               </span>
             }
           />
-          {ps.map((p) => {
-            const releaseBlock = releaseError(s, t.id, p.id)
-            return (
-              <div className="player-row" key={p.id}>
-                <b className="avatar" style={{ color: t.color, background: `${t.color}22` }}>
-                  {p.name.slice(0, 2).toUpperCase()}
-                </b>
-                <div className="player-name">
-                  <strong>{p.name}</strong>
-                  <span>
-                    <Badge color={p.status === 'starter' ? tone.accent : tone.muted}>
-                      {p.status}
-                    </Badge>
-                    <Badge>{p.primaryRole}</Badge>
-                    {p.igl && <Badge color={tone.accent}>IGL</Badge>}
-                    <Badge color={p.years <= 1 ? tone.warn : tone.muted}>
-                      {`Age ${p.age} · ${p.years}y left`}
-                    </Badge>
-                    {p.isImport && <Badge>Import</Badge>}
-                  </span>
-                  <small>
-                    POT {p.potential} · Morale {Math.round(p.morale)} · Form {p.form > 0 ? '+' : ''}
-                    {p.form.toFixed(1)}
-                  </small>
+          <div className="market-list roster-list">
+            {ps.map((p) => {
+              const releaseBlock = releaseError(s, t.id, p.id),
+                role = assignedRole(t, p),
+                penalty = rolePenalty(p, role)
+              return (
+                <div className="player-row" key={p.id}>
+                  <b className="avatar" style={{ color: t.color, background: `${t.color}22` }}>
+                    {p.name.slice(0, 2).toUpperCase()}
+                  </b>
+                  <div className="player-name">
+                    <strong>{p.name}</strong>
+                    <span>
+                      <Badge color={p.status === 'starter' ? tone.accent : tone.muted}>
+                        {p.status}
+                      </Badge>
+                      <Badge>{p.primaryRole}</Badge>
+                      {p.igl && <Badge color={tone.accent}>IGL</Badge>}
+                      <Badge color={p.years <= 1 ? tone.warn : tone.muted}>
+                        {`Age ${p.age} · ${p.years}y left`}
+                      </Badge>
+                      {p.isImport && <Badge>Import</Badge>}
+                    </span>
+                    <small>
+                      POT {p.potential} · Morale {Math.round(p.morale)} · Form{' '}
+                      {p.form > 0 ? '+' : ''}
+                      {p.form.toFixed(1)}
+                    </small>
+                  </div>
+                  <b className="salary">
+                    {money(p.salary)}
+                    <small>/ YR</small>
+                  </b>
+                  <b className={`ovr${p.status === 'starter' && penalty ? ' off-role' : ''}`}>
+                    {playerOverall(p) + (p.status === 'starter' ? penalty : 0)}
+                    <small>OVR</small>
+                  </b>
+                  {p.status === 'starter' ? (
+                    <select
+                      className="role-select"
+                      title="Role played in the lineup"
+                      value={role}
+                      onChange={(e) => {
+                        const next = setLineupRole(s, t.id, p.id, e.target.value as Role)
+                        saveGame(next)
+                        setState(next)
+                      }}
+                    >
+                      {roles.map((option) => {
+                        const cost = rolePenalty(p, option)
+                        return (
+                          <option key={option} value={option}>
+                            {cost ? `${option} (${cost})` : option}
+                          </option>
+                        )
+                      })}
+                    </select>
+                  ) : (
+                    <span className="role-select" />
+                  )}
+                  <select
+                    value={p.status}
+                    onChange={(e) =>
+                      apply(
+                        setPlayerStatus(
+                          s,
+                          t.id,
+                          p.id,
+                          e.target.value as 'starter' | 'substitute' | 'inactive',
+                        ),
+                      )
+                    }
+                  >
+                    <option value="starter">Starter</option>
+                    <option value="substitute">Substitute</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
+                  <button
+                    className="x"
+                    title={releaseBlock ?? `Release ${p.name}`}
+                    onClick={() => apply(releasePlayer(s, t.id, p.id))}
+                  >
+                    ×
+                  </button>
                 </div>
-                <b className="ovr">
-                  {playerOverall(p)}
-                  <small>OVR</small>
-                </b>
-                <select
-                  value={p.status}
-                  onChange={(e) =>
-                    apply(
-                      setPlayerStatus(
-                        s,
-                        t.id,
-                        p.id,
-                        e.target.value as 'starter' | 'substitute' | 'inactive',
-                      ),
-                    )
-                  }
-                >
-                  <option value="starter">Starter</option>
-                  <option value="substitute">Substitute</option>
-                  <option value="inactive">Inactive</option>
-                </select>
-                <button
-                  className="x"
-                  title={releaseBlock ?? `Release ${p.name}`}
-                  onClick={() => apply(releasePlayer(s, t.id, p.id))}
-                >
-                  ×
-                </button>
-              </div>
-            )
-          })}
+              )
+            })}
+          </div>
         </section>
         <section className="panel">
           <PanelTitle
