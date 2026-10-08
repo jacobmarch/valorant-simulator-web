@@ -18,7 +18,7 @@ export type RoundEvent =
     }
   | { kind: 'plant'; time: number; playerId: string; site: string }
   | { kind: 'defuse'; time: number; playerId: string }
-export type EndReason = 'elimination' | 'detonation' | 'defuse' | 'time'
+export type EndReason = 'elimination' | 'detonation' | 'defuse'
 export type RoundReplay = {
   round: number
   overtime: boolean
@@ -50,9 +50,28 @@ const HALF_BUY = 2000
 const HALF_BUY_SPEND = 2600
 /** Below a half buy, a team on the brink still spends what it has rather than save. */
 const BRINK_MIN = 1500
-/** Opponent's map score at which losing this round puts the team on the brink of losing. */
-const BRINK_SCORE = 11
 const LOSS_BONUS = [1900, 2400, 2900]
+
+/** How readily a team forces, set by its tactical identity (the attack and defense dropdowns). */
+export type Aggression = 'conservative' | 'balanced' | 'aggressive'
+const attackAggression: Record<string, number> = {
+  'Fast and explosive': 2,
+  'Measured defaults': 1,
+  'Slow information play': 0,
+}
+const defenseAggression: Record<string, number> = {
+  'Proactive contesting': 2,
+  'Disciplined retakes': 1,
+  'Deep site anchors': 0,
+}
+/** Attack and defense each count 0-2; the sum sets the team's aggression. Defaults are balanced. */
+export function aggressionFor(attackStyle: string, defenseStyle: string): Aggression {
+  const score = (attackAggression[attackStyle] ?? 1) + (defenseAggression[defenseStyle] ?? 1)
+  if (score >= 3) return 'aggressive'
+  return score <= 1 ? 'conservative' : 'balanced'
+}
+/** Opponent's map score at which a team goes all in with what it has: the earlier, the more aggressive. */
+const BRINK_SCORE: Record<Aggression, number> = { aggressive: 10, balanced: 11, conservative: 12 }
 
 export function startingEconomy(round = 1): Economy {
   return { credits: round > 24 ? OVERTIME_CREDITS : START_CREDITS, lossStreak: 0 }
@@ -61,25 +80,31 @@ export function startingEconomy(round = 1): Economy {
 /**
  * Team buy for the round, and what it leaves in the bank. Credits are a per-player average.
  *
- * Teams save by default rather than forcing: they full buy when they can afford it, half buy
- * (force) when the bank allows it, and only spend an under-funded bank when losing this round
- * would leave them on the brink of losing the map. A team that just lost pistol plays eco
- * unless it is on the brink, so it does not keep forcing into a streak of losses.
+ * A team full buys when it can afford it. Otherwise it forces (half buy) when its bank allows it
+ * and its strategy does not call for saving, and it spends an under-funded bank when losing this
+ * round would put it on the brink. Aggression sets how readily it forces: an aggressive team
+ * forces through losses and goes all in early; a conservative team saves after any loss and
+ * waits until the map is nearly lost. Balanced teams save after a lost pistol or two losses.
  */
 export function chooseBuy(
   economy: Economy,
   round: number,
   score: { own: number; opp: number },
+  aggression: Aggression = 'balanced',
 ): TeamBuy & { spend: number } {
   const credits = Math.round(economy.credits)
   if (round > 24) return { buy: 'full', credits, spend: Math.min(credits, FULL_BUY) }
   if (round === 1 || round === 13) return { buy: 'pistol', credits, spend: Math.min(credits, 650) }
   if (credits >= FULL_BUY) return { buy: 'full', credits, spend: FULL_BUY }
-  const brink = score.opp >= BRINK_SCORE
+  if (score.opp >= BRINK_SCORE[aggression] && credits >= BRINK_MIN)
+    return { buy: 'force', credits, spend: credits }
   const lostPistol = (round === 2 || round === 14) && economy.lossStreak > 0
-  if (brink && credits >= BRINK_MIN) return { buy: 'force', credits, spend: credits }
-  // Two or more losses in a row: save for a full buy rather than keep half-buying into a loss.
-  const saving = economy.lossStreak >= 2 || lostPistol
+  const saving =
+    aggression === 'aggressive'
+      ? false
+      : aggression === 'balanced'
+        ? economy.lossStreak >= 2 || lostPistol
+        : economy.lossStreak > 0
   if (credits >= HALF_BUY && !saving)
     return { buy: 'force', credits, spend: Math.min(credits, HALF_BUY_SPEND) }
   return { buy: 'eco', credits, spend: Math.min(credits, 400) }

@@ -6,7 +6,7 @@ import {
   simulateTournamentFixture,
 } from '../src/game'
 import { RoundReplayView, stripRounds } from '../src/round-replay'
-import { chooseBuy, OVERTIME_CREDITS, type SeriesReplay } from '../src/round-sim'
+import { aggressionFor, chooseBuy, OVERTIME_CREDITS, type SeriesReplay } from '../src/round-sim'
 import { SeriesWalkthrough } from '../src/series-walkthrough'
 import { createKickoffGame } from './helpers'
 
@@ -259,5 +259,87 @@ describe('buy decisions', () => {
         }
     }
     expect(checked).toBeGreaterThan(0)
+  })
+})
+
+describe('strategy and round endings', () => {
+  // Share of the manager's non-pistol rounds spent forcing, over several watched series.
+  function forceShare(attackStyle: string, defenseStyle: string) {
+    let forces = 0,
+      played = 0
+    for (let seed = 1; seed <= 12; seed++) {
+      const state = createKickoffGame('Manager', 'sen')
+      state.rng = seed
+      const replay: SeriesReplay = { maps: [] }
+      simulateSeries(
+        state,
+        'sen',
+        Object.keys(state.teams)[5],
+        1,
+        attackStyle,
+        defenseStyle,
+        3,
+        undefined,
+        replay,
+      )
+      for (const map of replay.maps)
+        for (const round of map.rounds) {
+          if (round.round === 1 || round.round === 13 || round.overtime) continue
+          played++
+          if (round.buys[0].buy === 'force') forces++
+        }
+    }
+    return forces / played
+  }
+
+  test('a more aggressive strategy forces a larger share of rounds', () => {
+    const aggressive = forceShare('Fast and explosive', 'Proactive contesting')
+    const conservative = forceShare('Slow information play', 'Deep site anchors')
+    expect(aggressive).toBeGreaterThan(conservative)
+  })
+
+  test('the attack and defense dropdowns set the aggression level', () => {
+    expect(aggressionFor('Fast and explosive', 'Proactive contesting')).toBe('aggressive')
+    expect(aggressionFor('Measured defaults', 'Disciplined retakes')).toBe('balanced')
+    expect(aggressionFor('Slow information play', 'Deep site anchors')).toBe('conservative')
+  })
+
+  test('aggressive teams force through a loss, conservative teams save', () => {
+    const lostOnce = { credits: 2400, lossStreak: 1 }
+    expect(chooseBuy(lostOnce, 6, { own: 4, opp: 4 }, 'aggressive').buy).toBe('force')
+    expect(chooseBuy(lostOnce, 6, { own: 4, opp: 4 }, 'conservative').buy).toBe('eco')
+  })
+
+  test('aggressive teams go all in earlier than conservative ones', () => {
+    const bank = { credits: 1600, lossStreak: 0 }
+    expect(chooseBuy(bank, 9, { own: 5, opp: 10 }, 'aggressive').buy).toBe('force')
+    expect(chooseBuy(bank, 9, { own: 5, opp: 10 }, 'conservative').buy).toBe('eco')
+    expect(chooseBuy(bank, 9, { own: 5, opp: 12 }, 'conservative').buy).toBe('force')
+  })
+
+  test('no watched round ends on the clock', () => {
+    for (let seed = 1; seed <= 12; seed++) {
+      const state = createKickoffGame('Manager', 'sen')
+      state.rng = seed
+      const replay: SeriesReplay = { maps: [] }
+      simulateSeries(
+        state,
+        'sen',
+        Object.keys(state.teams)[5],
+        1,
+        undefined,
+        undefined,
+        3,
+        undefined,
+        replay,
+      )
+      for (const map of replay.maps)
+        for (const round of map.rounds) {
+          expect(['elimination', 'detonation', 'defuse']).toContain(round.endReason)
+          const attackerWon = round.winnerId === round.attackerId
+          if (!attackerWon && round.endReason !== 'defuse')
+            expect(round.endReason).toBe('elimination')
+        }
+    }
   })
 })
