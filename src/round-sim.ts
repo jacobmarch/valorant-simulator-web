@@ -80,11 +80,15 @@ export function startingEconomy(round = 1): Economy {
 /**
  * Team buy for the round, and what it leaves in the bank. Credits are a per-player average.
  *
- * A team full buys when it can afford it. Otherwise it forces (half buy) when its bank allows it
- * and its strategy does not call for saving, and it spends an under-funded bank when losing this
- * round would put it on the brink. Aggression sets how readily it forces: an aggressive team
- * forces through losses and goes all in early; a conservative team saves after any loss and
- * waits until the map is nearly lost. Balanced teams save after a lost pistol or two losses.
+ * Saving only happens where it matters. Overtime resets the economy to 5,000 every round, and the
+ * last round of a half is followed by a reset too, so neither is ever a save. Nor is a round in
+ * which losing would put the opponent at match point or within reach of the map, which is set by
+ * aggression: aggressive teams stop saving once the opponent is at 10, balanced at 11, and
+ * conservative at 12. Those rounds are played out with whatever the bank holds.
+ *
+ * Elsewhere a team full buys when it can afford it, forces when its bank allows a half buy and
+ * its strategy allows, and otherwise saves. Aggressive teams almost never save; balanced teams
+ * save after a lost pistol or two losses; conservative teams save after any loss.
  */
 export function chooseBuy(
   economy: Economy,
@@ -96,8 +100,12 @@ export function chooseBuy(
   if (round > 24) return { buy: 'full', credits, spend: Math.min(credits, FULL_BUY) }
   if (round === 1 || round === 13) return { buy: 'pistol', credits, spend: Math.min(credits, 650) }
   if (credits >= FULL_BUY) return { buy: 'full', credits, spend: FULL_BUY }
-  if (score.opp >= BRINK_SCORE[aggression] && credits >= BRINK_MIN)
-    return { buy: 'force', credits, spend: credits }
+  const endOfHalf = round === 12 || round === 24
+  if (endOfHalf || score.opp >= BRINK_SCORE[aggression]) {
+    return credits >= BRINK_MIN
+      ? { buy: 'force', credits, spend: credits }
+      : { buy: 'eco', credits, spend: credits }
+  }
   const lostPistol = (round === 2 || round === 14) && economy.lossStreak > 0
   const saving =
     aggression === 'aggressive'

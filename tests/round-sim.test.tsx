@@ -310,6 +310,29 @@ describe('strategy and round endings', () => {
     expect(chooseBuy(lostOnce, 6, { own: 4, opp: 4 }, 'conservative').buy).toBe('eco')
   })
 
+  test('a round that must be played out is never a save', () => {
+    const level = { own: 3, opp: 5 }
+    // End of a half: the economy resets next, so saving buys nothing.
+    expect(chooseBuy({ credits: 1200, lossStreak: 2 }, 12, level).spend).toBe(1200)
+    expect(chooseBuy({ credits: 1200, lossStreak: 2 }, 24, level).spend).toBe(1200)
+    // Losing would put the opponent at match point, so an aggressive team plays it out.
+    const aggressive = chooseBuy(
+      { credits: 1200, lossStreak: 2 },
+      9,
+      { own: 5, opp: 10 },
+      'aggressive',
+    )
+    expect(aggressive.spend).toBe(1200)
+    // A conservative team at the same score still saves.
+    const conservative = chooseBuy(
+      { credits: 1200, lossStreak: 2 },
+      9,
+      { own: 5, opp: 10 },
+      'conservative',
+    )
+    expect(conservative.spend).toBe(400)
+  })
+
   test('aggressive teams go all in earlier than conservative ones', () => {
     const bank = { credits: 1600, lossStreak: 0 }
     expect(chooseBuy(bank, 9, { own: 5, opp: 10 }, 'aggressive').buy).toBe('force')
