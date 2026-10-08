@@ -54,7 +54,7 @@ describe('save size', () => {
 
   test('seasons older than the previous one are dropped', () => {
     const state = createGame('Manager', 'c9')
-    const match = playWeeks(state, 1).matches.find(involvesManaged(state))
+    const match = playWeeks(state, 2).matches.find(involvesManaged(state))
     if (!match) throw new Error('no managed match')
     state.season = 2028
     state.matches = [

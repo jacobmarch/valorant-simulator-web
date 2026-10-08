@@ -1,45 +1,45 @@
-import { useMemo, useState } from 'react'
 import { ArrowRight, Check, ChevronRight, CircleAlert, Info, TriangleAlert } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { type AttentionItem, attentionItems } from './flow'
 import {
-  activePhaseForWeek,
   acceptJob,
+  activePhaseForWeek,
   assignedRole,
   championshipPointsStandings,
   championsQualifiers,
   competitionRecord,
   currentTeam,
   dateForWeek,
+  type Fixture,
+  type GameState,
   hasMatchDetail,
-  nextFixtureForTeam,
-  phaseForWeek,
   kickoffStandings,
+  type MatchResult,
+  nextFixtureForTeam,
+  type Player,
+  type PlayerStat,
+  phaseForWeek,
   rankedTeams,
   saveGame,
   setLineupRole,
   teamStrength,
-  type Fixture,
-  type GameState,
-  type MatchResult,
-  type Player,
-  type PlayerStat,
 } from './game'
-import { attentionItems, type AttentionItem } from './flow'
-import { MapPlan } from './map-plan'
-import { roles, type Role } from './seed'
 import { iglAdjustment } from './igl'
+import { MapPlan } from './map-plan'
 import { CORE_ROLES, compositionPenalty, missingRoles, rolePenalty } from './roles'
+import { type Role, roles } from './seed'
 import { playerOverall } from './transfers'
 import {
   Badge,
   Empty,
   Modal,
-  PanelTitle,
-  Page,
-  Stat,
-  TeamMark,
   money,
+  Page,
+  PanelTitle,
   phaseName,
   regionColors,
+  Stat,
+  TeamMark,
   tone,
   type View,
 } from './ui'
@@ -172,9 +172,11 @@ export function DashboardV2({
       eyebrow={`WEEK ${s.week} · ${dateForWeek(s.week)}`}
       title={team.name}
       subtitle={
-        phaseForWeek(s.week) === 'Break'
-          ? `Calendar break before ${activePhaseForWeek(s.week)}. A good week to sort the roster and training.`
-          : `${phaseName(s.week)} is under way. Check the to-do list, then press Continue in the top bar.`
+        s.week < 2
+          ? 'Preseason: finish your roster before Kickoff starts in week 2. AI teams are signing free agents.'
+          : phaseForWeek(s.week) === 'Break'
+            ? `Calendar break before ${activePhaseForWeek(s.week)}. A good week to sort the roster and training.`
+            : `${phaseName(s.week)} is under way. Check the to-do list, then press Continue in the top bar.`
       }
     >
       <div className="home-grid">
@@ -184,9 +186,11 @@ export function DashboardV2({
             title={
               opponent && fixture
                 ? `${fixture.phase} · ${fixture.label}`
-                : phaseForWeek(s.week) === 'Break'
-                  ? 'Calendar break'
-                  : 'No series scheduled'
+                : s.week < 2
+                  ? 'Preseason'
+                  : phaseForWeek(s.week) === 'Break'
+                    ? 'Calendar break'
+                    : 'No series scheduled'
             }
             right={
               <Badge
@@ -228,7 +232,7 @@ export function DashboardV2({
             </>
           ) : (
             <p className="muted spotlight-empty">
-              {s.week === 1 && s.kickoff[team.id]?.openingBye
+              {s.week === 2 && s.kickoff[team.id]?.openingBye
                 ? 'You have an opening-round bye. Your first series is set once round one is played.'
                 : 'Your next opponent is decided by results elsewhere. Continue to move the calendar on.'}
             </p>

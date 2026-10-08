@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import { assignedRole, createGame, currentTeam, setLineupRole, teamStrength } from '../src/game'
 import {
+  bestRoleAssignment,
   CORE_ROLES,
   MISSING_ROLE_PENALTY,
-  OFF_ROLE_PENALTY,
-  SECONDARY_ROLE_PENALTY,
-  bestRoleAssignment,
   missingRoles,
+  OFF_ROLE_PENALTY,
   rolePenalty,
+  SECONDARY_ROLE_PENALTY,
 } from '../src/roles'
 import { repairLineup } from '../src/transfers'
 

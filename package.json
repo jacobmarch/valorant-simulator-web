@@ -5,6 +5,7 @@
   "type": "module",
   "packageManager": "bun@1.4.2",
   "scripts": {
+    "data:refresh": "bun scripts/refresh-vlr.ts",
     "dev": "vite",
     "test": "bun test",
     "lint": "biome lint src/*.ts src/*.tsx tests/*.ts tests/*.tsx vite.config.ts",

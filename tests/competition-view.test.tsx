@@ -8,6 +8,7 @@ import {
   simulateNextTournamentMatch,
 } from '../src/game'
 import { MatchesV2 } from '../src/game-views'
+import { createKickoffGame } from './helpers'
 
 const memory = new Map<string, string>()
 Object.assign(globalThis, {
@@ -22,7 +23,7 @@ beforeEach(() => memory.clear())
 describe('competition center', () => {
   test('Kickoff renders its three lives as named bracket lanes', () => {
     const html = renderToStaticMarkup(
-      <CompetitionV2 s={createGame('Manager', 'sen')} onSimMatch={() => {}} />,
+      <CompetitionV2 s={createKickoffGame('Manager', 'sen')} onSimMatch={() => {}} />,
     )
     expect(html).toContain('Upper bracket')
     expect(html).toContain('Middle bracket')
@@ -45,7 +46,7 @@ describe('competition center', () => {
     expect(html).toContain('Upper Round 2 winners')
     expect(html).toContain('Winner qualifies for Masters 1')
     const standings = renderToStaticMarkup(
-      <CompetitionV2 s={createGame('Manager', 'sen')} initialTab="standings" />,
+      <CompetitionV2 s={createKickoffGame('Manager', 'sen')} initialTab="standings" />,
     )
     expect(standings).toContain('Kickoff standings')
     expect(standings).not.toContain('Upper bracket')
@@ -122,7 +123,7 @@ describe('competition center', () => {
     expect(html).toContain('TITLE MATCH')
   })
   test('background match results are available in the reusable broadcast view', () => {
-    let state = createGame('Manager', 'sen')
+    let state = createKickoffGame('Manager', 'sen')
     state = advanceWeek(state, 'Measured defaults', 'Disciplined retakes')
     const background = state.matches.find((match) => {
       const a = state.teams[match.aId],
@@ -130,7 +131,7 @@ describe('competition center', () => {
       return a.region === 'Americas' && a.id !== state.currentTeamId && b.id !== state.currentTeamId
     })!
     const viewState = structuredClone(state)
-    viewState.week = 1
+    viewState.week = 2
     const broadcast = renderToStaticMarkup(<MatchesV2 s={state} initialMatchId={background.id} />)
     expect(broadcast).toContain(`value="${background.id}"`)
     expect(broadcast).toContain(state.teams[background.aId].name)
@@ -140,7 +141,7 @@ describe('competition center', () => {
     expect((competition.match(/role="button"/g) ?? []).length).toBeGreaterThan(0)
   })
   test('match scoreboard keeps FK, FD, plants, and defuses in separate aligned columns', () => {
-    let state = createGame('Manager', 'sen')
+    let state = createKickoffGame('Manager', 'sen')
     state = advanceWeek(state, 'Measured defaults', 'Disciplined retakes')
     const match =
       state.matches.find(

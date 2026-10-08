@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import { overallRating } from '../src/development'
-import { advanceWeek, createGame, loadGame, rolloverSeason, SAVE_KEY } from '../src/game'
 import { attentionItems, nextAction } from '../src/flow'
+import { advanceWeek, createGame, loadGame, rolloverSeason, SAVE_KEY } from '../src/game'
 import {
   cancelRenewal,
   canRenegotiate,
@@ -111,12 +111,15 @@ describe('season rollover', () => {
     rolloverSeason(state)
     expect(team.playerIds).toHaveLength(2)
     expect(rosterShortfall(state)).toBe(3)
-    expect(rosterBlock(state)).toContain('needs 3 more players')
+    expect(rosterBlock(state)).toBeNull()
     expect(state.inbox.some((line) => line.includes('before Kickoff'))).toBeTrue()
-    expect(nextAction(state).blocked).toBeTrue()
+    expect(nextAction(state).blocked).toBeUndefined()
     expect(attentionItems(state)[0].id).toBe('roster-short')
-    // Nothing moves while the roster is short.
-    expect(advanceWeek(state, 'Measured defaults', 'Disciplined retakes')).toBe(state)
+    // Preseason may advance, but Kickoff cannot be played with an incomplete roster.
+    const kickoff = advanceWeek(state, 'Measured defaults', 'Disciplined retakes')
+    expect(kickoff.week).toBe(2)
+    expect(nextAction(kickoff).blocked).toBeTrue()
+    expect(advanceWeek(kickoff, 'Measured defaults', 'Disciplined retakes')).toBe(kickoff)
     state.teams.c9.cash = 10_000_000
     let next = state
     freeAgents(state)
@@ -204,7 +207,7 @@ describe('season rollover', () => {
     })
     memory.set(SAVE_KEY, JSON.stringify(state))
     const loaded = loadGame()!
-    expect(loaded.version).toBe(17)
+    expect(loaded.version).toBe(18)
     Object.values(loaded.players).forEach((player) => {
       expect(player.age).toBeGreaterThanOrEqual(17)
     })

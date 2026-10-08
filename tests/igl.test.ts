@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import { createGame, loadGame, rolloverSeason, teamStrength } from '../src/game'
 import {
+  gameSense,
   IGL_BONUS,
   IGL_EXTRA_SLOTS,
   IGL_TEAM_TARGET,
   IGL_THRESHOLD,
   NO_IGL_PENALTY,
-  gameSense,
   qualifiesAsIgl,
 } from '../src/igl'
 
@@ -104,7 +104,7 @@ describe('in-game leaders', () => {
     })
     memory.set('vct-manager-mvp-save-v1', JSON.stringify(legacy))
     const loaded = loadGame()!
-    expect(loaded.version).toBe(17)
+    expect(loaded.version).toBe(18)
     const igls = Object.values(loaded.players).filter((player) => player.igl)
     expect(igls.length).toBeGreaterThan(0)
     expect(igls.length).toBeLessThanOrEqual(IGL_TEAM_TARGET + IGL_EXTRA_SLOTS)

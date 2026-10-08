@@ -4,3 +4,5 @@ dist/
 .env.*
 !.env.example
 *.tsbuildinfo
+data/vlr/
+public/data/*.tmp

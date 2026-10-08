@@ -1,11 +1,12 @@
-import type { GameState, Player, PlayerStatus, Team, TransferRecord } from './game'
+import { KICKOFF_START_WEEK } from './calendar'
 import { MORALE_DEFAULT, overallRating, prospectPotential, retirementChance } from './development'
+import type { GameState, Player, PlayerStatus, Team, TransferRecord } from './game'
 import { bestRoleAssignment } from './roles'
-import { roles, type Region } from './seed'
+import { MAX_ROSTER, MIN_ROSTER } from './roster-limits'
+import { type Region, roles } from './seed'
 import { payroll } from './sponsors'
 
-export const MIN_ROSTER = 5
-export const MAX_ROSTER = 7
+export { MAX_ROSTER, MIN_ROSTER } from './roster-limits'
 export const MAX_IMPORTS = 1
 const MIN_FREE_AGENTS = 12
 const AI_CASH_RESERVE = 300000
@@ -17,7 +18,7 @@ const AI_BUYOUT_COOLDOWN_WEEKS = 26
 export type TransferWindow = { label: string; start: number; end: number }
 // Weeks in which signings, buyouts, and releases are allowed. Status changes are always allowed.
 export const transferWindows: TransferWindow[] = [
-  { label: 'Preseason window', start: 1, end: 1 },
+  { label: 'Preseason window', start: 1, end: KICKOFF_START_WEEK },
   { label: 'Stage 1 window', start: 11, end: 11 },
   { label: 'Stage 2 window', start: 23, end: 23 },
   { label: 'Offseason window', start: 43, end: 52 },
@@ -117,6 +118,7 @@ export function rosterShortfall(state: GameState) {
 }
 /** Why the calendar cannot move yet, if the managed team is short of players. */
 export function rosterBlock(state: GameState) {
+  if (state.week < KICKOFF_START_WEEK) return null
   const missing = rosterShortfall(state)
   return missing
     ? `${state.teams[state.currentTeamId].name} needs ${missing} more player${missing === 1 ? '' : 's'} to field five. Sign ${missing === 1 ? 'a free agent' : 'free agents'} before Kickoff.`
@@ -318,7 +320,7 @@ function applyBuyout(state: GameState, buyerId: string, playerId: string) {
     `${buyer.name} bought out ${player.name} from ${seller.name} for ${dollars(fee)}.`,
   )
   while (seller.playerIds.length < MIN_ROSTER) {
-    replenishFreeAgents(state)
+    replenishFreeAgents(state, MIN_FREE_AGENTS, seller.region)
     const replacement = bestAffordableFreeAgent(state, seller)
     if (!replacement) break
     applySigning(state, seller.id, replacement.id)
@@ -406,11 +408,25 @@ const suffixes = ['ro', 'zen', 'ix', 'ka', 'lo', 'th', 'vy', 'no', 'rex', 'sa', 
 const regionList: Region[] = ['Americas', 'EMEA', 'Pacific', 'China']
 
 // Keeps a pool of tier-2 prospects so buyouts and AI moves always have replacements to sign.
-export function replenishFreeAgents(state: GameState, minimum = MIN_FREE_AGENTS) {
+export function replenishFreeAgents(
+  state: GameState,
+  minimum = MIN_FREE_AGENTS,
+  region?: Region,
+  regionalMinimum = 1,
+) {
   let count = freeAgents(state).length
   while (count < minimum) {
     createProspect(state, 17 + Math.floor(random(state) * 5))
     count++
+  }
+  // A shared pool may have no eligible local player after a team uses its import slot.
+  while (
+    region &&
+    freeAgents(state).filter((player) => player.region === region && !player.isImport).length <
+      regionalMinimum
+  ) {
+    const prospect = createProspect(state, 17 + Math.floor(random(state) * 5))
+    prospect.region = region
   }
 }
 // Each offseason a new class of teenagers turns pro. Most become squad players;
@@ -512,6 +528,7 @@ export function fillAiRosters(state: GameState) {
     .sort((a, b) => a.id.localeCompare(b.id))
     .forEach((team) => {
       while (team.playerIds.length < MIN_ROSTER) {
+        replenishFreeAgents(state, MIN_FREE_AGENTS, team.region)
         const replacement = bestAffordableFreeAgent(state, team)
         if (!replacement) break
         applySigning(state, team.id, replacement.id)
@@ -532,13 +549,18 @@ function bestAffordableFreeAgent(state: GameState, team: Team, mustSign = true) 
   const affordable = freeAgents(state).filter(
     (player) => contractValue(player) <= team.cash && !importError(state, player, team),
   )
+  // Fill vacancies with the cheapest contracts before spending on upgrades or depth.
+  if (mustSign)
+    return affordable.sort(
+      (a, b) => contractValue(a) - contractValue(b) || salaryDemand(a) - salaryDemand(b),
+    )[0]
   const room = payrollRoom(state, team)
   const fits = affordable.filter((player) => salaryDemand(player) <= room)
   if (fits.length)
     return fits.sort(
       (a, b) => playerOverall(b) - playerOverall(a) || salaryDemand(a) - salaryDemand(b),
     )[0]
-  return mustSign ? affordable.sort((a, b) => salaryDemand(a) - salaryDemand(b))[0] : undefined
+  return undefined
 }
 
 // AI organizations act during open windows. The manager's team is never a buyout target.
@@ -551,6 +573,7 @@ export function runAiTransfers(state: GameState) {
     .sort((a, b) => a.id.localeCompare(b.id))
   aiTeams.forEach((team) => {
     while (team.playerIds.length < MIN_ROSTER) {
+      replenishFreeAgents(state, MIN_FREE_AGENTS, team.region)
       const replacement = bestAffordableFreeAgent(state, team)
       if (!replacement) break
       applySigning(state, team.id, replacement.id)

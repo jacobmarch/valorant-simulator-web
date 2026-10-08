@@ -102,7 +102,8 @@ export const seedTeams: SeedTeam[] = (
       '#ef3131',
       ['AslaN', 'qutionerx', 'Turko', 'Elite', 'Muj'],
     ],
-    ['ulf', 'ULF Esports', 'ULF', 'EMEA', '#ec6d35', ['Wo0t', 'qw1', 'Muj', 'Elite', 'Ruxic']],
+    // Keep the slot ID stable for saves and imported player team references.
+    ['ulf', 'Eternal Fire', 'EF', 'EMEA', '#ec6d35', ['Wo0t', 'qw1', 'Muj', 'Elite', 'Ruxic']],
     [
       'vit',
       'Team Vitality',

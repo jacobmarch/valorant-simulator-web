@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
-import { advanceWeek, createGame, loadGame, SAVE_KEY, type GameState } from '../src/game'
 import { attentionItems } from '../src/flow'
+import { advanceWeek, createGame, type GameState, loadGame, SAVE_KEY } from '../src/game'
 import {
   enforceSponsorDeadline,
   missPenalty,
@@ -132,7 +132,7 @@ describe('sponsors', () => {
     })
     memory.set(SAVE_KEY, JSON.stringify(legacy))
     const loaded = loadGame()!
-    expect(loaded.version).toBe(17)
+    expect(loaded.version).toBe(18)
     expect(pendingSponsorOffers(loaded)?.offers).toHaveLength(3)
     expect(loaded.teams.sen.sponsor?.weekly).toBeGreaterThan(0)
     expect(loaded.teams.sen.prestige).toBeGreaterThan(loaded.teams.nrg.prestige!)

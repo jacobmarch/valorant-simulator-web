@@ -76,7 +76,7 @@ All matches not involving the user's current organization resolve automatically 
 
 ## 10. Statistical guardrails
 
-Player lines are generated from map rounds and team outcome rather than independent high rolls. Kills and deaths use a shared round-volume scale, with winners receiving only a modest expected edge; negative K/D lines are normal. First kills and first deaths are separate bounded events, and zeroes are common. ACS normally falls in a professional range below 300; 300+ is a rare outlier and 360 is a hard ceiling. ADR, KAST, headshots, plants, defuses, assists, and clutches are also bounded. These rules are required for both map-level and series-aggregate views.
+Player lines are generated from map rounds and team outcome rather than independent high rolls. Kills and deaths use a shared round-volume scale, with winners receiving only a modest expected edge; negative K/D lines are normal. Each player also receives a map-long engagement profile based on role, consistency, and map-specific variance, so deaths can diverge naturally instead of being distributed evenly through the lineup. First kills and first deaths are separate bounded events, and zeroes are common. ACS normally falls in a professional range below 300; 300+ is a rare outlier and 360 is a hard ceiling. ADR, KAST, headshots, plants, defuses, assists, and clutches are also bounded. Assists are less frequent than kills and are weighted toward high-utility, high-teamplay Controllers and Initiators without excluding other roles. These rules are required for both map-level and series-aggregate views.
 
 ## 10. Manager movement
 

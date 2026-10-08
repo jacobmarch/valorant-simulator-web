@@ -1,25 +1,20 @@
+import { KICKOFF_START_WEEK } from './calendar'
 import {
-  previousChampionsByRegion,
-  roles,
-  seedTeams,
-  skills,
-  tier2Targets,
-  type Region,
-  type Role,
-} from './seed'
-import {
-  DEFAULT_TRAINING,
-  MORALE_DEFAULT,
   agePlayer as ageDevelopment,
   conditionBonus,
+  DEFAULT_TRAINING,
   developPlayer,
   formAfterSeries,
+  MORALE_DEFAULT,
   moraleAfterSeries,
   overallRating,
   seedPotential,
 } from './development'
-import { bestRoleAssignment, compositionPenalty, roleRating } from './roles'
+import { iglAdjustment, refreshIgls } from './igl'
 import { attackerEdge, describeVeto, mapFit, runVeto } from './maps'
+import { type DatabasePlayer, type PlayerDatabase, validateDatabase } from './player-database'
+import { payEventPrizes } from './prizes'
+import { bestRoleAssignment, compositionPenalty, roleRating } from './roles'
 import {
   buyStrength,
   chooseBuy,
@@ -33,8 +28,32 @@ import {
   startingEconomy,
   weaponFor,
 } from './round-sim'
-import { iglAdjustment, refreshIgls } from './igl'
-import { payEventPrizes } from './prizes'
+import {
+  backfillSeasonStats,
+  closeSeasonReview,
+  type PlayerSeasonLine,
+  recordSeasonStats,
+  type SeasonReview,
+} from './season-review'
+import {
+  previousChampionsByRegion,
+  type Region,
+  type Role,
+  roles,
+  seedTeams,
+  skills,
+  tier2Targets,
+} from './seed'
+import {
+  enforceSponsorDeadline,
+  paySponsors,
+  type SeasonSummary,
+  SPONSOR_SETTLE_WEEK,
+  type SponsorContract,
+  type SponsorOffers,
+  seedSponsors,
+  settleSponsorSeason,
+} from './sponsors'
 import {
   addProspectClass,
   fillAiRosters,
@@ -48,23 +67,6 @@ import {
   runAiTransfers,
   salaryDemand,
 } from './transfers'
-import {
-  backfillSeasonStats,
-  closeSeasonReview,
-  type PlayerSeasonLine,
-  recordSeasonStats,
-  type SeasonReview,
-} from './season-review'
-import {
-  enforceSponsorDeadline,
-  paySponsors,
-  seedSponsors,
-  settleSponsorSeason,
-  SPONSOR_SETTLE_WEEK,
-  type SeasonSummary,
-  type SponsorContract,
-  type SponsorOffers,
-} from './sponsors'
 
 export type Skill = (typeof skills)[number]
 export type DelegationMode = 'hands-on' | 'balanced' | 'hands-off'
@@ -98,6 +100,8 @@ export type Player = {
   morale: number
   /** In-game leader: earned from Tactics and Teamplay, see src/igl.ts. */
   igl: boolean
+  /** Original VLR evidence. Career development may subsequently change these ratings. */
+  realData?: DatabasePlayer['evidence'] & { fetchedAt: string; model: string }
   /** New terms agreed in the offseason; they replace the contract when it expires at rollover. */
   renewal?: { years: number; salary: number }
   /** Season the player retired in; retirees are pruned once history no longer needs them. */
@@ -216,7 +220,7 @@ export type TransferRecord = {
   note?: string
 }
 export type GameState = {
-  version: 17
+  version: 18
   season: number
   week: number
   managerName: string
@@ -248,6 +252,7 @@ const SAVE_KEY = 'vct-manager-mvp-save-v1'
 export const regions: Region[] = ['Americas', 'EMEA', 'Pacific', 'China']
 const openingKickoffByes = new Set(Object.values(previousChampionsByRegion).flat())
 const breakWeeks: Record<number, string> = {
+  1: 'Kickoff',
   7: 'Masters 1',
   19: 'Masters 2',
   23: 'Stage 2',
@@ -320,6 +325,7 @@ export function activePhaseForWeek(week: number): Exclude<CompetitionPhase, 'Bre
   return phaseForWeek(week) as Exclude<CompetitionPhase, 'Break'>
 }
 export function phaseLabel(week: number) {
+  if (week < KICKOFF_START_WEEK) return `Preseason · Kickoff starts week ${KICKOFF_START_WEEK}`
   const phase = phaseForWeek(week)
   if (phase === 'Break') return `Break before ${breakWeeks[week]}`
   if (phase === 'Masters 1') return 'Masters 1 · São Paulo'
@@ -342,7 +348,12 @@ export function dateForWeek(week: number) {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-export function createGame(managerName: string, currentTeamId: string): GameState {
+export function createGame(
+  managerName: string,
+  currentTeamId: string,
+  database?: PlayerDatabase,
+): GameState {
+  if (database) validateDatabase(database)
   const players: Record<string, Player> = {}
   const teams: Record<string, Team> = {}
   seedTeams.forEach((seed, teamIndex) => {
@@ -431,9 +442,50 @@ export function createGame(managerName: string, currentTeamId: string): GameStat
     )
     players[id].salary = salaryDemand(players[id])
   })
+  if (database) {
+    // Replace the entire seed roster so transferred players cannot appear twice.
+    for (const id of Object.keys(players)) delete players[id]
+    for (const row of database.players) {
+      const age = 23 // Game assumption: this API does not expose birth dates.
+      players[row.id] = {
+        id: row.id,
+        name: row.name,
+        teamId: row.teamId,
+        region: teams[row.teamId].region,
+        primaryRole: row.primaryRole,
+        secondaryRoles: [...row.secondaryRoles],
+        ratings: { ...row.ratings },
+        age,
+        salary: 0,
+        years: 1,
+        status: row.status,
+        isImport: false,
+        scoutProgress: 100,
+        potential: seedPotential(overallRating(row.ratings), age, 0),
+        form: 0,
+        morale: MORALE_DEFAULT,
+        igl: false,
+        realData: {
+          ...structuredClone(row.evidence),
+          fetchedAt: database.fetchedAt,
+          model: database.model,
+        },
+      }
+      players[row.id].salary = salaryDemand(players[row.id])
+    }
+    for (const team of Object.values(teams)) {
+      team.playerIds = database.players.filter((row) => row.teamId === team.id).map((row) => row.id)
+      const starters = team.playerIds.filter((id) => players[id].status === 'starter')
+      team.lineup = [...starters, ...team.playerIds.filter((id) => !starters.includes(id))].slice(
+        0,
+        5,
+      )
+      team.roleAssignments = bestRoleAssignment(team.lineup.map((id) => players[id]))
+    }
+  }
   refreshIgls(Object.values(players))
   const state: GameState = {
-    version: 17,
+    version: 18,
     season: 2026,
     week: 1,
     managerName: managerName || 'Manager',
@@ -449,7 +501,7 @@ export function createGame(managerName: string, currentTeamId: string): GameStat
       ]),
     ),
     inbox: [
-      'Welcome to the 2026 VCT season. Your first Kickoff matchup is on the competition board.',
+      `Welcome to preseason. Complete your roster before Kickoff starts in week ${KICKOFF_START_WEEK}.`,
     ],
     jobs: [],
     transfers: [],
@@ -469,7 +521,7 @@ export function createGame(managerName: string, currentTeamId: string): GameStat
     reviews: [],
     pendingReview: null,
   }
-  replenishFreeAgents(state)
+  replenishFreeAgents(state, undefined, currentTeam(state).region, rosterShortfall(state))
   seedSponsors(state)
   ensureWeekScheduled(state, 1)
   return state
@@ -479,6 +531,10 @@ function migrateGame(raw: unknown): GameState | null {
   const legacy = raw as Partial<GameState> & { teams?: Record<string, Team> }
   if (!legacy.teams || !legacy.players || !legacy.currentTeamId) return null
   const state = legacy as GameState
+  if (state.teams.ulf?.name === 'ULF Esports') {
+    state.teams.ulf.name = 'Eternal Fire'
+    state.teams.ulf.short = 'EF'
+  }
   const previousVersion = Number(state.version ?? 1)
   state.fixtures ??= []
   state.fixtures.forEach((fixture) => {
@@ -708,7 +764,18 @@ function migrateGame(raw: unknown): GameState | null {
       'Player careers are tougher: veterans decline from their mid-twenties and retire, a new class of prospects turns pro every offseason, and the IGL trait goes to the best shot-caller on about 38 teams.',
     )
   }
-  state.version = 17
+  if (previousVersion < 18) {
+    // Preserve completed Kickoff history while moving its opening rounds after preseason.
+    for (const fixture of state.fixtures) {
+      if (fixture.season === state.season && fixture.phase === 'Kickoff' && fixture.week < 6)
+        fixture.week++
+    }
+    for (const match of state.matches) {
+      if (match.season === state.season && match.phase === 'Kickoff' && match.week < 6) match.week++
+    }
+    if (state.week < 6) state.week++
+  }
+  state.version = 18
   pruneHistory(state)
   ensureWeekScheduled(state, state.week)
   return state
@@ -852,7 +919,7 @@ export function assignedRole(team: Team, player: Player): Role {
 
 function phaseRound(week: number, phase: CompetitionPhase) {
   const starts: Partial<Record<CompetitionPhase, number>> = {
-    Kickoff: 1,
+    Kickoff: KICKOFF_START_WEEK,
     'Masters 1': 8,
     'Stage 1': 11,
     'Masters 2': 20,
@@ -2098,29 +2165,6 @@ export function ensureWeekScheduled(state: GameState, week = state.week) {
         }
         return
       }
-      if (round === 6) {
-        if (completed('Middle Round 3').length === 2 && completed('Lower Round 2').length === 2) {
-          addKickoffFixtures(
-            state,
-            region,
-            week,
-            6,
-            'Middle Round 4',
-            adjacentKickoffPairs(winners('Middle Round 3')),
-          )
-          addKickoffFixtures(
-            state,
-            region,
-            week,
-            6,
-            'Lower Round 3',
-            losers('Middle Round 3').map((teamId, index) => [
-              teamId,
-              winners('Lower Round 2')[1 - index],
-            ]),
-          )
-        }
-      }
     })
     return
   }
@@ -2197,15 +2241,72 @@ function weightedPlayer(state: GameState, ids: string[], acc: Record<string, Sta
   }
   return ids[ids.length - 1]
 }
+
+const assistRoleWeight: Record<Role, number> = {
+  Duelist: 0.55,
+  Initiator: 1.45,
+  Controller: 1.4,
+  Sentinel: 0.9,
+  Flex: 1,
+}
+
+function weightedId(state: GameState, ids: string[], weightFor: (id: string) => number) {
+  const weights = ids.map((id) => Math.max(0.05, weightFor(id)))
+  const total = weights.reduce((sum, weight) => sum + weight, 0)
+  let roll = random(state) * total
+  for (let index = 0; index < ids.length; index++) {
+    roll -= weights[index]
+    if (roll <= 0) return ids[index]
+  }
+  return ids[ids.length - 1]
+}
+
+/** A map-long exposure profile keeps deaths from being evenly rotated through a lineup. */
+function deathExposure(state: GameState, team: Team) {
+  const roleWeight: Record<Role, number> = {
+    Duelist: 1.16,
+    Initiator: 1.04,
+    Controller: 0.9,
+    Sentinel: 0.94,
+    Flex: 1,
+  }
+  return Object.fromEntries(
+    team.lineup.map((id) => {
+      const player = state.players[id]
+      const consistency = 1 + (70 - player.ratings.Consistency) / 180
+      // This persistent map factor represents which players repeatedly take (or avoid) first
+      // contact in this particular game, rather than smoothing everybody toward the same total.
+      const mapFactor = 0.68 + random(state) * 0.64
+      return [id, roleWeight[assignedRole(team, player)] * consistency * mapFactor]
+    }),
+  )
+}
+
+function assistPlayer(state: GameState, team: Team, killerId: string) {
+  const helpers = team.lineup.filter((id) => id !== killerId)
+  return weightedId(state, helpers, (id) => {
+    const player = state.players[id]
+    return (
+      assistRoleWeight[assignedRole(team, player)] *
+      (player.ratings.Utility * 0.65 + player.ratings.Teamplay * 0.35)
+    )
+  })
+}
+
 function victimsForRound(
   state: GameState,
   ids: string[],
   count: number,
-  acc: Record<string, StatAccumulator>,
+  exposure: Record<string, number>,
 ) {
-  return [...ids]
-    .sort((a, b) => acc[a].deaths - acc[b].deaths || random(state) - 0.5)
-    .slice(0, count)
+  const available = [...ids]
+  const victims: string[] = []
+  while (victims.length < count && available.length) {
+    const victim = weightedId(state, available, (id) => exposure[id])
+    victims.push(victim)
+    available.splice(available.indexOf(victim), 1)
+  }
+  return victims
 }
 function casualtyCount(state: GameState, losingSide: boolean) {
   if (losingSide) return random(state) < 0.9 ? 5 : 4
@@ -2283,6 +2384,7 @@ function simulateMap(
   allIds.forEach((id) => {
     acc[id] = blankAccumulator()
   })
+  const exposure = { ...deathExposure(state, a), ...deathExposure(state, b) }
   let aScore = 0,
     bScore = 0,
     round = 0
@@ -2298,16 +2400,16 @@ function simulateMap(
       losing = aWins ? b : a
     const winningDeaths = casualtyCount(state, false),
       losingDeaths = casualtyCount(state, true)
-    const winningVictims = victimsForRound(state, winning.lineup, winningDeaths, acc)
-    const losingVictims = victimsForRound(state, losing.lineup, losingDeaths, acc)
+    const winningVictims = victimsForRound(state, winning.lineup, winningDeaths, exposure)
+    const losingVictims = victimsForRound(state, losing.lineup, losingDeaths, exposure)
     const killed = new Set<string>(),
       assisted = new Set<string>(),
       died = new Set<string>()
     const roundKills: Record<string, number> = {}
     const firstFromWinner = random(state) < 0.72
 
-    const registerDeath = (victimId: string, killerTeamIds: string[], first: boolean) => {
-      const killerId = weightedPlayer(state, killerTeamIds, acc)
+    const registerDeath = (victimId: string, killerTeam: Team, first: boolean) => {
+      const killerId = weightedPlayer(state, killerTeam.lineup, acc)
       acc[victimId].deaths++
       acc[killerId].kills++
       acc[killerId].damage += 125 + Math.round(random(state) * 35)
@@ -2318,9 +2420,8 @@ function simulateMap(
         acc[killerId].firstKills++
         acc[victimId].firstDeaths++
       }
-      if (random(state) < 0.56) {
-        const helpers = killerTeamIds.filter((id) => id !== killerId)
-        const assistId = helpers[Math.floor(random(state) * helpers.length)]
+      if (random(state) < 0.4) {
+        const assistId = assistPlayer(state, killerTeam, killerId)
         if (assistId) {
           acc[assistId].assists++
           acc[assistId].damage += 28 + Math.round(random(state) * 42)
@@ -2331,10 +2432,9 @@ function simulateMap(
 
     const firstWinnerKill = firstFromWinner || winningVictims.length === 0
     const firstVictim = firstWinnerKill ? losingVictims.shift() : winningVictims.shift()
-    if (firstVictim)
-      registerDeath(firstVictim, firstWinnerKill ? winning.lineup : losing.lineup, true)
-    losingVictims.forEach((victimId) => registerDeath(victimId, winning.lineup, false))
-    winningVictims.forEach((victimId) => registerDeath(victimId, losing.lineup, false))
+    if (firstVictim) registerDeath(firstVictim, firstWinnerKill ? winning : losing, true)
+    losingVictims.forEach((victimId) => registerDeath(victimId, winning, false))
+    winningVictims.forEach((victimId) => registerDeath(victimId, losing, false))
 
     const attackers = aAttacking ? a : b,
       defenders = aAttacking ? b : a
@@ -2388,6 +2488,7 @@ function simulateWatchedMap(
   allIds.forEach((id) => {
     acc[id] = blankAccumulator()
   })
+  const exposure = { ...deathExposure(state, a), ...deathExposure(state, b) }
   const economy: Record<string, Economy> = { [aId]: startingEconomy(), [bId]: startingEconomy() }
   const sites = SITES.slice(0, map === 'Haven' || map === 'Lotus' ? 3 : 2)
   let aScore = 0,
@@ -2496,7 +2597,7 @@ function simulateWatchedMap(
       const killers = loserDies ? winning : losing,
         victims = loserDies ? losing : winning
       const victimPool = alive[victims.id]
-      const victimId = victimPool[Math.floor(random(state) * victimPool.length)]
+      const victimId = weightedId(state, victimPool, (id) => exposure[id])
       const killerId = weightedPlayer(state, alive[killers.id], acc)
       alive[victims.id] = victimPool.filter((id) => id !== victimId)
       const player = state.players[killerId]
@@ -2518,9 +2619,8 @@ function simulateWatchedMap(
         acc[victimId].firstDeaths++
       }
       let assistId: string | undefined
-      if (random(state) < 0.56) {
-        const helpers = killers.lineup.filter((id) => id !== killerId)
-        assistId = helpers[Math.floor(random(state) * helpers.length)]
+      if (random(state) < 0.4) {
+        assistId = assistPlayer(state, killers, killerId)
         if (assistId) {
           acc[assistId].assists++
           acc[assistId].damage += 28 + Math.round(random(state) * 42)
@@ -2877,6 +2977,8 @@ function finalizeCalendarWeek(state: GameState) {
   }
   payEventPrizes(state)
   runAiTransfers(state)
+  if (state.week < KICKOFF_START_WEEK)
+    replenishFreeAgents(state, undefined, managedTeam.region, rosterShortfall(state))
   enforceSponsorDeadline(state)
   state.week++
   if (state.week === SPONSOR_SETTLE_WEEK) settleSponsorSeason(state)
@@ -2993,7 +3095,7 @@ function resolveExpiredContracts(state: GameState, team: Team) {
     const missing = rosterShortfall(state)
     if (missing)
       state.inbox.unshift(
-        `${team.name} has ${team.playerIds.length} players. Sign ${missing} more from free agency before Kickoff; the season cannot start until you can field five.`,
+        `${team.name} has ${team.playerIds.length} players. Sign ${missing} more from free agency during preseason; Kickoff requires five eligible players.`,
       )
   }
 }
@@ -3468,6 +3570,37 @@ function finishKickoffRegion(
         .forEach((fixture) => playFixture(state, fixture, attackStyle, defenseStyle))
   }
 
+  if (state.week !== 6) return
+  // The extra preseason week moves round six into the closing tournament week.
+  if (completed('Middle Round 3').length === 2 && completed('Lower Round 2').length === 2) {
+    if (!existing('Middle Round 4').length)
+      addKickoffFixtures(
+        state,
+        region,
+        6,
+        6,
+        'Middle Round 4',
+        adjacentKickoffPairs(
+          completed('Middle Round 3')
+            .map(resultWinner)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      )
+    if (!existing('Lower Round 3').length)
+      addKickoffFixtures(
+        state,
+        region,
+        6,
+        6,
+        'Lower Round 3',
+        [0, 1].map((index) => [
+          loser('Middle Round 3', index)!,
+          winner('Lower Round 2', 1 - index)!,
+        ]),
+      )
+    playNew(existing('Middle Round 4'))
+    playNew(existing('Lower Round 3'))
+  }
   if (completed('Middle Round 4').length !== 1 || completed('Lower Round 3').length !== 2) return
   if (!existing('Lower Round 4').length) {
     addKickoffFixtures(state, region, 6, 7, 'Lower Round 4', [

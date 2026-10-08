@@ -2,11 +2,12 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import { MORALE_DEFAULT } from '../src/development'
 import { advanceWeek, createGame, type GameState } from '../src/game'
 import {
-  MIN_ROSTER,
-  newContractSalary,
   buyOutPlayer,
   contractValue,
   freeAgents,
+  MAX_ROSTER,
+  MIN_ROSTER,
+  newContractSalary,
   playerOverall,
   releasePlayer,
   rosterHistory,
@@ -43,7 +44,7 @@ const allLegal = (state: GameState) =>
 describe('transfer windows', () => {
   test('windows are configured by calendar week', () => {
     expect(transferWindowForWeek(1)?.label).toBe('Preseason window')
-    expect(transferWindowForWeek(2)).toBeNull()
+    expect(transferWindowForWeek(2)?.label).toBe('Preseason window')
     expect(transferWindowForWeek(11)?.label).toBe('Stage 1 window')
     expect(transferWindowForWeek(45)?.label).toBe('Offseason window')
   })
@@ -85,11 +86,17 @@ describe('buyouts', () => {
     const state = createGame('Manager', 'c9')
     state.teams.c9.cash = 1000
     expect(expectError(buyOutPlayer(state, 'c9', 'sen-1'))).toContain('buyout is')
-    state.teams.c9.cash = 10_000_000
+    state.teams.c9.cash = 100_000_000
     let next = state
-    for (const id of ['sen-2', 'sen-3']) next = expectOk(buyOutPlayer(next, 'c9', id))
-    expect(next.teams.c9.playerIds).toHaveLength(7)
-    expect(expectError(buyOutPlayer(next, 'c9', 'sen-4'))).toContain('maximum roster')
+    const targets = Object.values(state.players).filter(
+      (player) =>
+        player.teamId && player.teamId !== 'c9' && player.region === 'Americas' && !player.isImport,
+    )
+    const capacity = MAX_ROSTER - state.teams.c9.playerIds.length
+    for (const player of targets.slice(0, capacity))
+      next = expectOk(buyOutPlayer(next, 'c9', player.id))
+    expect(next.teams.c9.playerIds).toHaveLength(MAX_ROSTER)
+    expect(expectError(buyOutPlayer(next, 'c9', targets[capacity].id))).toContain('maximum roster')
   })
   test('cross-region buyouts respect the import limit', () => {
     const state = createGame('Manager', 'c9')

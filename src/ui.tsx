@@ -1,6 +1,7 @@
-import { useEffect, type ReactNode } from 'react'
 import { X } from 'lucide-react'
-import { activePhaseForWeek, phaseForWeek, type GameState } from './game'
+import { type ReactNode, useEffect } from 'react'
+import { KICKOFF_START_WEEK } from './calendar'
+import { activePhaseForWeek, type GameState, phaseForWeek } from './game'
 import type { Region } from './seed'
 
 export type View =
@@ -33,7 +34,11 @@ export const regionColors: Record<Region, string> = {
 
 export const money = (value: number) => `$${Math.max(0, Math.round(value)).toLocaleString()}`
 export const phaseName = (week: number) =>
-  phaseForWeek(week) === 'Break' ? `Break before ${activePhaseForWeek(week)}` : phaseForWeek(week)
+  week < KICKOFF_START_WEEK
+    ? 'Preseason'
+    : phaseForWeek(week) === 'Break'
+      ? `Break before ${activePhaseForWeek(week)}`
+      : phaseForWeek(week)
 
 export const Badge = ({ children, color }: { children: ReactNode; color?: string }) => (
   <span
