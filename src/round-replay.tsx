@@ -16,7 +16,6 @@ const endText: Record<RoundReplay['endReason'], string> = {
   elimination: 'Team eliminated',
   detonation: 'Spike detonated',
   defuse: 'Spike defused',
-  time: 'Time ran out',
 }
 const speeds = [1, 2, 4]
 const EVENT_MS = 900

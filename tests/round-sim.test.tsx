@@ -6,7 +6,7 @@ import {
   simulateTournamentFixture,
 } from '../src/game'
 import { RoundReplayView, stripRounds } from '../src/round-replay'
-import { OVERTIME_CREDITS, type SeriesReplay } from '../src/round-sim'
+import { aggressionFor, chooseBuy, OVERTIME_CREDITS, type SeriesReplay } from '../src/round-sim'
 import { SeriesWalkthrough } from '../src/series-walkthrough'
 import { createKickoffGame } from './helpers'
 
@@ -197,5 +197,172 @@ describe('round-by-round sim', () => {
         }
     }
     expect(overtimeRounds).toBeGreaterThan(0)
+  })
+})
+
+describe('buy decisions', () => {
+  const level = { own: 0, opp: 0 }
+  const bank = (credits: number, lossStreak = 0) => ({ credits, lossStreak })
+
+  test('a team that loses pistol saves instead of forcing', () => {
+    expect(chooseBuy(bank(2100, 1), 2, level).buy).toBe('eco')
+    expect(chooseBuy(bank(2100, 1), 14, { own: 0, opp: 12 }).buy).toBe('force')
+    expect(chooseBuy(bank(2100, 1), 14, { own: 12, opp: 3 }).buy).toBe('eco')
+  })
+
+  test('a lost pistol still full buys with a full bank', () => {
+    expect(chooseBuy(bank(3900, 1), 2, level).buy).toBe('full')
+  })
+
+  test('half buy or better forces when there is no losing streak', () => {
+    const buy = chooseBuy(bank(2000, 0), 5, level)
+    expect(buy.buy).toBe('force')
+    expect(buy.spend).toBeLessThanOrEqual(2600)
+  })
+
+  test('two or more losses in a row save for a full buy', () => {
+    expect(chooseBuy(bank(2500, 2), 6, level).buy).toBe('eco')
+    expect(chooseBuy(bank(2500, 3), 9, level).buy).toBe('eco')
+  })
+
+  test('on the brink of losing the map, a team spends what it has', () => {
+    const brink = chooseBuy(bank(1600, 2), 20, { own: 8, opp: 11 })
+    expect(brink.buy).toBe('force')
+    expect(brink.spend).toBe(1600)
+    expect(chooseBuy(bank(1000, 2), 20, { own: 8, opp: 11 }).buy).toBe('eco')
+  })
+
+  test('low bank with no brink is eco', () => {
+    expect(chooseBuy(bank(900, 0), 4, level).buy).toBe('eco')
+  })
+
+  test('pistols and overtime are unchanged', () => {
+    expect(chooseBuy(bank(800, 0), 1, level).buy).toBe('pistol')
+    expect(chooseBuy(bank(800, 0), 13, level).buy).toBe('pistol')
+    expect(chooseBuy(bank(5000, 4), 25, level).buy).toBe('full')
+  })
+
+  test('watched maps never force on the round after a lost pistol unless on the brink', () => {
+    let checked = 0
+    for (let seed = 1; seed <= 12; seed++) {
+      const { replay } = watched(seed)
+      for (const map of replay.maps)
+        for (const index of [1, 13]) {
+          const pistol = map.rounds[index - 1],
+            round = map.rounds[index]
+          if (!pistol || !round) continue
+          const loserIsA = pistol.winnerId !== map.aId
+          const loserBuy = loserIsA ? round.buys[0] : round.buys[1]
+          const opp = loserIsA ? pistol.bScore : pistol.aScore
+          checked++
+          if (opp < 11) expect(loserBuy.buy).not.toBe('force')
+        }
+    }
+    expect(checked).toBeGreaterThan(0)
+  })
+})
+
+describe('strategy and round endings', () => {
+  // Share of the manager's non-pistol rounds spent forcing, over several watched series.
+  function forceShare(attackStyle: string, defenseStyle: string) {
+    let forces = 0,
+      played = 0
+    for (let seed = 1; seed <= 12; seed++) {
+      const state = createKickoffGame('Manager', 'sen')
+      state.rng = seed
+      const replay: SeriesReplay = { maps: [] }
+      simulateSeries(
+        state,
+        'sen',
+        Object.keys(state.teams)[5],
+        1,
+        attackStyle,
+        defenseStyle,
+        3,
+        undefined,
+        replay,
+      )
+      for (const map of replay.maps)
+        for (const round of map.rounds) {
+          if (round.round === 1 || round.round === 13 || round.overtime) continue
+          played++
+          if (round.buys[0].buy === 'force') forces++
+        }
+    }
+    return forces / played
+  }
+
+  test('a more aggressive strategy forces a larger share of rounds', () => {
+    const aggressive = forceShare('Fast and explosive', 'Proactive contesting')
+    const conservative = forceShare('Slow information play', 'Deep site anchors')
+    expect(aggressive).toBeGreaterThan(conservative)
+  })
+
+  test('the attack and defense dropdowns set the aggression level', () => {
+    expect(aggressionFor('Fast and explosive', 'Proactive contesting')).toBe('aggressive')
+    expect(aggressionFor('Measured defaults', 'Disciplined retakes')).toBe('balanced')
+    expect(aggressionFor('Slow information play', 'Deep site anchors')).toBe('conservative')
+  })
+
+  test('aggressive teams force through a loss, conservative teams save', () => {
+    const lostOnce = { credits: 2400, lossStreak: 1 }
+    expect(chooseBuy(lostOnce, 6, { own: 4, opp: 4 }, 'aggressive').buy).toBe('force')
+    expect(chooseBuy(lostOnce, 6, { own: 4, opp: 4 }, 'conservative').buy).toBe('eco')
+  })
+
+  test('a round that must be played out is never a save', () => {
+    const level = { own: 3, opp: 5 }
+    // End of a half: the economy resets next, so saving buys nothing.
+    expect(chooseBuy({ credits: 1200, lossStreak: 2 }, 12, level).spend).toBe(1200)
+    expect(chooseBuy({ credits: 1200, lossStreak: 2 }, 24, level).spend).toBe(1200)
+    // Losing would put the opponent at match point, so an aggressive team plays it out.
+    const aggressive = chooseBuy(
+      { credits: 1200, lossStreak: 2 },
+      9,
+      { own: 5, opp: 10 },
+      'aggressive',
+    )
+    expect(aggressive.spend).toBe(1200)
+    // A conservative team at the same score still saves.
+    const conservative = chooseBuy(
+      { credits: 1200, lossStreak: 2 },
+      9,
+      { own: 5, opp: 10 },
+      'conservative',
+    )
+    expect(conservative.spend).toBe(400)
+  })
+
+  test('aggressive teams go all in earlier than conservative ones', () => {
+    const bank = { credits: 1600, lossStreak: 0 }
+    expect(chooseBuy(bank, 9, { own: 5, opp: 10 }, 'aggressive').buy).toBe('force')
+    expect(chooseBuy(bank, 9, { own: 5, opp: 10 }, 'conservative').buy).toBe('eco')
+    expect(chooseBuy(bank, 9, { own: 5, opp: 12 }, 'conservative').buy).toBe('force')
+  })
+
+  test('no watched round ends on the clock', () => {
+    for (let seed = 1; seed <= 12; seed++) {
+      const state = createKickoffGame('Manager', 'sen')
+      state.rng = seed
+      const replay: SeriesReplay = { maps: [] }
+      simulateSeries(
+        state,
+        'sen',
+        Object.keys(state.teams)[5],
+        1,
+        undefined,
+        undefined,
+        3,
+        undefined,
+        replay,
+      )
+      for (const map of replay.maps)
+        for (const round of map.rounds) {
+          expect(['elimination', 'detonation', 'defuse']).toContain(round.endReason)
+          const attackerWon = round.winnerId === round.attackerId
+          if (!attackerWon && round.endReason !== 'defuse')
+            expect(round.endReason).toBe('elimination')
+        }
+    }
   })
 })

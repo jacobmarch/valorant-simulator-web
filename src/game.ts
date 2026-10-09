@@ -20,6 +20,8 @@ import {
   chooseBuy,
   type Economy,
   type EndReason,
+  aggressionFor,
+  type Aggression,
   type MapReplay,
   type RoundEvent,
   type RoundReplay,
@@ -2483,6 +2485,9 @@ function simulateWatchedMap(
   const a = state.teams[aId],
     b = state.teams[bId]
   const odds = roundOdds(state, aId, bId, map, attackStyle, defenseStyle, mapEdge)
+  // Only the manager's team plays its own strategy; the AI teams play balanced.
+  const aggressionOf = (id: string): Aggression =>
+    id === state.currentTeamId ? aggressionFor(attackStyle, defenseStyle) : 'balanced'
   const acc: Record<string, StatAccumulator> = {}
   const allIds = [...a.lineup, ...b.lineup]
   allIds.forEach((id) => {
@@ -2506,9 +2511,8 @@ function simulateWatchedMap(
     const aAttacking = round > 24 ? round % 2 === 1 : round <= 12
     const attackers = aAttacking ? a : b,
       defenders = aAttacking ? b : a
-    const mustSpend = round === 12 || round === 24 || aScore === 12 || bScore === 12
-    const aBuy = chooseBuy(economy[aId], round, mustSpend),
-      bBuy = chooseBuy(economy[bId], round, mustSpend)
+    const aBuy = chooseBuy(economy[aId], round, { own: aScore, opp: bScore }, aggressionOf(aId)),
+      bBuy = chooseBuy(economy[bId], round, { own: bScore, opp: aScore }, aggressionOf(bId))
     const probability = clamp(
       odds(aAttacking) + (buyStrength[aBuy.buy] - buyStrength[bBuy.buy]) * ECONOMY_SWING,
       0.06,
@@ -2518,20 +2522,19 @@ function simulateWatchedMap(
     const winning = aWins ? a : b,
       losing = aWins ? b : a
     const winnerAttacks = winning.id === attackers.id
-    const winningDeaths = casualtyCount(state, false),
-      losingDeaths = casualtyCount(state, true)
-    // A round only ends short of a wipe on the spike: detonation for attackers, the clock or a
-    // defuse for defenders.
+    const winningDeaths = casualtyCount(state, false)
+    let losingDeaths = casualtyCount(state, true)
+    // A round never ends on the clock: it ends in an elimination, a detonation or a defuse.
+    // Defenders can only win without a plant by wiping the attackers.
     const planted = winnerAttacks ? losingDeaths < 5 || random(state) < 0.6 : random(state) < 0.22
+    if (!winnerAttacks && !planted) losingDeaths = 5
     const endReason: EndReason = winnerAttacks
       ? losingDeaths === 5
         ? 'elimination'
         : 'detonation'
       : planted
         ? 'defuse'
-        : losingDeaths === 5
-          ? 'elimination'
-          : 'time'
+        : 'elimination'
 
     // Order the deaths: first blood usually goes the winners' way, and a wipe ends on the losers.
     const wipe = losingDeaths === 5
@@ -2643,7 +2646,6 @@ function simulateWatchedMap(
     if (plantAfter >= order.length) plant()
     let endTime = time
     if (endReason === 'detonation') endTime = plantTime + 45
-    else if (endReason === 'time') endTime = 100
     else if (endReason === 'defuse') {
       const defuserId =
         alive[defenders.id][Math.floor(random(state) * alive[defenders.id].length)] ??
