@@ -14,6 +14,8 @@ import {
 import { skills } from './seed'
 import { pendingSponsorOffers } from './sponsors'
 import {
+  importCount,
+  MAX_IMPORTS,
   MAX_ROSTER,
   RENEGOTIATION_START_WEEK,
   rosterBlock,
@@ -52,11 +54,12 @@ export type NextAction = {
 export function nextAction(s: GameState): NextAction {
   const team = currentTeam(s)
   const missing = rosterShortfall(s)
-  if (missing && rosterBlock(s))
+  const block = rosterBlock(s)
+  if (block)
     return {
       mode: 'week',
-      label: `Sign ${missing} more`,
-      detail: rosterBlock(s) ?? 'Fill the roster before Kickoff',
+      label: missing ? `Sign ${missing} more` : 'Release an import',
+      detail: block,
       blocked: true,
     }
   const opponentShort = (fixture: Fixture) =>
@@ -133,6 +136,15 @@ export function attentionItems(s: GameState): AttentionItem[] {
       level: 'urgent',
       title: `Only ${team.lineup.length} of 5 starters set`,
       detail: 'Promote a substitute or sign a player before the next series.',
+      view: 'roster',
+    })
+  const imports = importCount(s, team)
+  if (imports > MAX_IMPORTS)
+    items.push({
+      id: 'imports',
+      level: 'urgent',
+      title: `Release ${imports - MAX_IMPORTS} import${imports - MAX_IMPORTS === 1 ? '' : 's'} before the season`,
+      detail: `${imports} import players on contract; the limit is ${MAX_IMPORTS} once Kickoff starts.`,
       view: 'roster',
     })
   const sponsorOffers = pendingSponsorOffers(s)

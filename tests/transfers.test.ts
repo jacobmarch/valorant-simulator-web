@@ -1,15 +1,19 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import { MORALE_DEFAULT } from '../src/development'
+import { nextAction } from '../src/flow'
 import { advanceWeek, createGame, type GameState } from '../src/game'
 import {
   buyOutPlayer,
   contractValue,
   freeAgents,
+  importCount,
   MAX_ROSTER,
   MIN_ROSTER,
   newContractSalary,
   playerOverall,
   releasePlayer,
+  replenishFreeAgents,
+  rosterBlock,
   rosterHistory,
   rosterViolations,
   runAiTransfers,
@@ -98,8 +102,9 @@ describe('buyouts', () => {
     expect(next.teams.c9.playerIds).toHaveLength(MAX_ROSTER)
     expect(expectError(buyOutPlayer(next, 'c9', targets[capacity].id))).toContain('maximum roster')
   })
-  test('cross-region buyouts respect the import limit', () => {
+  test('cross-region buyouts respect the import limit during the season', () => {
     const state = createGame('Manager', 'c9')
+    state.week = 11
     state.teams.c9.cash = 10_000_000
     const emea = Object.values(state.players).filter(
       (player) => player.region === 'EMEA' && player.teamId && !player.isImport,
@@ -108,8 +113,9 @@ describe('buyouts', () => {
     expect(next.players[emea[0].id].isImport).toBe(true)
     expect(expectError(buyOutPlayer(next, 'c9', emea[1].id))).toContain('the limit is 1')
   })
-  test("AI sellers backfill, but the manager's team cannot drop below the minimum", () => {
+  test("AI sellers backfill, but the manager's team cannot drop below the minimum in season", () => {
     const state = createGame('Manager', 'c9')
+    state.week = 11
     state.teams.sen.cash = 10_000_000
     expect(expectError(buyOutPlayer(state, 'sen', 'c9-0'))).toContain('minimum roster is 5')
     state.currentTeamId = 'sen'
@@ -120,12 +126,14 @@ describe('buyouts', () => {
 })
 
 describe('releases and status changes', () => {
-  test('releasing below five players names the failed rule', () => {
+  test('releasing below five players in season names the failed rule', () => {
     const state = createGame('Manager', 'c9')
+    state.week = 11
     expect(expectError(releasePlayer(state, 'c9', 'c9-0'))).toContain('minimum roster is 5')
   })
   test('sign then release keeps a legal lineup and records every move', () => {
     const state = createGame('Manager', 'c9')
+    state.week = 11
     const agent = freeAgents(state).sort((a, b) => contractValue(a) - contractValue(b))[0]
     let next = expectOk(signFreeAgent(state, 'c9', agent.id))
     expect(next.players[agent.id].status).toBe('substitute')
@@ -235,5 +243,86 @@ describe('AI buyout churn', () => {
       .forEach((move) => buyouts.set(move.playerId, (buyouts.get(move.playerId) ?? 0) + 1))
     expect(buyouts.size).toBeGreaterThan(0)
     expect(Math.max(...buyouts.values())).toBeLessThanOrEqual(2)
+  })
+})
+
+describe('off-season roster rules', () => {
+  test('the managed team can cut below five and carry two imports until the season starts', () => {
+    const state = createGame('Manager', 'c9')
+    state.week = 45
+    state.teams.c9.cash = 100_000_000
+    let next = expectOk(releasePlayer(state, 'c9', 'c9-0'))
+    expect(next.teams.c9.playerIds).toHaveLength(MIN_ROSTER - 1)
+    const foreign = Object.values(next.players).filter(
+      (player) =>
+        player.teamId &&
+        player.teamId !== 'c9' &&
+        player.region !== next.teams.c9.region &&
+        !player.isImport,
+    )
+    next = expectOk(buyOutPlayer(next, 'c9', foreign[0].id))
+    next = expectOk(buyOutPlayer(next, 'c9', foreign[1].id))
+    expect(importCount(next, next.teams.c9)).toBe(2)
+    expect(rosterBlock(next)).toBeNull()
+    expect(rosterViolations(next, 'c9')).toEqual([])
+
+    // Kickoff needs a legal roster: six players with two imports still stop the calendar.
+    next.week = 2
+    expect(rosterBlock(next)).toContain('has 2 import players; the limit is 1')
+    expect(nextAction(next).blocked).toBeTrue()
+    expect(nextAction(next).label).toBe('Release an import')
+
+    const extra = next.teams.c9.playerIds.map((id) => next.players[id]).find((p) => p.isImport)
+    if (!extra) throw new Error('expected an import on the roster')
+    next = expectOk(releasePlayer(next, 'c9', extra.id))
+    expect(rosterBlock(next)).toBeNull()
+    expect(nextAction(next).blocked).toBeUndefined()
+    expect(rosterViolations(next, 'c9')).toEqual([])
+  })
+
+  test('a short roster still blocks the season, but not the offseason', () => {
+    const state = createGame('Manager', 'c9')
+    state.week = 45
+    state.teams.c9.cash = 100_000_000
+    let next = expectOk(releasePlayer(state, 'c9', 'c9-0'))
+    next = expectOk(releasePlayer(next, 'c9', 'c9-1'))
+    expect(next.teams.c9.playerIds).toHaveLength(MIN_ROSTER - 2)
+    expect(rosterBlock(next)).toBeNull()
+    expect(nextAction(next).blocked).toBeUndefined()
+    next.week = 2
+    expect(rosterBlock(next)).toContain('needs 2 more players to field five')
+    expect(nextAction(next).label).toBe('Sign 2 more')
+    replenishFreeAgents(next, undefined, next.teams.c9.region, 1)
+    const local = freeAgents(next).find(
+      (player) => !player.isImport && player.region === next.teams.c9.region,
+    )
+    if (!local) throw new Error('expected a local free agent')
+    next = expectOk(signFreeAgent(next, 'c9', local.id))
+    expect(rosterBlock(next)).toContain('needs 1 more player to field five')
+  })
+  test('AI teams still obey the import limit in the offseason', () => {
+    const state = createGame('Manager', 'c9')
+    state.week = 45
+    state.teams.sen.cash = 100_000_000
+    const foreign = Object.values(state.players).filter(
+      (player) =>
+        player.teamId &&
+        player.teamId !== 'sen' &&
+        player.region !== state.teams.sen.region &&
+        !player.isImport,
+    )
+    let next = state
+    let refused = false
+    for (const player of foreign.slice(0, 8)) {
+      const outcome = buyOutPlayer(next, 'sen', player.id)
+      if (outcome.ok) {
+        next = outcome.state
+        continue
+      }
+      refused = outcome.error.includes('the limit is 1')
+      if (refused) break
+    }
+    expect(refused).toBeTrue()
+    expect(importCount(next, next.teams.sen)).toBeLessThanOrEqual(1)
   })
 })
