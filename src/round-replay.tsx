@@ -159,7 +159,7 @@ export function RoundReplayView({
       (over ? ROUND_PAUSE_MS : EVENT_MS) / speed,
     )
     return () => window.clearTimeout(timer)
-  }, [playing, over, finished, speed])
+  }, [playing, index, step, over, finished, speed])
 
   useEffect(() => {
     if (over) setRevealed((value) => Math.max(value, index + 1))
