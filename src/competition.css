@@ -844,6 +844,30 @@
 .competition-table th {
   font-size: 12px;
 }
+.standings-table table {
+  table-layout: fixed;
+}
+.standings-table th:nth-child(1),
+.standings-table td:nth-child(1) {
+  width: 11%;
+}
+.standings-table th:nth-child(2),
+.standings-table td:nth-child(2) {
+  width: 33%;
+}
+.standings-table th:nth-child(3),
+.standings-table td:nth-child(3),
+.standings-table th:nth-child(4),
+.standings-table td:nth-child(4) {
+  width: 14%;
+}
+.standings-table th:nth-child(5),
+.standings-table td:nth-child(5) {
+  width: 28%;
+}
+.competition-table th {
+  font-size: 12px;
+}
 .competition-table td {
   font-size: 13px;
   padding: 11px 12px;
@@ -1069,26 +1093,6 @@
   padding: 18px;
   margin-bottom: 18px;
 }
-.bracket-legend {
-  display: flex;
-  gap: 22px;
-  justify-content: flex-end;
-  margin-bottom: 12px;
-}
-.bracket-legend span {
-  font-size: 13px;
-  color: var(--text-3);
-}
-.bracket-legend i {
-  display: inline-block;
-  width: 18px;
-  height: 3px;
-  background: #62a0ff;
-  margin-right: 7px;
-}
-.bracket-legend span + span i {
-  background: #ff9b62;
-}
 .bracket-lane {
   border-top: 3px solid #62a0ff;
   background: var(--surface-3);
@@ -1301,9 +1305,6 @@
   background: var(--surface-2);
   border: 1px solid rgb(255 255 255 / 0.063);
   overflow: hidden;
-}
-.kickoff-bracket > .bracket-legend {
-  padding: 2px 4px 12px;
 }
 .kickoff-bracket-lane {
   margin-bottom: 12px;
@@ -1812,19 +1813,8 @@
 /* Kickoff: all three paths on one screen */
 .kickoff-bracket {
   margin: 0;
-  padding: 8px;
+  padding: 0 8px 8px;
   border-radius: var(--radius);
-}
-.kickoff-bracket > .bracket-legend {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 0 2px 8px;
-  font-size: 12px;
-}
-.kickoff-bracket > .bracket-legend strong {
-  font-size: 13px;
-  margin-right: auto;
 }
 .kickoff-bracket-lane {
   margin-bottom: 8px;
@@ -1901,10 +1891,6 @@
   border-radius: var(--radius);
   background: var(--surface-2);
 }
-.playoff-board > .bracket-legend {
-  grid-column: 1 / -1;
-  margin: 0;
-}
 .playoff-board > .bracket-lane {
   grid-column: 1;
   margin: 0;
@@ -1912,13 +1898,23 @@
 }
 .playoff-board > .grand-final {
   grid-column: 2;
-  grid-row: 2 / 4;
+  grid-row: 1 / span 2;
   display: flex;
   flex-direction: column;
   justify-content: center;
   gap: 12px;
   margin: 0;
   border-radius: var(--radius-sm);
+}
+.playoff-board .bracket-path {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  overflow: visible;
+}
+.playoff-board .bracket-step {
+  flex: none;
+  min-width: 0;
 }
 .bracket-lane > header {
   padding: 6px 10px;

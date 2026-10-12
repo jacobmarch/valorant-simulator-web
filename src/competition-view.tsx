@@ -221,7 +221,7 @@ function TeamTable({
       .map((team) => team.id)
   const ordered = phase === 'Kickoff' ? kickoffStandings(s, region) : rankedTeams(s, ids, phase)
   return (
-    <div className="table-wrap competition-table">
+    <div className="table-wrap competition-table standings-table">
       <table>
         <thead>
           <tr>
@@ -966,16 +966,6 @@ function PlayoffBracket({
   )
   return (
     <section className="playoff-board">
-      <div className="bracket-legend">
-        <span>
-          <i />
-          Upper path
-        </span>
-        <span>
-          <i />
-          Elimination path
-        </span>
-      </div>
       {lane('upper')}
       {lane('lower')}
       <div className="grand-final">
