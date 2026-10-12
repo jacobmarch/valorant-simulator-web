@@ -27,6 +27,21 @@ export const transferWindows: TransferWindow[] = [
 /** From this week the season is over and expiring contracts can be renegotiated. */
 export const RENEGOTIATION_START_WEEK = 43
 
+/**
+ * The season runs from Kickoff until the offseason. The roster minimum and the import limit bind
+ * only in these weeks, so the managed team can rebuild freely before the season starts.
+ */
+export function isSeasonWeek(week: number) {
+  return week >= KICKOFF_START_WEEK && week < RENEGOTIATION_START_WEEK
+}
+/** The managed team may run short or over the import limit until the season starts. AI rosters always obey both. */
+function rosterRulesRelaxed(state: GameState, team: Team) {
+  return team.id === state.currentTeamId && !isSeasonWeek(state.week)
+}
+export function importCount(state: GameState, team: Team) {
+  return team.playerIds.filter((id) => state.players[id]?.isImport).length
+}
+
 export type TransferOutcome = { ok: true; state: GameState } | { ok: false; error: string }
 
 const money = (value: number) => Math.round(value / 1000) * 1000
@@ -116,13 +131,17 @@ export function rosterShortfall(state: GameState) {
   const active = team.playerIds.filter((id) => state.players[id]?.status !== 'inactive').length
   return Math.max(0, 5 - active)
 }
-/** Why the calendar cannot move yet, if the managed team is short of players. */
+/** Why the season cannot start or continue, if the managed roster breaks the season rules. */
 export function rosterBlock(state: GameState) {
-  if (state.week < KICKOFF_START_WEEK) return null
+  if (!isSeasonWeek(state.week)) return null
+  const team = state.teams[state.currentTeamId]
   const missing = rosterShortfall(state)
-  return missing
-    ? `${state.teams[state.currentTeamId].name} needs ${missing} more player${missing === 1 ? '' : 's'} to field five. Sign ${missing === 1 ? 'a free agent' : 'free agents'} before Kickoff.`
-    : null
+  if (missing)
+    return `${team.name} needs ${missing} more player${missing === 1 ? '' : 's'} to field five. Sign ${missing === 1 ? 'a free agent' : 'free agents'} before the season starts.`
+  const imports = importCount(state, team)
+  if (imports > MAX_IMPORTS)
+    return `${team.name} has ${imports} import players; the limit is ${MAX_IMPORTS}. Release ${imports - MAX_IMPORTS === 1 ? 'an import' : `${imports - MAX_IMPORTS} imports`} before the season starts.`
+  return null
 }
 export function contractValue(player: Player) {
   return money(askingSalary(player) * player.years)
@@ -151,15 +170,19 @@ export function rosterViolations(state: GameState, teamId: string) {
   const eligible = players.filter((player) => player.status !== 'inactive')
   const imports = players.filter((player) => player.isImport)
   const errors: string[] = []
-  if (players.length < MIN_ROSTER)
-    errors.push(`${team.name} has ${players.length} players; the minimum roster is ${MIN_ROSTER}.`)
   if (players.length > MAX_ROSTER)
     errors.push(`${team.name} has ${players.length} players; the maximum roster is ${MAX_ROSTER}.`)
-  if (eligible.length < 5)
-    errors.push(`${team.name} has ${eligible.length} active players; a match needs 5.`)
-  if (imports.length > MAX_IMPORTS)
-    errors.push(`${team.name} has ${imports.length} import players; the limit is ${MAX_IMPORTS}.`)
-  if (team.lineup.length !== 5) errors.push(`${team.name} has ${team.lineup.length}/5 starters.`)
+  if (isSeasonWeek(state.week)) {
+    if (players.length < MIN_ROSTER)
+      errors.push(
+        `${team.name} has ${players.length} players; the minimum roster is ${MIN_ROSTER}.`,
+      )
+    if (eligible.length < 5)
+      errors.push(`${team.name} has ${eligible.length} active players; a match needs 5.`)
+    if (imports.length > MAX_IMPORTS)
+      errors.push(`${team.name} has ${imports.length} import players; the limit is ${MAX_IMPORTS}.`)
+    if (team.lineup.length !== 5) errors.push(`${team.name} has ${team.lineup.length}/5 starters.`)
+  }
   team.lineup.forEach((id) => {
     const player = state.players[id]
     if (!player || player.teamId !== teamId)
@@ -214,7 +237,7 @@ function importAfterMove(player: Player, team: Team) {
   return player.isImport || (player.region !== null && player.region !== team.region)
 }
 function importError(state: GameState, player: Player, team: Team) {
-  if (!importAfterMove(player, team)) return null
+  if (rosterRulesRelaxed(state, team) || !importAfterMove(player, team)) return null
   const existing = team.playerIds
     .map((id) => state.players[id])
     .filter((other) => other && other.isImport && other.id !== player.id)
@@ -294,7 +317,11 @@ export function buyOutError(state: GameState, buyerId: string, playerId: string)
   if (buyer.cash < fee)
     return `${buyer.name} has ${dollars(buyer.cash)} but ${player.name}'s buyout is ${dollars(fee)}.`
   // An AI seller signs a free-agent replacement; the manager's own team must stay legal by hand.
-  if (seller.playerIds.length <= MIN_ROSTER && seller.id === state.currentTeamId)
+  if (
+    seller.id === state.currentTeamId &&
+    !rosterRulesRelaxed(state, seller) &&
+    seller.playerIds.length <= MIN_ROSTER
+  )
     return `Selling ${player.name} would leave ${seller.name} with ${seller.playerIds.length - 1} players; the minimum roster is ${MIN_ROSTER}.`
   return importError(state, player, buyer)
 }
@@ -334,12 +361,13 @@ export function releaseError(state: GameState, teamId: string, playerId: string)
   if (player.teamId !== teamId) return `${player.name} is not on ${team.name}.`
   const closed = windowError(state)
   if (closed) return closed
-  if (team.playerIds.length <= MIN_ROSTER)
+  const relaxed = rosterRulesRelaxed(state, team)
+  if (!relaxed && team.playerIds.length <= MIN_ROSTER)
     return `Releasing ${player.name} would leave ${team.name} with ${team.playerIds.length - 1} players; the minimum roster is ${MIN_ROSTER}. Sign a replacement first.`
   const eligibleAfter = team.playerIds.filter(
     (id) => id !== playerId && state.players[id].status !== 'inactive',
   ).length
-  if (eligibleAfter < 5)
+  if (!relaxed && eligibleAfter < 5)
     return `Releasing ${player.name} would leave ${team.name} with ${eligibleAfter} active players; a match needs 5. Activate a player first.`
   return null
 }
@@ -374,7 +402,11 @@ export function statusChangeError(
   const others = team.playerIds.filter((id) => id !== playerId).map((id) => state.players[id])
   if (status === 'starter' && others.filter((other) => other.status === 'starter').length >= 5)
     return `${team.name} already has five starters. Move one to substitute before promoting ${player.name}.`
-  if (status === 'inactive' && others.filter((other) => other.status !== 'inactive').length < 5)
+  if (
+    status === 'inactive' &&
+    !rosterRulesRelaxed(state, team) &&
+    others.filter((other) => other.status !== 'inactive').length < 5
+  )
     return `Benching ${player.name} would leave ${team.name} with fewer than five active players; a match needs 5.`
   return null
 }
