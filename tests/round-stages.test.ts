@@ -1,0 +1,197 @@
+import { describe, expect, test } from 'bun:test'
+import { mapConfigs, mapLayouts } from '../src/map-layouts'
+import { mapImage } from '../src/map-images'
+import { simulateSeries } from '../src/game'
+import { type MapReplay, type SeriesReplay } from '../src/round-sim'
+import { roundFrame, roundStages, stageIndexAt } from '../src/round-stages'
+import { createKickoffGame } from './helpers'
+
+const memory = new Map<string, string>()
+Object.assign(globalThis, {
+  localStorage: {
+    setItem: (key: string, value: string) => memory.set(key, value),
+    getItem: (key: string) => memory.get(key) ?? null,
+    removeItem: (key: string) => memory.delete(key),
+  },
+})
+
+function watched(seed: number) {
+  const state = createKickoffGame('Manager', 'sen')
+  state.rng = seed
+  const replay: SeriesReplay = { maps: [] }
+  const [aId, bId] = Object.keys(state.teams)
+  simulateSeries(state, aId, bId, 1, undefined, undefined, 3, undefined, replay)
+  return { state, maps: replay.maps }
+}
+
+/** Every map played across seeds 1-8, with the lineups it was played by. */
+let cached: ReturnType<typeof computeAllMaps> | undefined
+function allMaps() {
+  cached ??= computeAllMaps()
+  return cached
+}
+function computeAllMaps() {
+  return Array.from({ length: 8 }, (_, index) => watched(index + 1)).flatMap(({ state, maps }) =>
+    maps.map((map: MapReplay) => ({
+      map,
+      sides: { a: state.teams[map.aId].lineup, b: state.teams[map.bId].lineup },
+    })),
+  )
+}
+
+function frames(
+  map: MapReplay,
+  round: MapReplay['rounds'][number],
+  sides: { a: string[]; b: string[] },
+  attackerSide: 'a' | 'b',
+) {
+  return Array.from({ length: round.events.length + 2 }, (_, step) =>
+    roundFrame(map.map, round, sides, attackerSide, step),
+  )
+}
+
+describe('round stages', () => {
+  test('every layout has a schematic image and a spot for each of its sites', () => {
+    for (const config of mapConfigs) {
+      const layout = mapLayouts[config.map]
+      expect(mapImage(config.map)).toBeTruthy()
+      expect(layout.siteNames).toEqual(Object.keys(config.sites))
+      for (const name of layout.siteNames) {
+        const site = layout.sites[name]
+        expect(site.holds.length).toBeGreaterThan(0)
+        expect(site.post.length).toBeGreaterThan(0)
+        expect(site.retake.length).toBeGreaterThan(0)
+      }
+    }
+    expect(mapLayouts.Haven.siteNames).toEqual(['A', 'B', 'C'])
+    expect(mapLayouts.Bind.siteNames).toEqual(['A', 'B'])
+  })
+
+  test('every round has two or three stages, starting with setup at step 0', () => {
+    for (const { map } of allMaps()) {
+      for (const round of map.rounds) {
+        const stages = roundStages(round)
+        expect(stages.length).toBeGreaterThanOrEqual(2)
+        expect(stages.length).toBeLessThanOrEqual(4)
+        expect(stages[0]).toMatchObject({ kind: 'setup', start: 0 })
+        const starts = stages.map((stage) => stage.start)
+        expect([...starts].sort((x, y) => x - y)).toEqual(starts)
+        expect(new Set(starts).size).toBe(starts.length)
+        expect(starts[starts.length - 1]).toBeLessThanOrEqual(round.events.length + 1)
+      }
+    }
+  })
+
+  test('a planted round has a post-plant stage that begins at the plant', () => {
+    let checked = 0
+    for (const { map } of allMaps()) {
+      for (const round of map.rounds) {
+        const plantAt = round.events.findIndex((event) => event.kind === 'plant')
+        const stages = roundStages(round)
+        const post = stages.find((stage) => stage.kind === 'post-plant')
+        if (plantAt === -1) {
+          expect(post).toBeUndefined()
+          continue
+        }
+        checked++
+        expect(post?.start).toBe(plantAt + 1)
+      }
+    }
+    expect(checked).toBeGreaterThan(0)
+  })
+
+  test('stageIndexAt picks the stage a step falls in', () => {
+    const stages = [
+      { kind: 'setup' as const, label: 'Setup', start: 0 },
+      { kind: 'contact' as const, label: 'Contact', start: 1 },
+      { kind: 'post-plant' as const, label: 'Post-plant', start: 4 },
+    ]
+    expect(
+      [0, 1, 2, 3, 4, 9, Number.POSITIVE_INFINITY].map((step) => stageIndexAt(stages, step)),
+    ).toEqual([0, 1, 1, 1, 2, 2, 2])
+  })
+
+  test('setup puts attackers on their spawn and defenders in their holds, with no spike', () => {
+    for (const { map, sides } of allMaps().slice(0, 12)) {
+      for (const round of map.rounds) {
+        const attackerSide = round.attackerId === map.aId ? 'a' : 'b'
+        const frame = roundFrame(map.map, round, sides, attackerSide, 0)
+        expect(frame.spike).toBeNull()
+        expect(frame.marks.every((mark) => mark.alive)).toBe(true)
+        const layout = mapLayouts[map.map]
+        const spawns = layout.attackSpawn
+        const holds = layout.siteNames.flatMap((name) => layout.sites[name].holds)
+        for (const mark of frame.marks) {
+          const at = mark.attacking ? spawns : holds
+          expect(at.some((point) => point.x === mark.x && point.y === mark.y)).toBe(true)
+        }
+      }
+    }
+  })
+
+  test('the final frame agrees with the round result', () => {
+    for (const { map, sides } of allMaps()) {
+      for (const round of map.rounds) {
+        const attackerSide = round.attackerId === map.aId ? 'a' : 'b'
+        const last = roundFrame(map.map, round, sides, attackerSide, round.events.length + 1)
+        const victims = new Set(
+          round.events.flatMap((event) => (event.kind === 'kill' ? [event.victimId] : [])),
+        )
+        for (const mark of last.marks) expect(mark.alive).toBe(!victims.has(mark.id))
+        const planted = round.events.some((event) => event.kind === 'plant')
+        if (round.endReason === 'defuse') expect(last.spike?.state).toBe('defused')
+        else if (round.endReason === 'detonation') expect(last.spike?.state).toBe('detonated')
+        else expect(last.spike?.state ?? null).toBe(planted ? 'planted' : null)
+      }
+    }
+  })
+
+  test('a dead player stays where they fell for the rest of the round', () => {
+    for (const { map, sides } of allMaps().slice(0, 16)) {
+      for (const round of map.rounds) {
+        const attackerSide = round.attackerId === map.aId ? 'a' : 'b'
+        const all = frames(map, round, sides, attackerSide)
+        round.events.forEach((event, index) => {
+          if (event.kind !== 'kill') return
+          const fell = all[index + 1].marks.find((mark) => mark.id === event.victimId)
+          expect(fell?.alive).toBe(false)
+          for (let step = index + 2; step < all.length; step++) {
+            const later = all[step].marks.find((mark) => mark.id === event.victimId)
+            expect([later?.x, later?.y]).toEqual([fell?.x, fell?.y])
+          }
+        })
+      }
+    }
+  })
+
+  test('after a plant, living attackers stand on the planted site', () => {
+    let checked = 0
+    for (const { map, sides } of allMaps().slice(0, 16)) {
+      for (const round of map.rounds) {
+        const plant = round.events.find((event) => event.kind === 'plant')
+        if (plant?.kind !== 'plant') continue
+        const attackerSide = round.attackerId === map.aId ? 'a' : 'b'
+        const plantAt = round.events.indexOf(plant)
+        const site = mapLayouts[map.map].sites[plant.site]
+        const onSite = [site.plant, ...site.post]
+        const frame = roundFrame(map.map, round, sides, attackerSide, plantAt + 1)
+        expect(frame.spike).toMatchObject({ site: plant.site, state: 'planted' })
+        for (const mark of frame.marks) {
+          if (!mark.attacking || !mark.alive) continue
+          checked++
+          expect(onSite.some((point) => point.x === mark.x && point.y === mark.y)).toBe(true)
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(0)
+  })
+
+  test('frames are a pure function of the round', () => {
+    const { map, sides } = allMaps()[0]
+    const round = map.rounds[0]
+    const attackerSide = round.attackerId === map.aId ? 'a' : 'b'
+    const once = roundFrame(map.map, round, sides, attackerSide, round.events.length)
+    const again = roundFrame(map.map, round, sides, attackerSide, round.events.length)
+    expect(again).toEqual(once)
+  })
+})

@@ -8,5 +8,6 @@ Each file describes one feature contract. Implementers should read the relevant 
 - `match-simulation.md` — preparation, simulation, overtime, statistics, and highlights.
 - `training-scouting.md` — individual hours, rating movement, and scouting discovery.
 - `automation-save.md` — delegation modes, disabled systems, local persistence, New Game, and Reset Save.
+- `round-stages.md` — stages within a watched round, player positions on a schematic map, and stage playback.
 
 Every specification should contain purpose, inputs, state changes, validation, user-visible output, edge cases, and acceptance criteria.
