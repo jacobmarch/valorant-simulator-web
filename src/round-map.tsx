@@ -32,7 +32,7 @@ export function RoundMap({
   return (
     <figure className="round-map">
       <div className="round-map-board">
-        {image ? <img src={image} alt={`${map} schematic`} /> : <div className="round-map-empty" />}
+        {image ? <img src={image} alt={`${map} minimap`} /> : <div className="round-map-empty" />}
         {frame.spike && (
           <span
             className={`round-spike ${frame.spike.state}`}

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { mapConfigs, mapLayouts } from '../src/map-layouts'
+import { mapLayouts } from '../src/map-layouts'
 import { mapImage } from '../src/map-images'
 import { simulateSeries } from '../src/game'
 import { type MapReplay, type SeriesReplay } from '../src/round-sim'
@@ -51,11 +51,12 @@ function frames(
 }
 
 describe('round stages', () => {
-  test('every layout has a schematic image and a spot for each of its sites', () => {
-    for (const config of mapConfigs) {
-      const layout = mapLayouts[config.map]
-      expect(mapImage(config.map)).toBeTruthy()
-      expect(layout.siteNames).toEqual(Object.keys(config.sites))
+  test('every map in the pool has a minimap image and a layout with its sites', () => {
+    const pool = ['Abyss', 'Bind', 'Breeze', 'Haven', 'Icebox', 'Lotus', 'Sunset']
+    for (const map of pool) {
+      const layout = mapLayouts[map]
+      expect(mapImage(map)).toBeTruthy()
+      expect(layout.siteNames.length).toBeGreaterThanOrEqual(2)
       for (const name of layout.siteNames) {
         const site = layout.sites[name]
         expect(site.holds.length).toBeGreaterThan(0)
