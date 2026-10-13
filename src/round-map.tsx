@@ -75,7 +75,7 @@ export function RoundMap({
         </ol>
         <p className="round-map-note">
           {stage.kind === 'setup' && 'Attackers spawn. Defenders are in position.'}
-          {stage.kind === 'contact' && 'Attackers push mid. Fights decide the round.'}
+          {stage.kind === 'contact' && 'Attackers push in. Fights decide the round.'}
           {stage.kind === 'post-plant' &&
             (frame.spike?.state === 'detonated'
               ? 'The spike goes off.'

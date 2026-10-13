@@ -1,7 +1,7 @@
-// Minimap images for the pool, from map_images/. Each one is square, so 0-100 layout points map straight onto it.
+// Minimap images for the pool, from map_images/ (Breeze is turned 90° clockwise into src/assets/maps).
 import abyss from '../map_images/abyss.png'
 import bind from '../map_images/bind.png'
-import breeze from '../map_images/breeze.png'
+import breeze from './assets/maps/breeze.png'
 import haven from '../map_images/haven.png'
 import icebox from '../map_images/icebox.png'
 import lotus from '../map_images/lotus.png'

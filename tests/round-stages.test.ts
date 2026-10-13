@@ -195,4 +195,59 @@ describe('round stages', () => {
     const again = roundFrame(map.map, round, sides, attackerSide, round.events.length)
     expect(again).toEqual(once)
   })
+
+  test('every player stands on a named point of the map at every step', () => {
+    const same = (point: { x: number; y: number }, list: { x: number; y: number }[]) =>
+      list.some((candidate) => candidate.x === point.x && candidate.y === point.y)
+    let checked = 0
+    for (const { map, sides } of allMaps().slice(0, 16)) {
+      const layout = mapLayouts[map.map]
+      const named = [
+        ...layout.attackSpawn,
+        ...layout.mid,
+        ...layout.siteNames.flatMap((name) => {
+          const site = layout.sites[name]
+          return [site.plant, ...site.entry, ...site.holds, ...site.post, ...site.retake]
+        }),
+      ]
+      for (const round of map.rounds) {
+        const attackerSide = round.attackerId === map.aId ? 'a' : 'b'
+        for (let step = 0; step <= round.events.length + 1; step++) {
+          const frame = roundFrame(map.map, round, sides, attackerSide, step)
+          for (const mark of frame.marks) {
+            checked++
+            expect(same(mark, named)).toBe(true)
+          }
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(0)
+  })
+
+  test('a planted round is played on the planted site', () => {
+    let checked = 0
+    for (const { map, sides } of allMaps().slice(0, 16)) {
+      for (const round of map.rounds) {
+        const plant = round.events.find((event) => event.kind === 'plant')
+        if (plant?.kind !== 'plant') continue
+        const attackerSide = round.attackerId === map.aId ? 'a' : 'b'
+        const site = mapLayouts[map.map].sites[plant.site]
+        const setup = roundFrame(map.map, round, sides, attackerSide, 0)
+        for (const mark of setup.marks) {
+          if (mark.attacking) continue
+          checked++
+          expect(site.holds.some((point) => point.x === mark.x && point.y === mark.y)).toBe(true)
+        }
+        // Just before the plant: the attackers have pushed to the site's entry and not yet moved on.
+        const plantAt = round.events.indexOf(plant)
+        if (plantAt === 0) continue
+        const contact = roundFrame(map.map, round, sides, attackerSide, plantAt)
+        for (const mark of contact.marks) {
+          if (!mark.attacking || !mark.alive) continue
+          expect(site.entry.some((point) => point.x === mark.x && point.y === mark.y)).toBe(true)
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(0)
+  })
 })

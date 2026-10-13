@@ -1,27 +1,33 @@
-// Where players stand on each map during a watched round. Every point is in a 0-100 square
-// (x right, y down) over that map's minimap in map_images/ (imported through src/map-images.ts).
+// Named points on each map's minimap, in a 0-100 square (x right, y down). Every point is a
+// place a player can stand, and the round stage view moves players only between these points.
 //
-// The points were placed by hand from the images and snapped to the nearest floor pixel, so
-// every point sits on walkable floor, not on a wall or in a void. The site letters and which
-// structure is which site are read from the images without labels, so check them against the
-// game before relying on them. Each map's table is data: edit a point here to move it.
+// Breeze's image is turned 90° clockwise (src/assets/maps/breeze.png) so its attack spawn sits at
+// the bottom, like the other maps. Each point was placed on the image and snapped to the nearest
+// floor pixel, so none sits on a wall or in a void.
 //
-// The round stage view reads only these tables, so nothing else needs to change if a point moves.
+// Per site: `plant` is the spike spot, `entry` is where attackers come in from mid, `holds` is
+// where defenders wait, `post` is where attackers stand round a planted spike, and `retake` is
+// where defenders come in from to retake. Site letters were read from unlabelled images, so
+// check them against the game before relying on them. To move a point, edit it here.
 
 export type Point = { x: number; y: number }
 export type SiteLayout = {
-  /** Centre of the site, where the spike goes down. */
+  /** Spike spot, the centre of the site. */
   plant: Point
-  /** Where defenders hold the site before anything happens. */
+  /** Where attackers stand before the spike goes down, coming in from mid. */
+  entry: Point[]
+  /** Where defenders hold the site before the round is decided. */
   holds: Point[]
-  /** Where attackers stand around a planted spike. */
+  /** Where attackers stand round a planted spike. */
   post: Point[]
-  /** Where defenders come from when they retake the site. */
+  /** Where defenders come from to retake the site. */
   retake: Point[]
 }
 export type MapLayout = {
   map: string
+  /** Attack spawn, where attackers start the round. */
   attackSpawn: Point[]
+  /** Mid, where attackers gather before picking a site. */
   mid: Point[]
   siteNames: string[]
   sites: Record<string, SiteLayout>
@@ -48,10 +54,19 @@ export const mapLayouts: Record<string, MapLayout> = {
     sites: {
       A: {
         plant: { x: 12, y: 45 },
+        entry: [
+          { x: 25.83, y: 53.05 },
+          { x: 27.83, y: 41.54 },
+          { x: 25.83, y: 46.55 },
+          { x: 29.32, y: 51.31 },
+          { x: 30.37, y: 43.38 },
+        ],
         holds: [
-          { x: 10.83, y: 53.92 },
-          { x: 13.17, y: 36.08 },
-          { x: 4.07, y: 43.96 },
+          { x: 11.11, y: 50.95 },
+          { x: 12.78, y: 39.05 },
+          { x: 5.06, y: 44.09 },
+          { x: 4.02, y: 52.02 },
+          { x: 6.1, y: 36.16 },
         ],
         post: [
           { x: 10.96, y: 52.93 },
@@ -68,10 +83,19 @@ export const mapLayouts: Record<string, MapLayout> = {
       },
       B: {
         plant: { x: 87.09, y: 51.95 },
+        entry: [
+          { x: 78.41, y: 43.41 },
+          { x: 77.62, y: 59.39 },
+          { x: 77.98, y: 51.75 },
+          { x: 72.17, y: 45.05 },
+          { x: 69.27, y: 55.06 },
+        ],
         holds: [
-          { x: 90.45, y: 43.01 },
-          { x: 89.59, y: 58.16 },
+          { x: 90.3, y: 46.01 },
+          { x: 89.7, y: 57.99 },
           { x: 96.8, y: 52.35 },
+          { x: 96.8, y: 44.34 },
+          { x: 96.6, y: 58.16 },
         ],
         post: [
           { x: 90.4, y: 44.01 },
@@ -108,10 +132,19 @@ export const mapLayouts: Record<string, MapLayout> = {
     sites: {
       A: {
         plant: { x: 27, y: 25 },
+        entry: [
+          { x: 31.89, y: 38.57 },
+          { x: 41.39, y: 22.11 },
+          { x: 36.2, y: 30.42 },
+          { x: 38.58, y: 41.1 },
+          { x: 36.2, y: 30.42 },
+        ],
         holds: [
-          { x: 21.65, y: 32.24 },
-          { x: 32.34, y: 18.69 },
-          { x: 20.57, y: 20.24 },
+          { x: 23.43, y: 29.83 },
+          { x: 30.57, y: 20.17 },
+          { x: 21.37, y: 20.84 },
+          { x: 16.62, y: 27.27 },
+          { x: 26.11, y: 18.69 },
         ],
         post: [
           { x: 22.24, y: 31.43 },
@@ -128,10 +161,19 @@ export const mapLayouts: Record<string, MapLayout> = {
       },
       B: {
         plant: { x: 72, y: 30 },
+        entry: [
+          { x: 57.57, y: 30.56 },
+          { x: 65.3, y: 42.77 },
+          { x: 61.47, y: 35.75 },
+          { x: 57.27, y: 35.16 },
+          { x: 58.31, y: 43.47 },
+        ],
         holds: [
-          { x: 67.66, y: 21.96 },
-          { x: 76.31, y: 37.9 },
-          { x: 79.02, y: 26.17 },
+          { x: 69.13, y: 24.73 },
+          { x: 74.87, y: 35.27 },
+          { x: 78.15, y: 26.65 },
+          { x: 74.31, y: 19.62 },
+          { x: 80.56, y: 35.16 },
         ],
         post: [
           { x: 68.1, y: 23.89 },
@@ -151,59 +193,77 @@ export const mapLayouts: Record<string, MapLayout> = {
   Breeze: {
     map: 'Breeze',
     attackSpawn: [
-      { x: 72, y: 41.5 },
-      { x: 80, y: 43.5 },
-      { x: 88, y: 41.5 },
-      { x: 96, y: 43.5 },
-      { x: 97.49, y: 41.5 },
+      { x: 42.06, y: 87.19 },
+      { x: 50, y: 89.5 },
+      { x: 58, y: 87.5 },
+      { x: 64.9, y: 88.86 },
+      { x: 69.64, y: 82.45 },
     ],
     mid: [
-      { x: 28.41, y: 54.87 },
-      { x: 43.45, y: 51.53 },
-      { x: 50, y: 49.5 },
-      { x: 57.94, y: 50.97 },
+      { x: 34, y: 49.5 },
+      { x: 42.06, y: 51.25 },
+      { x: 50.14, y: 49.86 },
+      { x: 58, y: 51.5 },
       { x: 66, y: 49.5 },
     ],
     siteNames: ['A', 'B'],
     sites: {
       A: {
-        plant: { x: 15, y: 25 },
+        plant: { x: 75, y: 15 },
+        entry: [
+          { x: 61.52, y: 20.11 },
+          { x: 74.65, y: 28.13 },
+          { x: 68.03, y: 24.76 },
+          { x: 61.28, y: 27.32 },
+          { x: 68.52, y: 32.03 },
+        ],
         holds: [
-          { x: 9.47, y: 32.31 },
-          { x: 20.23, y: 17.68 },
-          { x: 8.49, y: 20.35 },
+          { x: 70.12, y: 11.51 },
+          { x: 79.88, y: 18.49 },
+          { x: 79.07, y: 9.3 },
+          { x: 72.56, y: 4.65 },
+          { x: 81.89, y: 13.93 },
+        ],
+        post: [
+          { x: 68.49, y: 10.35 },
+          { x: 81.51, y: 19.65 },
+          { x: 79.65, y: 8.49 },
+          { x: 70.35, y: 21.51 },
+        ],
+        retake: [
+          { x: 60.93, y: 20.93 },
+          { x: 73.26, y: 30.36 },
+          { x: 66.85, y: 27.3 },
+          { x: 69.77, y: 22.32 },
+        ],
+      },
+      B: {
+        plant: { x: 15.04, y: 27.3 },
+        entry: [
+          { x: 20.06, y: 39 },
+          { x: 29.41, y: 25.46 },
+          { x: 24.76, y: 31.97 },
+          { x: 27.3, y: 39 },
+          { x: 33.43, y: 33.43 },
+        ],
+        holds: [
+          { x: 11.51, y: 29.88 },
+          { x: 23.4, y: 24.51 },
+          { x: 15.04, y: 27.3 },
+          { x: 9.47, y: 31.48 },
+          { x: 23.68, y: 24.23 },
         ],
         post: [
           { x: 10.35, y: 31.51 },
-          { x: 19.65, y: 18.49 },
-          { x: 8.49, y: 20.35 },
+          { x: 24.79, y: 23.4 },
+          { x: 15.04, y: 27.3 },
           { x: 21.51, y: 29.65 },
         ],
         retake: [
           { x: 20.93, y: 39.07 },
-          { x: 30.36, y: 26.74 },
-          { x: 27.3, y: 33.15 },
+          { x: 30.36, y: 25.91 },
+          { x: 30.64, y: 36.49 },
           { x: 22.32, y: 30.23 },
-        ],
-      },
-      B: {
-        plant: { x: 27.3, y: 84.96 },
-        holds: [
-          { x: 32.32, y: 90.23 },
-          { x: 22.84, y: 74.37 },
-          { x: 27.3, y: 84.96 },
-        ],
-        post: [
-          { x: 31.51, y: 89.65 },
-          { x: 23.4, y: 75.21 },
-          { x: 27.3, y: 84.96 },
-          { x: 29.65, y: 78.49 },
-        ],
-        retake: [
-          { x: 39.07, y: 79.07 },
-          { x: 25.91, y: 69.64 },
-          { x: 36.49, y: 69.36 },
-          { x: 30.23, y: 77.68 },
         ],
       },
     },
@@ -228,10 +288,19 @@ export const mapLayouts: Record<string, MapLayout> = {
     sites: {
       A: {
         plant: { x: 37, y: 12 },
+        entry: [
+          { x: 34.27, y: 25.82 },
+          { x: 48.13, y: 21.17 },
+          { x: 40.47, y: 23.49 },
+          { x: 38.38, y: 30.39 },
+          { x: 46.29, y: 28.04 },
+        ],
         holds: [
-          { x: 28.39, y: 14.6 },
-          { x: 45.61, y: 9.4 },
+          { x: 31.26, y: 13.74 },
+          { x: 42.74, y: 10.26 },
           { x: 34.27, y: 8.61 },
+          { x: 29.38, y: 10.24 },
+          { x: 42.58, y: 8.61 },
         ],
         post: [
           { x: 29.34, y: 14.32 },
@@ -248,10 +317,19 @@ export const mapLayouts: Record<string, MapLayout> = {
       },
       B: {
         plant: { x: 39, y: 50 },
+        entry: [
+          { x: 46.61, y: 62.25 },
+          { x: 53.23, y: 47.68 },
+          { x: 49.92, y: 54.97 },
+          { x: 53.73, y: 61.09 },
+          { x: 57.04, y: 53.81 },
+        ],
         holds: [
-          { x: 35.28, y: 58.19 },
-          { x: 42.73, y: 42.43 },
-          { x: 31.75, y: 46.88 },
+          { x: 36.52, y: 55.46 },
+          { x: 41.48, y: 44.54 },
+          { x: 32.63, y: 47.1 },
+          { x: 29.38, y: 52.82 },
+          { x: 36.65, y: 39.76 },
         ],
         post: [
           { x: 35.69, y: 57.28 },
@@ -268,10 +346,19 @@ export const mapLayouts: Record<string, MapLayout> = {
       },
       C: {
         plant: { x: 79.23, y: 34.27 },
+        entry: [
+          { x: 66.47, y: 31.16 },
+          { x: 77.47, y: 43.69 },
+          { x: 72.54, y: 37.39 },
+          { x: 65.35, y: 37.93 },
+          { x: 70.28, y: 44.23 },
+        ],
         holds: [
-          { x: 66.47, y: 27.74 },
-          { x: 87.54, y: 42.43 },
+          { x: 78.34, y: 34.27 },
+          { x: 79.23, y: 34.72 },
           { x: 79.23, y: 34.27 },
+          { x: 79.23, y: 34.27 },
+          { x: 92.43, y: 42.43 },
         ],
         post: [
           { x: 77, y: 34.27 },
@@ -308,10 +395,19 @@ export const mapLayouts: Record<string, MapLayout> = {
     sites: {
       A: {
         plant: { x: 54.6, y: 20.92 },
+        entry: [
+          { x: 45.29, y: 32.67 },
+          { x: 60.09, y: 35.01 },
+          { x: 53.26, y: 35.16 },
+          { x: 48.35, y: 39.2 },
+          { x: 56.26, y: 40.4 },
+        ],
         holds: [
-          { x: 46.1, y: 20.65 },
-          { x: 63.9, y: 23.35 },
-          { x: 56.2, y: 14.09 },
+          { x: 49.11, y: 20.92 },
+          { x: 60.93, y: 22.9 },
+          { x: 56.05, y: 15.08 },
+          { x: 48.14, y: 13.88 },
+          { x: 63.96, y: 16.28 },
         ],
         post: [
           { x: 47.09, y: 20.8 },
@@ -328,10 +424,19 @@ export const mapLayouts: Record<string, MapLayout> = {
       },
       B: {
         plant: { x: 21.66, y: 51.93 },
+        entry: [
+          { x: 33.08, y: 61.23 },
+          { x: 34.78, y: 45.32 },
+          { x: 33.83, y: 53.26 },
+          { x: 39.47, y: 57.89 },
+          { x: 41.84, y: 50 },
+        ],
         holds: [
-          { x: 21.04, y: 60.95 },
-          { x: 23.15, y: 43.18 },
-          { x: 14.09, y: 54.01 },
+          { x: 21.36, y: 57.97 },
+          { x: 23.15, y: 45.99 },
+          { x: 14.99, y: 54.01 },
+          { x: 14.19, y: 59.21 },
+          { x: 18.4, y: 44.21 },
         ],
         post: [
           { x: 21.15, y: 59.95 },
@@ -368,10 +473,19 @@ export const mapLayouts: Record<string, MapLayout> = {
     sites: {
       A: {
         plant: { x: 15, y: 45 },
+        entry: [
+          { x: 24.34, y: 55.99 },
+          { x: 29.42, y: 40.57 },
+          { x: 26.49, y: 47.61 },
+          { x: 30.99, y: 53.76 },
+          { x: 33.41, y: 46.1 },
+        ],
         holds: [
-          { x: 12.53, y: 53.65 },
-          { x: 17.5, y: 35.97 },
-          { x: 7.33, y: 44.77 },
+          { x: 13.35, y: 50.77 },
+          { x: 16.65, y: 39.23 },
+          { x: 8.31, y: 44.77 },
+          { x: 6.07, y: 50.77 },
+          { x: 10.47, y: 35.38 },
         ],
         post: [
           { x: 12.8, y: 52.69 },
@@ -388,10 +502,19 @@ export const mapLayouts: Record<string, MapLayout> = {
       },
       B: {
         plant: { x: 48, y: 40 },
+        entry: [
+          { x: 41.94, y: 52.98 },
+          { x: 57.48, y: 50.54 },
+          { x: 49.56, y: 53.08 },
+          { x: 46.41, y: 58.37 },
+          { x: 53.37, y: 57.28 },
+        ],
         holds: [
-          { x: 39.1, y: 40.37 },
-          { x: 56.92, y: 38.81 },
-          { x: 46.92, y: 29.13 },
+          { x: 42.03, y: 41.15 },
+          { x: 53.96, y: 38.91 },
+          { x: 47.12, y: 35.78 },
+          { x: 39.15, y: 34.12 },
+          { x: 55.82, y: 31.96 },
         ],
         post: [
           { x: 40.08, y: 40.37 },
@@ -408,10 +531,19 @@ export const mapLayouts: Record<string, MapLayout> = {
       },
       C: {
         plant: { x: 88, y: 32 },
+        entry: [
+          { x: 73.59, y: 31.37 },
+          { x: 81.92, y: 44.97 },
+          { x: 77.73, y: 38.21 },
+          { x: 71.26, y: 37.93 },
+          { x: 74.67, y: 44.74 },
+        ],
         holds: [
-          { x: 83.34, y: 24.3 },
-          { x: 92.66, y: 39.7 },
-          { x: 92.86, y: 27.86 },
+          { x: 84.89, y: 26.87 },
+          { x: 91.11, y: 37.13 },
+          { x: 92.86, y: 28.35 },
+          { x: 89.85, y: 21.53 },
+          { x: 92.86, y: 35.19 },
         ],
         post: [
           { x: 83.87, y: 24.93 },
@@ -448,10 +580,19 @@ export const mapLayouts: Record<string, MapLayout> = {
     sites: {
       A: {
         plant: { x: 13.95, y: 47.03 },
+        entry: [
+          { x: 23.15, y: 53.12 },
+          { x: 27.81, y: 39.86 },
+          { x: 25.48, y: 47.51 },
+          { x: 30.05, y: 53.09 },
+          { x: 32.38, y: 45.43 },
+        ],
         holds: [
-          { x: 11.37, y: 52.61 },
-          { x: 16.63, y: 35.39 },
-          { x: 6.35, y: 41.66 },
+          { x: 12.25, y: 49.74 },
+          { x: 15.75, y: 38.26 },
+          { x: 7.31, y: 41.95 },
+          { x: 4.97, y: 49.61 },
+          { x: 9.64, y: 34.42 },
         ],
         post: [
           { x: 11.66, y: 51.65 },
@@ -468,10 +609,19 @@ export const mapLayouts: Record<string, MapLayout> = {
       },
       B: {
         plant: { x: 82, y: 37 },
+        entry: [
+          { x: 67.62, y: 35.91 },
+          { x: 75.46, y: 49.86 },
+          { x: 71.54, y: 42.88 },
+          { x: 67.36, y: 42.28 },
+          { x: 68.27, y: 49.31 },
+        ],
         holds: [
-          { x: 78.19, y: 29.23 },
-          { x: 86.35, y: 43.62 },
-          { x: 88.97, y: 33.08 },
+          { x: 79.06, y: 31.77 },
+          { x: 84.94, y: 42.23 },
+          { x: 88.1, y: 33.57 },
+          { x: 84.18, y: 26.6 },
+          { x: 92.02, y: 40.54 },
         ],
         post: [
           { x: 78.19, y: 29.97 },

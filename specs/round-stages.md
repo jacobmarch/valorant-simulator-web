@@ -20,12 +20,15 @@ A round has two or three stages in practice. The sim has one plant per round, so
 
 ## Positions
 
-Positions are computed from the events and never from random numbers, so the same round always draws the same way.
+Every player stands on a named point from `src/map-layouts.ts`, and only on those. The points per map are the attack spawn, mid, and for each site its plant spot, entry points, defender holds, post-plant points and retake points. The frame moves players only between these. Positions are computed from the events, never from random numbers, so the same round always draws the same way.
 
-- Setup: attackers stand on the attack spawn. Defenders hold their sites, spread across all of them.
-- Contact: alive attackers move up to mid. Kills happen where the players stand, and victims stay where they fell, marked dead.
-- Post-plant: the planter stands beside the spike on the planted site. Alive attackers fan out round the site. Alive defenders come in to retake from outside it. A defuser stands beside the spike.
-- The spike marks the site it was planted on. It shows as planted, defused, or detonated (on a detonation end).
+- Setup: attackers stand on the attack spawn. Defenders wait on the holds of the site the spike goes down on. If the spike never goes down, defenders are spread across every site.
+- Contact: attackers move to the entry points of the planted site (or to mid if no spike went down). Kills happen where the fighters stand. Victims stay where they fell, marked dead.
+- Post-plant: attackers stand on the site's post points round the spike. Defenders come in to the site's retake points.
+- The planter and the defuser stand beside the spike, on the site's first post point.
+- The spike marks the site it went down on. It shows as planted, defused, or detonated on a detonation end.
+
+Setup uses the planted site, which is the sim's own result, so a watched round shows where defenders were set up before the spike went down. A real game would not reveal that; the trade-off is deliberate.
 
 ## State changes
 
@@ -40,11 +43,13 @@ None. The stage view only reads the replay. Nothing is saved, and the box score 
 
 ## Map images
 
-Each map in the pool uses its minimap from `map_images/` (imported in `src/map-images.ts`). The layout points in `src/map-layouts.ts` are placed over those images and snapped to floor pixels, so no dot sits on a wall or in a void. Site letters and which structure is which site were read from unlabelled images, so they need checking against the game. To move a point, edit it in `src/map-layouts.ts`. To change a map's art, replace its PNG and re-check the points.
+Each map in the pool uses its minimap from `map_images/` (imported in `src/map-images.ts`). Breeze's attack spawn is on the right of its image, so its copy in `src/assets/maps/breeze.png` is turned 90° clockwise, which puts the spawn at the bottom with the sites above, like the others. Site letters were read from unlabelled images, so they need checking against the game. To move a point, edit it in `src/map-layouts.ts`. To change a map's art, replace its PNG and re-check the points.
 
 ## Acceptance criteria
 
 - Every round in a watched series has two to three stages, the first being setup at step 0.
+- Every player's position at every step is one of the map's named points.
+- In a planted round, defenders hold the planted site at setup and attackers reach its entry before the plant.
 - At step 0, attackers are on their spawn and defenders are in site holds, with no spike.
 - A player who is killed stays at the same point for the rest of the round.
 - After a plant, living attackers stand on the planted site.
