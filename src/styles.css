@@ -590,14 +590,15 @@ button:disabled {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
   gap: 16px;
-  align-items: start;
+  margin-bottom: 16px;
+  align-items: stretch;
 }
 .desk-grid.even {
   grid-template-columns: 1fr 1fr;
 }
 .desk-grid > .panel,
 .columns > .panel {
-  margin-bottom: 16px;
+  margin: 0;
 }
 
 /* Team marks */
@@ -2099,8 +2100,6 @@ table {
 .home-grid .inbox-panel {
   grid-column: 2;
   grid-row: 2;
-  max-height: 290px;
-  overflow: auto;
 }
 .home-grid .snapshot {
   grid-column: 3;
@@ -2127,11 +2126,12 @@ table {
   flex: 1;
 }
 .snapshot .stats {
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   margin: 0;
 }
 .snapshot .stat {
+  min-width: 0;
   padding: 10px 12px;
   background: var(--surface-2);
 }
@@ -2141,9 +2141,6 @@ table {
 }
 .snapshot .stat span {
   font-size: 12px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 .home-grid .mini-row {
   padding-top: 7px;
