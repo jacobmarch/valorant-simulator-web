@@ -121,9 +121,14 @@ describe('round stages', () => {
         expect(frame.marks.every((mark) => mark.alive)).toBe(true)
         const layout = mapLayouts[map.map]
         const spawns = layout.attackSpawn
-        const holds = layout.siteNames.flatMap((name) => layout.sites[name].holds)
+        // Defenders take a formation: holds on the hit site, plus the other site's lurk, or mid.
+        const defending = [
+          ...layout.siteNames.flatMap((name) => layout.sites[name].holds),
+          ...layout.siteNames.map((name) => layout.sites[name].lurk[0]),
+          ...layout.mid,
+        ]
         for (const mark of frame.marks) {
-          const at = mark.attacking ? spawns : holds
+          const at = mark.attacking ? spawns : defending
           expect(at.some((point) => point.x === mark.x && point.y === mark.y)).toBe(true)
         }
       }
@@ -242,19 +247,22 @@ describe('round stages', () => {
         const attackerSide = round.attackerId === map.aId ? 'a' : 'b'
         const site = mapLayouts[map.map].sites[plant.site]
         const setup = roundFrame(map.map, round, sides, attackerSide, 0)
-        for (const mark of setup.marks) {
-          if (mark.attacking) continue
-          checked++
-          expect(site.holds.some((point) => point.x === mark.x && point.y === mark.y)).toBe(true)
-        }
-        // Just before the plant: the attackers have pushed to the site's entry and not yet moved on.
+        const onHold = setup.marks.filter(
+          (mark) =>
+            !mark.attacking && site.holds.some((point) => point.x === mark.x && point.y === mark.y),
+        )
+        // Every formation keeps at least two defenders on the planted site.
+        expect(onHold.length).toBeGreaterThanOrEqual(2)
+        checked += onHold.length
+        // Just before the plant: the attackers have gone in and not yet moved on.
         const plantAt = round.events.indexOf(plant)
         if (plantAt === 0) continue
         const contact = roundFrame(map.map, round, sides, attackerSide, plantAt)
+        const onSite = [...site.entry, ...site.lanes, site.lurk[0]]
         for (const mark of contact.marks) {
-          if (!mark.attacking || !mark.alive) continue
-          const onSite = [...site.entry, ...site.lanes]
-          expect(onSite.some((point) => point.x === mark.x && point.y === mark.y)).toBe(true)
+          if (!mark.alive) continue
+          const at = mark.attacking ? onSite : site.holds
+          expect(at.some((point) => point.x === mark.x && point.y === mark.y)).toBe(true)
         }
       }
     }

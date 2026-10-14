@@ -2,12 +2,14 @@
 //
 // A step is how far the round has played: step n means the first n events have happened. Each
 // stage starts on a step and runs until the next one. Movement happens at a stage's start, right
-// before its first event, so the map reads as "the players rotate, then the fight starts".
+// before its first event, so the map reads as "the players set up, then the hit comes".
 //
 // Players only ever stand on named points from the map layout (src/map-layouts.ts). Nothing here
-// draws random numbers. The site comes from the sim's own plant, and the kills, deaths and
-// defuse come from the events it already wrote.
-import { layoutFor, type MapLayout, type Point } from './map-layouts'
+// draws random numbers. The site comes from the sim's own plant (or, when nothing was planted,
+// the site the attack goes for), and the kills, deaths and defuse come from the events it already
+// wrote. Formations are picked from the map and round number, so the same round always lines up
+// the same way.
+import { layoutFor, type MapLayout, type Point, type SiteLayout } from './map-layouts'
 import type { Role } from './seed'
 import type { RoundReplay } from './round-sim'
 
@@ -30,15 +32,14 @@ export type Spike = {
 }
 export type RoundFrame = { marks: Mark[]; spike: Spike | null }
 
-type Roster = { id: string; side: Side }
+/** Defence: how many hold the site the attack goes for; the rest sit off it. */
+export const DEFENSE_FORMATIONS = ['4-1', '2-1-2', '3-2'] as const
+export type DefenseFormation = (typeof DEFENSE_FORMATIONS)[number]
+/** Attack: how the attackers go in once the hit starts, not counting the lurker. */
+export const ATTACK_FORMATIONS = ['5-0', '2-1-2', '3-1-1'] as const
+export type AttackFormation = (typeof ATTACK_FORMATIONS)[number]
 
-/** Takes the first of each list, then the second of each, and so on. */
-function interleave<T>(lists: T[][]): T[] {
-  const longest = Math.max(0, ...lists.map((list) => list.length))
-  return Array.from({ length: longest }, (_, at) => lists.map((list) => list[at]))
-    .flat()
-    .filter((item): item is T => item !== undefined)
-}
+type Roster = { id: string; side: Side }
 
 /**
  * The attacker who lurks: the first Sentinel or Controller among the attackers, as a team usually
@@ -53,6 +54,51 @@ export function pickLurker(attackers: string[], roleOf: (id: string) => Role): s
 function plantedSite(round: RoundReplay): string | undefined {
   const plant = round.events.find((event) => event.kind === 'plant')
   return plant?.kind === 'plant' ? plant.site : undefined
+}
+
+/**
+ * The site the fighting happens on. A planted round is played on the site it was planted on. A
+ * round with no plant still needs a site, so the attack goes for one that alternates by round.
+ */
+export function hitSiteOf(layout: MapLayout, round: RoundReplay): string {
+  return plantedSite(round) ?? layout.siteNames[round.round % layout.siteNames.length]
+}
+
+/** Formations for a round, picked from the map and round number so the same round always repeats. */
+export function formationsFor(
+  map: string,
+  round: number,
+): { defense: DefenseFormation; attack: AttackFormation } {
+  const seed = [...map].reduce((total, char) => (total * 31 + char.charCodeAt(0)) >>> 0, 7) + round
+  return {
+    defense: DEFENSE_FORMATIONS[seed % DEFENSE_FORMATIONS.length],
+    attack: ATTACK_FORMATIONS[(seed * 5 + 1) % ATTACK_FORMATIONS.length],
+  }
+}
+
+/**
+ * The defenders' setup: `main` of them hold the hit site's holds, and the rest stand at `off`.
+ * - 4-1: four on the site, one on the other site's lurk spot.
+ * - 2-1-2: two on the site, one mid, two on the other site.
+ * - 3-2: three on the site, two on the other site.
+ */
+function defenseSetup(
+  formation: DefenseFormation,
+  layout: MapLayout,
+  hit: string,
+): { main: number; off: Point[] } {
+  const other = layout.sites[layout.siteNames.find((name) => name !== hit) ?? hit]
+  if (formation === '4-1') return { main: 4, off: [other.lurk[0]] }
+  if (formation === '2-1-2')
+    return { main: 2, off: [layout.mid[0], other.holds[0], other.holds[1]] }
+  return { main: 3, off: [other.holds[0], other.holds[1]] }
+}
+
+/** Where the attackers without the lurker go in, in order, once the hit starts. */
+const ATTACK_HITS: Record<AttackFormation, (site: SiteLayout) => Point[]> = {
+  '5-0': (site) => [...site.entry, site.lanes[0]],
+  '2-1-2': (site) => [site.lanes[0], site.lanes[1], site.entry[1], site.entry[0]],
+  '3-1-1': (site) => [site.entry[0], site.entry[1], site.entry[2], site.lanes[1]],
 }
 
 /**
@@ -82,11 +128,12 @@ export function stageIndexAt(stages: Stage[], step: number) {
 /**
  * Where everyone stands after the first `step` events of a round.
  *
- * - Setup: attackers spawn; defenders wait on the holds of the site the round is played on (or
- *   spread across every site if the spike never went down).
- * - Contact: the lurker takes the site's lurk spot (or a flank point if no site was taken). The
- *   other attackers spread over the site's entry and lanes (or mid). Kills happen where the
- *   fighters stand; victims stay where they fell, marked dead.
+ * - Setup: attackers spawn; defenders take their formation on the hit site's holds and the
+ *   off-site points.
+ * - Contact: the lurker takes the hit site's lurk spot. The other attackers go in to the entry
+ *   and lanes in their formation. Defenders off the site rotate onto its holds. Every fight is
+ *   therefore on the hit site, not in mid. Kills happen where the fighters stand; victims stay
+ *   where they fell, marked dead.
  * - Post-plant: attackers stand round the spike, defenders come in to the site's retake points.
  * - The planter and the defuser stand beside the spike, on the site's first post point.
  */
@@ -100,8 +147,10 @@ export function roundFrame(
 ): RoundFrame {
   const layout: MapLayout = layoutFor(map)
   const stages = roundStages(round)
-  const site = plantedSite(round)
-  const siteLayout = site ? layout.sites[site] : undefined
+  const hit = hitSiteOf(layout, round)
+  const site = layout.sites[hit]
+  const formations = formationsFor(map, round.round)
+  const defense = defenseSetup(formations.defense, layout, hit)
   const roster: Roster[] = [
     ...sides.a.map((id) => ({ id, side: 'a' as const })),
     ...sides.b.map((id) => ({ id, side: 'b' as const })),
@@ -125,10 +174,12 @@ export function roundFrame(
   attackers.forEach((player, at) =>
     place(player, layout.attackSpawn[at % layout.attackSpawn.length]),
   )
-  const holds = siteLayout
-    ? siteLayout.holds
-    : interleave(layout.siteNames.map((name) => layout.sites[name].holds))
-  defenders.forEach((player, at) => place(player, holds[at % holds.length]))
+  defenders.forEach((player, at) =>
+    place(
+      player,
+      at < defense.main ? site.holds[at] : defense.off[(at - defense.main) % defense.off.length],
+    ),
+  )
 
   let spike: Spike | null = null
   // Movement for the stage that starts at `index + 1`, applied just before event `index`.
@@ -137,17 +188,18 @@ export function roundFrame(
       const living = alive(attackers)
       const lurker = living.find((player) => player.id === lurkerId)
       const others = living.filter((player) => player !== lurker)
-      const slots = siteLayout ? [...siteLayout.entry, ...siteLayout.lanes] : layout.mid
+      const slots = ATTACK_HITS[formations.attack](site)
       others.forEach((player, at) => place(player, slots[at % slots.length]))
-      if (lurker) place(lurker, siteLayout ? siteLayout.lurk[0] : layout.flank[0])
+      if (lurker) place(lurker, site.lurk[0])
+      // Defenders off the site rotate in to hold it, so the fight is on the site.
+      defenders
+        .slice(defense.main)
+        .filter((player) => pos[player.id]?.alive !== false)
+        .forEach((player, at) => place(player, site.holds[(defense.main + at) % site.holds.length]))
     }
-    if (stage.kind === 'post-plant' && siteLayout) {
-      alive(attackers).forEach((player, at) =>
-        place(player, siteLayout.post[at % siteLayout.post.length]),
-      )
-      alive(defenders).forEach((player, at) =>
-        place(player, siteLayout.retake[at % siteLayout.retake.length]),
-      )
+    if (stage.kind === 'post-plant') {
+      alive(attackers).forEach((player, at) => place(player, site.post[at % site.post.length]))
+      alive(defenders).forEach((player, at) => place(player, site.retake[at % site.retake.length]))
     }
   }
 

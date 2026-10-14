@@ -22,8 +22,10 @@ A round has two or three stages in practice. The sim has one plant per round, so
 
 Every player stands on a named point from `src/map-layouts.ts`, and only on those. The points per map are the attack spawn, mid, two flank points, and for each site its plant spot, entry points, lanes, lurk spot, defender holds, post-plant points and retake points. The frame moves players only between these. Positions are computed from the events, never from random numbers, so the same round always draws the same way.
 
-- Setup: attackers stand on the attack spawn. Defenders wait on the holds of the site the spike goes down on. If the spike never goes down, defenders are spread across every site.
-- Contact: a lurker takes the planted site's lurk point (or a flank point if no spike went down). The other attackers spread over the site's entry points and lanes (or mid). Kills happen where the fighters stand. Victims stay where they fell, marked dead.
+- The hit site is the one the spike goes down on. If the spike never goes down, the attack goes for a site that alternates by round, and every position below uses that site.
+- Formations are picked per round from the map and round number, so the same round always lines up the same way. Defence is 4-1, 2-1-2 or 3-2; attack is 5-0, 2-1-2 or 3-1-1.
+- Setup: attackers stand on the attack spawn. Defenders take their formation: the main group on the hit site's holds, the rest on the other site's lurk and holds, or mid for the 2-1-2 middle.
+- Contact: the lurker takes the hit site's lurk point. The other attackers go in to the site's entry points and lanes in their formation. Defenders off the site rotate onto its holds. Every fight is on the hit site, so nobody is left fighting in mid. Kills happen where the fighters stand. Victims stay where they fell, marked dead.
 - The lurker is the first Sentinel or Controller among the attackers, as a team usually sends one to flank. With neither, the last attacker lurks, so one attacker is always apart from the group.
 - Post-plant: attackers stand on the site's post points round the spike. Defenders come in to the site's retake points.
 - The planter and the defuser stand beside the spike, on the site's first post point.
@@ -51,8 +53,8 @@ Each map in the pool uses its minimap from `map_images/` (imported in `src/map-i
 
 - Every round in a watched series has two to three stages, the first being setup at step 0.
 - Every player's position at every step is one of the map's named points.
-- In a planted round, defenders hold the planted site at setup and attackers reach its entry before the plant.
-- At step 0, attackers are on their spawn and defenders are in site holds, with no spike.
+- In a planted round, at least two defenders hold the planted site at setup, and attackers reach its entry or lanes before the plant.
+- At step 0, attackers are on their spawn and defenders are in their formation, with no spike.
 - A player who is killed stays at the same point for the rest of the round.
 - After a plant, living attackers stand on the planted site.
 - The final frame's living/dead split and spike state match the round's end reason.
