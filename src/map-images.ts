@@ -1,11 +1,11 @@
-// Minimap images for the pool, from map_images/. Breeze, Abyss and Haven are turned in src/assets/maps (Breeze 90° clockwise, Abyss and Haven 180°).
+// Minimap images for the pool, in src/assets/maps. Each is turned so its sites face up and the attack spawn sits at the bottom.
 import abyss from './assets/maps/abyss.png'
-import bind from '../map_images/bind.png'
+import bind from './assets/maps/bind.png'
 import breeze from './assets/maps/breeze.png'
 import haven from './assets/maps/haven.png'
-import icebox from '../map_images/icebox.png'
-import lotus from '../map_images/lotus.png'
-import sunset from '../map_images/sunset.png'
+import icebox from './assets/maps/icebox.png'
+import lotus from './assets/maps/lotus.png'
+import sunset from './assets/maps/sunset.png'
 
 const images: Record<string, string> = {
   Abyss: abyss,
