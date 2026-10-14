@@ -20,10 +20,11 @@ A round has two or three stages in practice. The sim has one plant per round, so
 
 ## Positions
 
-Every player stands on a named point from `src/map-layouts.ts`, and only on those. The points per map are the attack spawn, mid, and for each site its plant spot, entry points, defender holds, post-plant points and retake points. The frame moves players only between these. Positions are computed from the events, never from random numbers, so the same round always draws the same way.
+Every player stands on a named point from `src/map-layouts.ts`, and only on those. The points per map are the attack spawn, mid, two flank points, and for each site its plant spot, entry points, lanes, lurk spot, defender holds, post-plant points and retake points. The frame moves players only between these. Positions are computed from the events, never from random numbers, so the same round always draws the same way.
 
 - Setup: attackers stand on the attack spawn. Defenders wait on the holds of the site the spike goes down on. If the spike never goes down, defenders are spread across every site.
-- Contact: attackers move to the entry points of the planted site (or to mid if no spike went down). Kills happen where the fighters stand. Victims stay where they fell, marked dead.
+- Contact: a lurker takes the planted site's lurk point (or a flank point if no spike went down). The other attackers spread over the site's entry points and lanes (or mid). Kills happen where the fighters stand. Victims stay where they fell, marked dead.
+- The lurker is the first Sentinel or Controller among the attackers, as a team usually sends one to flank. With neither, the last attacker lurks, so one attacker is always apart from the group.
 - Post-plant: attackers stand on the site's post points round the spike. Defenders come in to the site's retake points.
 - The planter and the defuser stand beside the spike, on the site's first post point.
 - The spike marks the site it went down on. It shows as planted, defused, or detonated on a detonation end.
@@ -37,7 +38,8 @@ None. The stage view only reads the replay. Nothing is saved, and the box score 
 ## Playback
 
 - Step n means the first n events have happened. Each stage's movement applies just before its first event.
-- Paused: Next moves to the next stage of the round. From the last stage it finishes the round, and from a finished round it moves to the next round at its setup. Clicking a stage name jumps to it. End round finishes the current round.
+- The stages are not shown. There are no stage names, counts or captions, so the round isn't spoiled.
+- Paused: Continue Round moves to the next stage of the round, then finishes the round, then moves to the next round at its setup. End round finishes the current round.
 - Live: each event takes 900 ms (divided by the speed multiplier). A stage holds for 2200 ms before its first event, and a finished round pauses 1600 ms before the next one.
 - Previous round and the round strip show the chosen round finished, as before.
 

@@ -8,6 +8,7 @@
 // draws random numbers. The site comes from the sim's own plant, and the kills, deaths and
 // defuse come from the events it already wrote.
 import { layoutFor, type MapLayout, type Point } from './map-layouts'
+import type { Role } from './seed'
 import type { RoundReplay } from './round-sim'
 
 export type StageKind = 'setup' | 'contact' | 'post-plant'
@@ -37,6 +38,15 @@ function interleave<T>(lists: T[][]): T[] {
   return Array.from({ length: longest }, (_, at) => lists.map((list) => list[at]))
     .flat()
     .filter((item): item is T => item !== undefined)
+}
+
+/**
+ * The attacker who lurks: the first Sentinel or Controller among the attackers, as a team usually
+ * sends one to flank. With neither, the last attacker lurks, so one attacker is always apart.
+ */
+export function pickLurker(attackers: string[], roleOf: (id: string) => Role): string | undefined {
+  const flanker = attackers.find((id) => roleOf(id) === 'Sentinel' || roleOf(id) === 'Controller')
+  return flanker ?? attackers[attackers.length - 1]
 }
 
 /** The site the round is played on: the one the spike went down on, if it did. */
@@ -74,8 +84,9 @@ export function stageIndexAt(stages: Stage[], step: number) {
  *
  * - Setup: attackers spawn; defenders wait on the holds of the site the round is played on (or
  *   spread across every site if the spike never went down).
- * - Contact: attackers move up to that site's entry points (or to mid if no site was taken).
- *   Kills happen where the fighters stand; victims stay where they fell, marked dead.
+ * - Contact: the lurker takes the site's lurk spot (or a flank point if no site was taken). The
+ *   other attackers spread over the site's entry and lanes (or mid). Kills happen where the
+ *   fighters stand; victims stay where they fell, marked dead.
  * - Post-plant: attackers stand round the spike, defenders come in to the site's retake points.
  * - The planter and the defuser stand beside the spike, on the site's first post point.
  */
@@ -85,6 +96,7 @@ export function roundFrame(
   sides: { a: string[]; b: string[] },
   attackerSide: Side,
   step: number,
+  lurkerId?: string,
 ): RoundFrame {
   const layout: MapLayout = layoutFor(map)
   const stages = roundStages(round)
@@ -122,8 +134,12 @@ export function roundFrame(
   // Movement for the stage that starts at `index + 1`, applied just before event `index`.
   const applyStart = (stage: Stage) => {
     if (stage.kind === 'contact') {
-      const points = siteLayout ? siteLayout.entry : layout.mid
-      alive(attackers).forEach((player, at) => place(player, points[at % points.length]))
+      const living = alive(attackers)
+      const lurker = living.find((player) => player.id === lurkerId)
+      const others = living.filter((player) => player !== lurker)
+      const slots = siteLayout ? [...siteLayout.entry, ...siteLayout.lanes] : layout.mid
+      others.forEach((player, at) => place(player, slots[at % slots.length]))
+      if (lurker) place(lurker, siteLayout ? siteLayout.lurk[0] : layout.flank[0])
     }
     if (stage.kind === 'post-plant' && siteLayout) {
       alive(attackers).forEach((player, at) =>

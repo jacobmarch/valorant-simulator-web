@@ -1,21 +1,25 @@
-// Named points on each map's minimap, in a 0-100 square (x right, y down). Every point is a
-// place a player can stand, and the round stage view moves players only between these points.
+// Named points on each map's minimap, in a 0-100 square (x right, y down). Players stand only on
+// these points, and the round stage view moves them only between them.
 //
 // Breeze's image is turned 90° clockwise (src/assets/maps/breeze.png) so its attack spawn sits at
-// the bottom, like the other maps. Each point was placed on the image and snapped to the nearest
-// floor pixel, so none sits on a wall or in a void.
+// the bottom, like the other maps. Every point was placed on the image and snapped to the nearest
+// floor pixel, so none sits on a wall or in a void. Site letters were read from unlabelled images,
+// so check them against the game before relying on them. To move a point, edit it here.
 //
-// Per site: `plant` is the spike spot, `entry` is where attackers come in from mid, `holds` is
-// where defenders wait, `post` is where attackers stand round a planted spike, and `retake` is
-// where defenders come in from to retake. Site letters were read from unlabelled images, so
-// check them against the game before relying on them. To move a point, edit it here.
+// Attackers spread out across these points rather than moving as one group: some take the site's
+// entry, some take its lanes, and a lurker (a Sentinel or Controller, when the team has one) takes
+// the lurk spot. `flank` points are where attackers wait on mid when no site has been taken.
 
 export type Point = { x: number; y: number }
 export type SiteLayout = {
   /** Spike spot, the centre of the site. */
   plant: Point
-  /** Where attackers stand before the spike goes down, coming in from mid. */
+  /** Where attackers come in to the site from mid. */
   entry: Point[]
+  /** Lanes that lead to the site, away from its entry. */
+  lanes: Point[]
+  /** A flank spot off the site, where a lurker waits. */
+  lurk: Point[]
   /** Where defenders hold the site before the round is decided. */
   holds: Point[]
   /** Where attackers stand round a planted spike. */
@@ -29,6 +33,8 @@ export type MapLayout = {
   attackSpawn: Point[]
   /** Mid, where attackers gather before picking a site. */
   mid: Point[]
+  /** Points either side of mid, for attackers who hold back when no site is taken. */
+  flank: Point[]
   siteNames: string[]
   sites: Record<string, SiteLayout>
 }
@@ -50,17 +56,24 @@ export const mapLayouts: Record<string, MapLayout> = {
       { x: 58, y: 51.5 },
       { x: 66, y: 49.5 },
     ],
+    flank: [
+      { x: 69.27, y: 58.06 },
+      { x: 32.23, y: 36.74 },
+    ],
     siteNames: ['A', 'B'],
     sites: {
       A: {
         plant: { x: 12, y: 45 },
         entry: [
-          { x: 25.83, y: 53.05 },
-          { x: 27.83, y: 41.54 },
-          { x: 25.83, y: 46.55 },
-          { x: 29.32, y: 51.31 },
-          { x: 30.37, y: 43.38 },
+          { x: 27.63, y: 41.74 },
+          { x: 31.83, y: 46.65 },
+          { x: 25.83, y: 52.75 },
         ],
+        lanes: [
+          { x: 43.64, y: 35.04 },
+          { x: 37.04, y: 62.76 },
+        ],
+        lurk: [{ x: 17.02, y: 67.77 }],
         holds: [
           { x: 11.11, y: 50.95 },
           { x: 12.78, y: 39.05 },
@@ -84,12 +97,15 @@ export const mapLayouts: Record<string, MapLayout> = {
       B: {
         plant: { x: 87.09, y: 51.95 },
         entry: [
-          { x: 78.41, y: 43.41 },
-          { x: 77.62, y: 59.39 },
-          { x: 77.98, y: 51.75 },
-          { x: 72.17, y: 45.05 },
-          { x: 69.27, y: 55.06 },
+          { x: 77.48, y: 57.26 },
+          { x: 69.27, y: 51.05 },
+          { x: 76.28, y: 45.05 },
         ],
+        lanes: [
+          { x: 59.34, y: 64.48 },
+          { x: 60.74, y: 36.52 },
+        ],
+        lurk: [{ x: 83.11, y: 29.63 }],
         holds: [
           { x: 90.3, y: 46.01 },
           { x: 89.7, y: 57.99 },
@@ -128,17 +144,24 @@ export const mapLayouts: Record<string, MapLayout> = {
       { x: 58.31, y: 43.47 },
       { x: 66, y: 41.5 },
     ],
+    flank: [
+      { x: 75.07, y: 41.25 },
+      { x: 26.01, y: 42.83 },
+    ],
     siteNames: ['A', 'B'],
     sites: {
       A: {
         plant: { x: 27, y: 25 },
         entry: [
-          { x: 31.89, y: 38.57 },
-          { x: 41.39, y: 22.11 },
-          { x: 36.2, y: 30.42 },
-          { x: 38.58, y: 41.1 },
-          { x: 36.2, y: 30.42 },
+          { x: 36.2, y: 28.49 },
+          { x: 42.58, y: 41.1 },
+          { x: 33.83, y: 38.13 },
         ],
+        lanes: [
+          { x: 59.45, y: 31.57 },
+          { x: 42.8, y: 54.09 },
+        ],
+        lurk: [{ x: 20.36, y: 47.45 }],
         holds: [
           { x: 23.43, y: 29.83 },
           { x: 30.57, y: 20.17 },
@@ -162,12 +185,15 @@ export const mapLayouts: Record<string, MapLayout> = {
       B: {
         plant: { x: 72, y: 30 },
         entry: [
-          { x: 57.57, y: 30.56 },
-          { x: 65.3, y: 42.77 },
-          { x: 61.47, y: 35.75 },
-          { x: 57.27, y: 35.16 },
-          { x: 58.31, y: 43.47 },
+          { x: 62.58, y: 41.97 },
+          { x: 57.27, y: 38.13 },
+          { x: 57.27, y: 31.45 },
         ],
+        lanes: [
+          { x: 52.37, y: 56.66 },
+          { x: 36.2, y: 30.42 },
+        ],
+        lurk: [{ x: 54.44, y: 14.52 }],
         holds: [
           { x: 69.13, y: 24.73 },
           { x: 74.87, y: 35.27 },
@@ -206,17 +232,24 @@ export const mapLayouts: Record<string, MapLayout> = {
       { x: 58, y: 51.5 },
       { x: 66, y: 49.5 },
     ],
+    flank: [
+      { x: 73.54, y: 45.68 },
+      { x: 26.33, y: 53.95 },
+    ],
     siteNames: ['A', 'B'],
     sites: {
       A: {
         plant: { x: 75, y: 15 },
         entry: [
-          { x: 61.52, y: 20.11 },
-          { x: 74.65, y: 28.13 },
-          { x: 68.03, y: 24.76 },
-          { x: 61.28, y: 27.32 },
-          { x: 68.52, y: 32.03 },
+          { x: 71.75, y: 29.88 },
+          { x: 61.84, y: 31.2 },
+          { x: 62.12, y: 22.28 },
         ],
+        lanes: [
+          { x: 68.96, y: 47.55 },
+          { x: 44.29, y: 29.25 },
+        ],
+        lurk: [{ x: 52.37, y: 8.91 }],
         holds: [
           { x: 70.12, y: 11.51 },
           { x: 79.88, y: 18.49 },
@@ -240,12 +273,15 @@ export const mapLayouts: Record<string, MapLayout> = {
       B: {
         plant: { x: 15.04, y: 27.3 },
         entry: [
-          { x: 20.06, y: 39 },
-          { x: 29.41, y: 25.46 },
-          { x: 24.76, y: 31.97 },
-          { x: 27.3, y: 39 },
-          { x: 33.43, y: 33.43 },
+          { x: 27.86, y: 26.18 },
+          { x: 31.27, y: 36.62 },
+          { x: 22.84, y: 39 },
         ],
+        lanes: [
+          { x: 45.13, y: 28.41 },
+          { x: 31.27, y: 53.83 },
+        ],
+        lurk: [{ x: 8.72, y: 47.55 }],
         holds: [
           { x: 11.51, y: 29.88 },
           { x: 23.4, y: 24.51 },
@@ -284,17 +320,24 @@ export const mapLayouts: Record<string, MapLayout> = {
       { x: 58.31, y: 56.53 },
       { x: 66, y: 54.5 },
     ],
+    flank: [
+      { x: 73.86, y: 57.61 },
+      { x: 25.52, y: 52.37 },
+    ],
     siteNames: ['A', 'B', 'C'],
     sites: {
       A: {
         plant: { x: 37, y: 12 },
         entry: [
-          { x: 34.27, y: 25.82 },
-          { x: 48.13, y: 21.17 },
-          { x: 40.47, y: 23.49 },
-          { x: 38.38, y: 30.39 },
-          { x: 46.29, y: 28.04 },
+          { x: 46.79, y: 23.66 },
+          { x: 42.28, y: 31.16 },
+          { x: 35.31, y: 27.14 },
         ],
+        lanes: [
+          { x: 59.08, y: 36.66 },
+          { x: 32.28, y: 44.77 },
+        ],
+        lurk: [{ x: 21.51, y: 25.96 }],
         holds: [
           { x: 31.26, y: 13.74 },
           { x: 42.74, y: 10.26 },
@@ -318,12 +361,15 @@ export const mapLayouts: Record<string, MapLayout> = {
       B: {
         plant: { x: 39, y: 50 },
         entry: [
-          { x: 46.61, y: 62.25 },
-          { x: 53.23, y: 47.68 },
-          { x: 49.92, y: 54.97 },
-          { x: 53.73, y: 61.09 },
-          { x: 57.04, y: 53.81 },
+          { x: 54.23, y: 50.33 },
+          { x: 57.27, y: 58.9 },
+          { x: 49.26, y: 61.26 },
         ],
+        lanes: [
+          { x: 72.26, y: 47.63 },
+          { x: 60.53, y: 78.49 },
+        ],
+        lurk: [{ x: 37.18, y: 73.34 }],
         holds: [
           { x: 36.52, y: 55.46 },
           { x: 41.48, y: 44.54 },
@@ -347,12 +393,15 @@ export const mapLayouts: Record<string, MapLayout> = {
       C: {
         plant: { x: 79.23, y: 34.27 },
         entry: [
-          { x: 66.47, y: 31.16 },
-          { x: 77.47, y: 43.69 },
-          { x: 72.54, y: 37.39 },
-          { x: 65.35, y: 37.93 },
-          { x: 70.28, y: 44.23 },
+          { x: 74.66, y: 43.35 },
+          { x: 66.17, y: 42.14 },
+          { x: 67.21, y: 34.27 },
         ],
+        lanes: [
+          { x: 66.98, y: 59.5 },
+          { x: 49.74, y: 37.44 },
+        ],
+        lurk: [{ x: 60.98, y: 18.69 }],
         holds: [
           { x: 78.34, y: 34.27 },
           { x: 79.23, y: 34.72 },
@@ -391,17 +440,24 @@ export const mapLayouts: Record<string, MapLayout> = {
       { x: 58, y: 56.5 },
       { x: 66, y: 54.5 },
     ],
+    flank: [
+      { x: 70.22, y: 42.08 },
+      { x: 29.78, y: 67.92 },
+    ],
     siteNames: ['A', 'B'],
     sites: {
       A: {
         plant: { x: 54.6, y: 20.92 },
         entry: [
-          { x: 45.29, y: 32.67 },
-          { x: 60.09, y: 35.01 },
-          { x: 53.26, y: 35.16 },
-          { x: 48.35, y: 39.2 },
-          { x: 56.26, y: 40.4 },
+          { x: 58.84, y: 36.74 },
+          { x: 53.56, y: 41.84 },
+          { x: 46.97, y: 34.94 },
         ],
+        lanes: [
+          { x: 64.35, y: 53.76 },
+          { x: 33.83, y: 49.55 },
+        ],
+        lurk: [{ x: 36.2, y: 32.2 }],
         holds: [
           { x: 49.11, y: 20.92 },
           { x: 60.93, y: 22.9 },
@@ -425,12 +481,15 @@ export const mapLayouts: Record<string, MapLayout> = {
       B: {
         plant: { x: 21.66, y: 51.93 },
         entry: [
-          { x: 33.08, y: 61.23 },
-          { x: 34.78, y: 45.32 },
-          { x: 33.83, y: 53.26 },
-          { x: 39.47, y: 57.89 },
-          { x: 41.84, y: 50 },
+          { x: 36.5, y: 45.99 },
+          { x: 41.89, y: 54.13 },
+          { x: 35.28, y: 59.46 },
         ],
+        lanes: [
+          { x: 53.56, y: 41.25 },
+          { x: 50.34, y: 69.12 },
+        ],
+        lurk: [{ x: 27.61, y: 74.73 }],
         holds: [
           { x: 21.36, y: 57.97 },
           { x: 23.15, y: 45.99 },
@@ -469,17 +528,24 @@ export const mapLayouts: Record<string, MapLayout> = {
       { x: 53.37, y: 56.5 },
       { x: 69.4, y: 57.97 },
     ],
+    flank: [
+      { x: 73.99, y: 55.5 },
+      { x: 26.01, y: 54.5 },
+    ],
     siteNames: ['A', 'B', 'C'],
     sites: {
       A: {
         plant: { x: 15, y: 45 },
         entry: [
-          { x: 24.34, y: 55.99 },
-          { x: 29.42, y: 40.57 },
-          { x: 26.49, y: 47.61 },
-          { x: 30.99, y: 53.76 },
-          { x: 33.41, y: 46.1 },
+          { x: 30.11, y: 43.08 },
+          { x: 33.43, y: 49.07 },
+          { x: 26.81, y: 54.62 },
         ],
+        lanes: [
+          { x: 47.69, y: 39.78 },
+          { x: 43.3, y: 66.67 },
+        ],
+        lurk: [{ x: 22.39, y: 66.47 }],
         holds: [
           { x: 13.35, y: 50.77 },
           { x: 16.65, y: 39.23 },
@@ -503,12 +569,15 @@ export const mapLayouts: Record<string, MapLayout> = {
       B: {
         plant: { x: 48, y: 40 },
         entry: [
-          { x: 41.94, y: 52.98 },
-          { x: 57.48, y: 50.54 },
-          { x: 49.56, y: 53.08 },
-          { x: 46.41, y: 58.37 },
-          { x: 53.37, y: 57.28 },
+          { x: 53.37, y: 53.08 },
+          { x: 50.64, y: 59.82 },
+          { x: 43.9, y: 54.67 },
         ],
+        lanes: [
+          { x: 65.84, y: 67.89 },
+          { x: 38.09, y: 71.59 },
+        ],
+        lurk: [{ x: 27.25, y: 50.84 }],
         holds: [
           { x: 42.03, y: 41.15 },
           { x: 53.96, y: 38.91 },
@@ -532,12 +601,15 @@ export const mapLayouts: Record<string, MapLayout> = {
       C: {
         plant: { x: 88, y: 32 },
         entry: [
-          { x: 73.59, y: 31.37 },
-          { x: 81.92, y: 44.97 },
-          { x: 77.73, y: 38.21 },
-          { x: 71.26, y: 37.93 },
-          { x: 74.67, y: 44.74 },
+          { x: 77.13, y: 44.38 },
+          { x: 71.26, y: 42.33 },
+          { x: 72.92, y: 34.12 },
         ],
+        lanes: [
+          { x: 69.58, y: 59.51 },
+          { x: 55.09, y: 35.56 },
+        ],
+        lurk: [{ x: 69.76, y: 17.32 }],
         holds: [
           { x: 84.89, y: 26.87 },
           { x: 91.11, y: 37.13 },
@@ -576,17 +648,24 @@ export const mapLayouts: Record<string, MapLayout> = {
       { x: 58, y: 56.5 },
       { x: 67.36, y: 53.41 },
     ],
+    flank: [
+      { x: 73.77, y: 51.72 },
+      { x: 26.26, y: 59.5 },
+    ],
     siteNames: ['A', 'B'],
     sites: {
       A: {
         plant: { x: 13.95, y: 47.03 },
         entry: [
-          { x: 23.15, y: 53.12 },
-          { x: 27.81, y: 39.86 },
-          { x: 25.48, y: 47.51 },
-          { x: 30.05, y: 53.09 },
-          { x: 32.38, y: 45.43 },
+          { x: 29.14, y: 42.35 },
+          { x: 33.13, y: 49.84 },
+          { x: 25.67, y: 53.12 },
         ],
+        lanes: [
+          { x: 46.78, y: 39.38 },
+          { x: 38.6, y: 66.16 },
+        ],
+        lurk: [{ x: 15.28, y: 67.21 }],
         holds: [
           { x: 12.25, y: 49.74 },
           { x: 15.75, y: 38.26 },
@@ -610,12 +689,15 @@ export const mapLayouts: Record<string, MapLayout> = {
       B: {
         plant: { x: 82, y: 37 },
         entry: [
-          { x: 67.62, y: 35.91 },
-          { x: 75.46, y: 49.86 },
-          { x: 71.54, y: 42.88 },
-          { x: 67.36, y: 42.28 },
-          { x: 68.27, y: 49.31 },
+          { x: 72.74, y: 49.09 },
+          { x: 67.36, y: 46.74 },
+          { x: 67.36, y: 38.58 },
         ],
+        lanes: [
+          { x: 62.02, y: 63.2 },
+          { x: 48.99, y: 39.51 },
+        ],
+        lurk: [{ x: 64.24, y: 21.75 }],
         holds: [
           { x: 79.06, y: 31.77 },
           { x: 84.94, y: 42.23 },

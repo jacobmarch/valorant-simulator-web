@@ -2541,9 +2541,9 @@ table {
   align-items: start;
 }
 .replay-body .replay-grid {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
 }
-/* Round stage map: a schematic of the map with players marked where they stand. */
+/* Round map: the minimap with players marked on the points they stand at. */
 .round-map {
   display: grid;
   gap: 8px;
@@ -2640,51 +2640,6 @@ table {
     box-shadow: 0 0 0 12px rgb(242 184 75 / 0);
   }
 }
-.round-map figcaption {
-  display: grid;
-  gap: 6px;
-}
-.round-stages {
-  display: flex;
-  gap: 4px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.round-stages li {
-  flex: 1;
-  min-width: 0;
-}
-.round-stages button {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  padding: 5px 4px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--surface-2);
-  color: var(--text-3);
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.round-stages button small {
-  color: var(--text-4);
-  font-size: 10px;
-}
-.round-stages button.current {
-  border-color: var(--accent);
-  color: var(--text);
-}
-.round-map-note {
-  margin: 0;
-  color: var(--text-3);
-  font-size: 12px;
-  min-height: 1.4em;
-}
 .replay-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
@@ -2707,6 +2662,7 @@ table {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
   animation: fade-in 0.25s ease;
 }
 .replay-feed time {
@@ -2733,6 +2689,8 @@ table {
   margin-left: auto;
   font-size: 11px;
   color: var(--neg);
+  white-space: nowrap;
+  margin-left: auto;
 }
 .replay .replay-spike {
   color: var(--text-2);

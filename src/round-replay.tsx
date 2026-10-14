@@ -8,10 +8,10 @@ import {
   Play,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import type { GameState } from './game'
+import { assignedRole, type GameState } from './game'
 import { RoundMap } from './round-map'
 import { buyLabel, clock, type MapReplay, type RoundReplay, type TeamBuy } from './round-sim'
-import { roundFrame, roundStages, stageIndexAt } from './round-stages'
+import { pickLurker, roundFrame, roundStages } from './round-stages'
 import { TeamMark } from './ui'
 
 const endText: Record<RoundReplay['endReason'], string> = {
@@ -149,7 +149,6 @@ export function RoundReplayView({
   const stages = roundStages(round)
   const stageStarts = stages.map((stage) => stage.start)
   const atStage = stageStarts.includes(step)
-  const stage = stageIndexAt(stages, step)
   const nextStart = stageStarts.find((start) => start > step)
 
   useEffect(() => {
@@ -188,10 +187,6 @@ export function RoundReplayView({
       setStep(0)
     }
   }
-  const jumpToStage = (target: number) => {
-    setPlaying(false)
-    setStep(stages[target].start)
-  }
   const skipToEnd = () => goTo(replay.rounds.length - 1)
   const togglePlay = () => {
     if (finished) return
@@ -210,12 +205,18 @@ export function RoundReplayView({
   const story = roundStory(s, replay, index, over)
   const stripLength = stripRounds(replay, revealed)
   const aAttacking = round.attackerId === a.id
+  const attackingTeam = aAttacking ? a : b
+  // The lurker is picked from the attacking team's roles, so the same player lurks every time.
+  const lurker = pickLurker(attackingTeam.lineup, (id) =>
+    assignedRole(attackingTeam, s.players[id]),
+  )
   const frame = roundFrame(
     replay.map,
     round,
     { a: a.lineup, b: b.lineup },
     aAttacking ? 'a' : 'b',
     step,
+    lurker,
   )
   const teamClass = (id: string) => (id === a.id ? 'side-a' : 'side-b')
   const sideOf = (playerId: string) => (a.lineup.includes(playerId) ? 'side-a' : 'side-b')
@@ -271,14 +272,7 @@ export function RoundReplayView({
       <p className="replay-story">{story ?? ' '}</p>
 
       <div className="replay-body">
-        <RoundMap
-          map={replay.map}
-          frame={frame}
-          stages={stages}
-          current={stage}
-          name={name}
-          onStage={jumpToStage}
-        />
+        <RoundMap map={replay.map} frame={frame} name={name} />
         <div className="replay-grid">
           <ol className="replay-feed">
             {shownEvents.map((event, at) => (
@@ -353,14 +347,9 @@ export function RoundReplayView({
           {playing ? <Pause size={15} /> : <Play size={15} />}
           {playing ? 'Pause' : 'Play'}
         </button>
-        <button
-          className="secondary"
-          onClick={nextStage}
-          disabled={finished}
-          aria-label={over ? 'Next round' : 'Next stage'}
-        >
+        <button className="secondary" onClick={nextStage} disabled={finished}>
           <ChevronRight size={15} />
-          {over ? 'Next round' : 'Next stage'}
+          Continue Round
         </button>
         <button
           className="secondary"

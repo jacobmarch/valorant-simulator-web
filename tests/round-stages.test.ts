@@ -3,7 +3,7 @@ import { mapLayouts } from '../src/map-layouts'
 import { mapImage } from '../src/map-images'
 import { simulateSeries } from '../src/game'
 import { type MapReplay, type SeriesReplay } from '../src/round-sim'
-import { roundFrame, roundStages, stageIndexAt } from '../src/round-stages'
+import { pickLurker, roundFrame, roundStages, stageIndexAt } from '../src/round-stages'
 import { createKickoffGame } from './helpers'
 
 const memory = new Map<string, string>()
@@ -205,9 +205,18 @@ describe('round stages', () => {
       const named = [
         ...layout.attackSpawn,
         ...layout.mid,
+        ...layout.flank,
         ...layout.siteNames.flatMap((name) => {
           const site = layout.sites[name]
-          return [site.plant, ...site.entry, ...site.holds, ...site.post, ...site.retake]
+          return [
+            site.plant,
+            ...site.entry,
+            ...site.lanes,
+            ...site.lurk,
+            ...site.holds,
+            ...site.post,
+            ...site.retake,
+          ]
         }),
       ]
       for (const round of map.rounds) {
@@ -244,10 +253,64 @@ describe('round stages', () => {
         const contact = roundFrame(map.map, round, sides, attackerSide, plantAt)
         for (const mark of contact.marks) {
           if (!mark.attacking || !mark.alive) continue
-          expect(site.entry.some((point) => point.x === mark.x && point.y === mark.y)).toBe(true)
+          const onSite = [...site.entry, ...site.lanes]
+          expect(onSite.some((point) => point.x === mark.x && point.y === mark.y)).toBe(true)
         }
       }
     }
     expect(checked).toBeGreaterThan(0)
+  })
+
+  test('attackers spread out in contact, with a lurker apart from the group', () => {
+    let lurks = 0
+    for (const { map, sides } of allMaps()) {
+      const layout = mapLayouts[map.map]
+      for (const round of map.rounds) {
+        const attackerSide = round.attackerId === map.aId ? 'a' : 'b'
+        const attackers = sides[attackerSide]
+        const lurker = pickLurker(attackers, () => 'Duelist')
+        expect(lurker).toBe(attackers[attackers.length - 1])
+        const plant = round.events.find((event) => event.kind === 'plant')
+        const site = plant?.kind === 'plant' ? layout.sites[plant.site] : undefined
+        // Contact comes before the plant, so read the frame just before it.
+        const plantAt = plant?.kind === 'plant' ? round.events.indexOf(plant) : -1
+        if (plantAt === 0) continue
+        const frame = roundFrame(
+          map.map,
+          round,
+          sides,
+          attackerSide,
+          plantAt === -1 ? 1 : plantAt,
+          lurker,
+        )
+        const spots = new Set(
+          frame.marks
+            .filter((mark) => mark.attacking && mark.alive)
+            .map((mark) => `${mark.x},${mark.y}`),
+        )
+        // Every living attacker stands on a point of their own.
+        const living = frame.marks.filter((mark) => mark.attacking && mark.alive).length
+        expect(spots.size).toBe(living)
+        const lurking = frame.marks.find((mark) => mark.id === lurker)
+        if (site && lurking?.alive && lurking.attacking) {
+          lurks++
+          expect(site.lurk.some((point) => point.x === lurking.x && point.y === lurking.y)).toBe(
+            true,
+          )
+        }
+      }
+    }
+    expect(lurks).toBeGreaterThan(0)
+  })
+
+  test('a Sentinel or Controller is picked to lurk over other roles', () => {
+    const roles: Record<string, 'Duelist' | 'Sentinel' | 'Controller'> = {
+      a: 'Duelist',
+      b: 'Controller',
+      c: 'Sentinel',
+    }
+    expect(pickLurker(['a', 'b', 'c'], (id) => roles[id])).toBe('b')
+    expect(pickLurker(['a', 'c'], (id) => roles[id])).toBe('c')
+    expect(pickLurker(['a'], () => 'Duelist')).toBe('a')
   })
 })

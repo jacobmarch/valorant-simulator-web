@@ -1,6 +1,6 @@
 import { X } from 'lucide-react'
 import { mapImage } from './map-images'
-import type { Mark, RoundFrame, Stage } from './round-stages'
+import type { Mark, RoundFrame } from './round-stages'
 
 const spikeText = {
   planted: 'Spike planted',
@@ -9,26 +9,19 @@ const spikeText = {
 }
 
 /**
- * The map with every player marked where they stand at the current step. Dots glide between
- * stages because their positions are CSS transitions, not re-rendered art.
+ * The map with every player marked on the point they stand at for the current step. Dots glide
+ * between points because their positions are CSS transitions.
  */
 export function RoundMap({
   map,
   frame,
-  stages,
-  current,
   name,
-  onStage,
 }: {
   map: string
   frame: RoundFrame
-  stages: Stage[]
-  current: number
   name: (id: string) => string
-  onStage: (index: number) => void
 }) {
   const image = mapImage(map)
-  const stage = stages[current]
   return (
     <figure className="round-map">
       <div className="round-map-board">
@@ -57,33 +50,6 @@ export function RoundMap({
           </span>
         ))}
       </div>
-      <figcaption>
-        <ol className="round-stages" aria-label="Stages of this round">
-          {stages.map((item, index) => (
-            <li key={item.kind}>
-              <button
-                type="button"
-                className={index === current ? 'current' : ''}
-                aria-current={index === current ? 'step' : undefined}
-                onClick={() => onStage(index)}
-              >
-                <small>{index + 1}</small>
-                {item.label}
-              </button>
-            </li>
-          ))}
-        </ol>
-        <p className="round-map-note">
-          {stage.kind === 'setup' && 'Attackers spawn. Defenders are in position.'}
-          {stage.kind === 'contact' && 'Attackers push in. Fights decide the round.'}
-          {stage.kind === 'post-plant' &&
-            (frame.spike?.state === 'detonated'
-              ? 'The spike goes off.'
-              : frame.spike?.state === 'defused'
-                ? 'Defenders defuse in time.'
-                : 'Spike is down. Defenders come in to retake.')}
-        </p>
-      </figcaption>
     </figure>
   )
 }
