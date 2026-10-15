@@ -95,9 +95,16 @@ The first version of the rework put each beat's players on fixed lists of points
 
 **Players keep their distance.** A player never walks to a point within 12 units of an enemy or 7 of a teammate, except the two players who are about to fight. So a team that walks up to an enemy stops short, and nobody stands beside an enemy for a whole beat without a fight.
 
-**Lanes are blocked by enemies.** A walk is refused if it would pass within 9 units of a living enemy, so nobody walks through a lane an enemy is standing in, and a defender cannot appear behind attackers who hold both ends of a main. Fighters about to meet are the only exception. The map has no wall data, so this nearness check stands in for line of sight.
+**The map is data.** Each minimap is turned into a 100 x 100 grid of floor and wall (`src/map-grids.ts`), generated from the images by `scripts/gen-map-grids.py`. A cell is floor when 30% of its pixels are not white, and a closing of one cell seals the thin outlines drawn inside the floor. `src/map-nav.ts` answers three questions from the grid, always between named points, and caches every answer:
+- `routeLength`: the walking distance between two points, by Dijkstra over the grid, or infinity if there is no way. Players cannot cross a wall, so a point across a wall is as far as the way round.
+- `routePassesNear`: whether the way from one point to another passes near a third point.
+- `sees`: whether a straight line between two points crosses only floor.
 
-**A plant needs the site cleared.** At the post-plant beat any defender within 28 units of the spike is pushed off the site, by the nearest way out that does not cross an enemy. The attack never plants with a defender beside the spike.
+Everything in the round view now uses these instead of straight lines. A walk's limit is in route distance, goals are handed out by least walking, and the goal a player heads for is the one closest by route. Two players are only "side by side" if they can see each other, and fighters must see each other, so there are no fights through a wall. The defence only reacts to attackers a defender can see. If the grid changes (a new minimap), run the script again.
+
+**Lanes are blocked by enemies.** A walk is refused if its route would pass within 9 units of a living enemy, so nobody walks through a lane an enemy is standing in, and a defender cannot appear behind attackers who hold both ends of a main. Fighters about to meet are the only exception.
+
+**A plant needs the site cleared.** At the post-plant beat any defender within 28 units of the spike, or within 45 with a line of sight to it, is pushed off the site, by the nearest way out that does not cross an enemy. The attack never plants with a defender beside the spike.
 
 **Players move first, then die.** Every kill has a fight step before it (`FIGHT_AT`, 0.9 into the step). On it the killer and victim are moved to the pair of points within `FIGHT_RANGE` (30 units) of each other that takes the least walking. If they are already in range they do not move. On the next step the victim is marked dead where they stand, so the death icon never appears before a move. Before the hit the fight can be anywhere on the map. From the hit on it is on the hit site, or on the mid and flanks leading to it.
 
@@ -116,6 +123,7 @@ Everything above moves players only between the named points in `src/map-layouts
 - After the rotation beat, more defenders are on the site than before.
 - Every kill is between opposing sides. The fighters meet within range and both are alive on the fight step, and the victim dies where they stand. After the hit the fight is on the site, mid or the flanks.
 - On three-site maps every site has at least one defender at setup. The spike goes down with the site cleared. A walk does not pass through an enemy in the lane.
+- The map's data: every named point is floor and connected to every other by a route, routes are never shorter than the straight line, walls block sight, every walk follows a route, and at least 97% of fights are in sight.
 - Nobody jumps: between beats a player only walks one step to a nearby point. Opposing players are never side by side unless they are about to fight.
 - Every attack plan and every opening happens, a fake shows a pair on the other site, and the defence rotates onto the site.
 - Rounds are not copies of each other: over the test fixture, nearly every round walks its own route, no one plan shape makes up more than 5% of rounds, and the same round number gets different plans in different matches.
@@ -135,7 +143,9 @@ These are not built yet. They are ordered by what they unlock.
 4. **Utility.** Smokes, flashes and molly can change where players stand. Each one needs its own point and timing, and the sim has to record it first.
 5. **Retake timing.** The retake beat comes straight after the plant, with a regroup first. A real retake waits on the clock. Beats could then be placed by event time, not only by order.
 6. **Trades and assists.** A kill that trades a recent kill should be placed next to it, and assists should be placed beside the killer. The events already carry both.
-7. **Walking routes.** Players now walk from named point to named point. A route that follows the map's corridors, rather than the straight-line closest point, would make the path read as the map's own.
+7. **Smaller grid cells.** The grid is 100 x 100, so a wall thinner than about two units can vanish. A finer grid (or tracing the walls) would be more exact, at the cost of a larger file.
+
+**Walking routes.** Players now walk from named point to named point. A route that follows the map's corridors, rather than the straight-line closest point, would make the path read as the map's own.
 8. **Live match simulation.** When the sim plays live matches, the same decision points should be driven by the sim's own state (money, alive count, site control) rather than the formations. The layer should then read the sim's decisions directly, not infer them.
 
 ## Adding a plan or a formation

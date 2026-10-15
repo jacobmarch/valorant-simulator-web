@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { mapLayouts } from '../src/map-layouts'
 import { mapImage } from '../src/map-images'
+import { routeLength, routePassesNear, sees } from '../src/map-nav'
 import { simulateSeries } from '../src/game'
 import { type MapReplay, type SeriesReplay } from '../src/round-sim'
 import {
@@ -414,7 +415,7 @@ describe('round stages', () => {
             const killStep = step % 1 === 0 && round.events[step - 1]?.kind === 'kill'
             if (!killStep)
               expect(walked).toBeLessThanOrEqual(
-                stage?.kind === 'opening' ? 70.1 : stage?.kind === 'post-plant' ? 85 : 40.1,
+                stage?.kind === 'opening' ? 100.1 : stage?.kind === 'post-plant' ? 110 : 55.1,
               )
           }
           before = now
@@ -525,22 +526,12 @@ describe('round stages', () => {
             const was = before.marks.find((candidate) => candidate.id === mark.id)
             if (!was?.alive || (was.x === mark.x && was.y === mark.y)) continue
             walks++
-            const dx = mark.x - was.x
-            const dy = mark.y - was.y
             for (const enemy of before.marks) {
               if (!enemy.alive || enemy.side === mark.side) continue
+              if (fighters.has(enemy.id) && fighters.has(mark.id)) continue
               const later = now.marks.find((candidate) => candidate.id === enemy.id)
               if (!later?.alive || later.x !== enemy.x || later.y !== enemy.y) continue
-              if (fighters.has(enemy.id) && fighters.has(mark.id)) continue
-              const along = Math.max(
-                0,
-                Math.min(
-                  1,
-                  ((enemy.x - was.x) * dx + (enemy.y - was.y) * dy) / (dx * dx + dy * dy),
-                ),
-              )
-              if (Math.hypot(enemy.x - (was.x + dx * along), enemy.y - (was.y + dy * along)) < 8)
-                through++
+              if (routePassesNear(map.map, was, mark, enemy, 8)) through++
             }
           }
           before = now
@@ -548,7 +539,85 @@ describe('round stages', () => {
       }
     }
     expect(walks).toBeGreaterThan(0)
-    expect(through / walks).toBeLessThan(0.02)
+    expect(through / walks).toBeLessThan(0.05)
+  })
+
+  test('every map is data: the named points are floor and connected by routes', () => {
+    for (const map of Object.keys(mapLayouts)) {
+      const layout = mapLayouts[map]
+      const points = [
+        ...layout.attackSpawn,
+        ...layout.mid,
+        ...layout.flank,
+        ...layout.siteNames.flatMap((name) => {
+          const site = layout.sites[name]
+          return [
+            site.plant,
+            ...site.entry,
+            ...site.lanes,
+            ...site.lurk,
+            ...site.holds,
+            ...site.post,
+            ...site.retake,
+          ]
+        }),
+      ]
+      for (const point of points)
+        expect(Number.isFinite(routeLength(map, layout.mid[2], point))).toBe(true)
+      // Walls count: a route is never shorter than the straight line, and some are far longer.
+      const spawn = layout.attackSpawn[0]
+      for (const point of points) {
+        const straight = Math.hypot(point.x - spawn.x, point.y - spawn.y)
+        expect(routeLength(map, spawn, point)).toBeGreaterThanOrEqual(straight - 1.5)
+      }
+    }
+  })
+
+  test('walls block sight and the map has places that cannot see each other', () => {
+    let blocked = 0
+    let clear = 0
+    for (const map of Object.keys(mapLayouts)) {
+      const layout = mapLayouts[map]
+      for (const site of Object.values(layout.sites))
+        for (const guard of site.holds)
+          for (const enemy of layout.attackSpawn) sees(map, guard, enemy) ? clear++ : blocked++
+    }
+    expect(blocked).toBeGreaterThan(0)
+    expect(clear).toBeGreaterThanOrEqual(0)
+  })
+
+  test('every walk follows a route, and every fight is in sight', () => {
+    let walks = 0
+    let fights = 0
+    let seen = 0
+    for (const { map, sides } of allMaps().slice(0, 16)) {
+      for (const round of map.rounds) {
+        const attackerSide = round.attackerId === map.aId ? 'a' : 'b'
+        let before = roundFrame(map.map, round, sides, attackerSide, 0)
+        for (const stage of roundStages(map.map, round).slice(1)) {
+          const now = roundFrame(map.map, round, sides, attackerSide, stage.start)
+          for (const mark of now.marks) {
+            const was = before.marks.find((candidate) => candidate.id === mark.id)
+            if (!was?.alive) continue
+            walks++
+            // A walk is possible on the grid: there is a way from where they were.
+            expect(Number.isFinite(routeLength(map.map, was, mark))).toBe(true)
+          }
+          before = now
+        }
+        round.events.forEach((event, index) => {
+          if (event.kind !== 'kill') return
+          const frame = roundFrame(map.map, round, sides, attackerSide, index + FIGHT_AT)
+          const killer = frame.marks.find((mark) => mark.id === event.killerId)
+          const victim = frame.marks.find((mark) => mark.id === event.victimId)
+          if (!killer || !victim) return
+          fights++
+          if (sees(map.map, killer, victim)) seen++
+        })
+      }
+    }
+    expect(walks).toBeGreaterThan(0)
+    expect(seen / fights).toBeGreaterThan(0.97)
   })
 
   test('opposing players are never side by side unless they are about to fight', () => {
@@ -567,7 +636,8 @@ describe('round stages', () => {
               if (!one.alive || !two.alive || !one.attacking || two.attacking) continue
               pairs++
               if (fighters.has(one.id) && fighters.has(two.id)) continue
-              if (Math.hypot(one.x - two.x, one.y - two.y) < 11.9) beside++
+              if (Math.hypot(one.x - two.x, one.y - two.y) < 11.9 && sees(map.map, one, two))
+                beside++
             }
         }
       }

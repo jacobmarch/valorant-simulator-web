@@ -60,6 +60,8 @@ export type RoundPlan = {
   flank: 0 | 1
   /** The lurker takes the site's lurk spot during map control, rather than at the hit. */
   lurkEarly: boolean
+  /** The defence's formation runs right to left instead of left to right. */
+  flip: boolean
   /** How many kills fall in the map-control phase, before the hit. */
   hitIndex: number
   /** Who takes which slot: shuffled so the same players are not always on the same spot. */

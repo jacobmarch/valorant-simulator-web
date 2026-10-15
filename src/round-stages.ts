@@ -9,6 +9,7 @@
 // draws random numbers: the plan is seeded from the round, and the kills, deaths and plant come
 // from the events the sim already wrote.
 import { layoutFor, type MapLayout, type Point, type SiteLayout } from './map-layouts'
+import { routeLength, routePassesNear, sees } from './map-nav'
 import {
   ATTACK_FORMATIONS,
   ATTACK_OPENINGS,
@@ -174,17 +175,19 @@ const SEE_RANGE = 40
 const ENEMY_GAP = 12
 /** Closest two teammates can stand, so two dots are never drawn on top of each other. */
 const TEAM_GAP = 7
-/** The most a player walks in one beat, from named point to named point. */
-const MOVE_LIMIT = 40
+/** The most a player walks in one beat, by the map's own routes, from named point to named point. */
+const MOVE_LIMIT = 55
 /** How close a walk may pass an enemy. Nobody walks through a lane an enemy is standing in. */
 const PASS_GAP = 9
 /** How far from the spike a defender can be when it goes down: a plant needs the site cleared. */
 const PLANT_CLEAR = 28
+/** How far a defender can see the spike from, and so has to be off the site when it goes down. */
+const PLANT_SIGHT = 45
 /** The first beat leaves the spawn, which is further from everything. */
-const OPENING_LIMIT = 70
+const OPENING_LIMIT = 100
 
 /** Every point of a map, as the places a player can pass through or stand on. */
-function walkable(layout: MapLayout): Point[] {
+function roadsOf(layout: MapLayout): Point[] {
   return [
     ...layout.mid,
     ...layout.flank,
@@ -206,6 +209,7 @@ function walkable(layout: MapLayout): Point[] {
 function assignGoals<T extends { x: number; y: number }>(
   players: T[],
   goals: Point[],
+  walk: (from: Point, to: Point) => number,
 ): Map<T, Point> {
   const count = players.length
   const targets = Array.from({ length: count }, (_, at) => goals[at % goals.length])
@@ -223,7 +227,7 @@ function assignGoals<T extends { x: number; y: number }>(
       if (used.has(goal)) continue
       used.add(goal)
       order.push(goal)
-      search(at + 1, cost + distance(players[at], targets[goal]))
+      search(at + 1, cost + walk(players[at], targets[goal]))
       order.pop()
       used.delete(goal)
     }
@@ -291,7 +295,7 @@ export function roundFrame(
     }
   }
   const alive = (group: Roster[]) => group.filter((player) => pos[player.id]?.alive !== false)
-  const roads = walkable(layout)
+  const roads = roadsOf(layout)
 
   // The two players whose fight is next. They may stand beside each other; nobody else may.
   let fighting = new Set<string>()
@@ -302,35 +306,35 @@ export function roundFrame(
       if (!mark.alive || mark.id === who.id) return false
       const apart = distance(mark, spot)
       if (mark.side === who.side) return apart < TEAM_GAP
-      return apart < ENEMY_GAP && !(fighting.has(mark.id) && fighting.has(who.id))
+      // An enemy beside you only matters if you can see each other: a wall between is not beside.
+      return (
+        apart < ENEMY_GAP &&
+        !(fighting.has(mark.id) && fighting.has(who.id)) &&
+        sees(map, mark, spot)
+      )
     })
-  /** Whether walking from one point to another goes past an enemy, who blocks the lane. */
+  /** Whether the way from one point to another goes past an enemy, who blocks the lane. */
   const blocked = (from: Point, to: Point, who: Roster) =>
-    Object.values(pos).some((mark) => {
-      if (!mark.alive || mark.side === who.side) return false
-      if (fighting.has(mark.id) && fighting.has(who.id)) return false
-      const dx = to.x - from.x
-      const dy = to.y - from.y
-      const length = dx * dx + dy * dy
-      const along =
-        length === 0
-          ? 0
-          : Math.max(0, Math.min(1, ((mark.x - from.x) * dx + (mark.y - from.y) * dy) / length))
-      return Math.hypot(mark.x - (from.x + dx * along), mark.y - (from.y + dy * along)) < PASS_GAP
-    })
+    Object.values(pos).some(
+      (mark) =>
+        mark.alive &&
+        mark.side !== who.side &&
+        !(fighting.has(mark.id) && fighting.has(who.id)) &&
+        routePassesNear(map, from, to, mark, PASS_GAP),
+    )
+  const walk = (from: Point, to: Point) => routeLength(map, from, to)
   /** One walk toward a goal: the open walkable point within `limit` that gets closest to it. */
   const advance = (player: Roster, goal: Point, limit = MOVE_LIMIT) => {
     const here = pos[player.id]
     let best: Point | undefined
-    let bestGap = distance(here, goal)
+    let bestGap = walk(here, goal)
     for (const road of [goal, ...roads]) {
-      if (distance(road, here) > limit || !free(road, player) || blocked(here, road, player))
-        continue
-      const gap = distance(road, goal)
-      if (gap < bestGap - 0.01) {
-        best = road
-        bestGap = gap
-      }
+      // The cheap checks first: only a point that gets closer is worth the lane and spacing checks.
+      const gap = walk(road, goal)
+      if (gap >= bestGap - 0.01 || walk(here, road) > limit) continue
+      if (!free(road, player) || blocked(here, road, player)) continue
+      best = road
+      bestGap = gap
     }
     if (best) place(player, best)
   }
@@ -340,11 +344,10 @@ export function roundFrame(
     const targets = assignGoals(
       group.map((player) => ({ player, x: pos[player.id].x, y: pos[player.id].y })),
       goals,
+      walk,
     )
     // Players nearest their goal go first, so a player already in place keeps their spot.
-    const order = [...targets.entries()].sort(
-      ([a, ga], [b, gb]) => distance(a, ga) - distance(b, gb),
-    )
+    const order = [...targets.entries()].sort(([a, ga], [b, gb]) => walk(a, ga) - walk(b, gb))
     for (const [{ player }, goal] of order) advance(player, goal, limit)
   }
   const gather = (group: Roster[], goals: Point[], limit?: number) =>
@@ -382,8 +385,15 @@ export function roundFrame(
     let most = 0
     for (const name of layout.siteNames) {
       const target = layout.sites[name]
+      // Only attackers a defender can see count, so a defence never reacts to what it cannot see.
       const seen = alive(attackers).filter(
-        (player) => distance(pos[player.id], target.plant) < SEE_RANGE,
+        (player) =>
+          distance(pos[player.id], target.plant) < SEE_RANGE &&
+          alive(defenders).some(
+            (guard) =>
+              distance(pos[guard.id], pos[player.id]) < 70 &&
+              sees(map, pos[guard.id], pos[player.id]),
+          ),
       ).length
       if (seen > most) {
         best = target
@@ -435,15 +445,17 @@ export function roundFrame(
         plan.retake === 'tight'
           ? [layout.mid[1], layout.mid[2]]
           : [other.holds[0], layout.mid[0], layout.mid[3], other.holds[1], layout.mid[4]]
-      const near = alive(defenders).filter(
-        (player) => distance(pos[player.id], site.plant) < PLANT_CLEAR,
-      )
+      // Near means close, or in sight of the spike from not far off.
+      const exposed = (at: Point) =>
+        distance(at, site.plant) < PLANT_CLEAR ||
+        (distance(at, site.plant) < PLANT_SIGHT && sees(map, at, site.plant))
+      const near = alive(defenders).filter((player) => exposed(pos[player.id]))
       for (const player of near) {
         const here = pos[player.id]
         // Off the site by the nearest way out that does not cross an enemy, or any way out.
         const exits = roads
-          .filter((road) => distance(road, site.plant) >= PLANT_CLEAR && free(road, player))
-          .sort((a, b) => distance(a, here) - distance(b, here))
+          .filter((road) => !exposed(road) && free(road, player))
+          .sort((a, b) => walk(here, a) - walk(here, b))
         const out = exits.find((road) => !blocked(here, road, player)) ?? exits[0]
         if (out) place(player, out)
       }
@@ -484,26 +496,35 @@ export function roundFrame(
     if (
       standsOn(killer, ground) &&
       standsOn(victim, ground) &&
-      distance(killer, victim) <= FIGHT_RANGE
+      distance(killer, victim) <= FIGHT_RANGE &&
+      sees(map, killer, victim)
     )
       return
     const who = (id: string) => roster.find((player) => player.id === id) as Roster
     const [killerWho, victimWho] = [who(killerId), who(victimId)]
     let best: { a: Point; b: Point } | undefined
     let bestCost = Number.POSITIVE_INFINITY
-    // Prefer a meeting that does not take either fighter through an enemy's lane.
-    for (const clear of [true, false]) {
+    // The fighters have to see each other, so a fight is never through a wall. Prefer a meeting
+    // that does not take either fighter through an enemy's lane, then one within range, then one
+    // that is further apart but still in sight.
+    for (const [clear, range, sight] of [
+      [true, FIGHT_RANGE, true],
+      [false, FIGHT_RANGE, true],
+      [false, FIGHT_RANGE * 2, true],
+      [false, FIGHT_RANGE * 2, false],
+    ] as const) {
       for (const a of ground) {
         if (!free(a, killerWho) || (clear && blocked(killer, a, killerWho))) continue
+        const toA = walk(killer, a)
+        if (!Number.isFinite(toA)) continue
         for (const b of ground) {
-          if (distance(a, b) > FIGHT_RANGE || (a.x === b.x && a.y === b.y) || !free(b, victimWho))
+          if (distance(a, b) > range || (a.x === b.x && a.y === b.y) || (sight && !sees(map, a, b)))
             continue
-          if (clear && blocked(victim, b, victimWho)) continue
-          const cost = distance(killer, a) + distance(victim, b)
-          if (cost < bestCost) {
-            best = { a, b }
-            bestCost = cost
-          }
+          const toB = walk(victim, b)
+          if (!Number.isFinite(toB) || toA + toB >= bestCost) continue
+          if (!free(b, victimWho) || (clear && blocked(victim, b, victimWho))) continue
+          best = { a, b }
+          bestCost = toA + toB
         }
       }
       if (best) break
