@@ -3,11 +3,11 @@
 //
 // Each map's minimap is turned so its sites sit above the mid and the attack spawn sits at the
 // bottom. The highlighted zones on the source images are the sites, and each one is a site point.
-// Site letters follow left-to-right order after the turn, which is a guess for the images without
-// labels, so check them against the game. Haven's letters were set by hand, so B is the middle site
-// with A and C on the outside, as on Lotus. Every point was placed on the turned image and snapped to
-// the nearest floor pixel, so none sits on a wall or in a void. To move a point, edit it here.
-//
+// Site letters follow the defenders' view. Defenders face the attack spawn at the bottom, so A is
+// the right-most site on screen, with the letters running right to left. Haven and Lotus have a C,
+// which is the left-most site, with B in the middle. These letters are read from the layout, not checked
+// against the game. Every point was placed on the turned image and snapped to the nearest floor pixel,
+// so none sits on a wall or in a void. To move a point, edit it here.
 // Attackers spread out across these points rather than moving as one group: some take the site's
 // entry, some take its lanes, and a lurker (a Sentinel or Controller, when the team has one) takes
 // the lurk spot. `flank` points are where attackers wait on mid when no site has been taken.
@@ -64,7 +64,7 @@ export const mapLayouts: Record<string, MapLayout> = {
     ],
     siteNames: ['A', 'B'],
     sites: {
-      A: {
+      B: {
         plant: { x: 9, y: 36.4 },
         entry: [
           { x: 23.52, y: 35.84 },
@@ -96,7 +96,7 @@ export const mapLayouts: Record<string, MapLayout> = {
           { x: 17.54, y: 39.23 },
         ],
       },
-      B: {
+      A: {
         plant: { x: 90.3, y: 41.4 },
         entry: [
           { x: 77.86, y: 50.19 },
@@ -152,7 +152,7 @@ export const mapLayouts: Record<string, MapLayout> = {
     ],
     siteNames: ['A', 'B'],
     sites: {
-      A: {
+      B: {
         plant: { x: 29, y: 26.9 },
         entry: [
           { x: 36.2, y: 30.42 },
@@ -184,7 +184,7 @@ export const mapLayouts: Record<string, MapLayout> = {
           { x: 33.83, y: 33.53 },
         ],
       },
-      B: {
+      A: {
         plant: { x: 72.4, y: 32.2 },
         entry: [
           { x: 64.09, y: 45.55 },
@@ -240,7 +240,7 @@ export const mapLayouts: Record<string, MapLayout> = {
     ],
     siteNames: ['A', 'B'],
     sites: {
-      A: {
+      B: {
         plant: { x: 14.48, y: 28.13 },
         entry: [
           { x: 29.69, y: 30.78 },
@@ -272,7 +272,7 @@ export const mapLayouts: Record<string, MapLayout> = {
           { x: 22.31, y: 33.34 },
         ],
       },
-      B: {
+      A: {
         plant: { x: 88.3, y: 45.4 },
         entry: [
           { x: 75.12, y: 53.03 },
@@ -328,7 +328,7 @@ export const mapLayouts: Record<string, MapLayout> = {
     ],
     siteNames: ['A', 'B', 'C'],
     sites: {
-      A: {
+      C: {
         plant: { x: 16.3, y: 35.5 },
         entry: [
           { x: 31.53, y: 35.52 },
@@ -392,7 +392,7 @@ export const mapLayouts: Record<string, MapLayout> = {
           { x: 50.08, y: 48.29 },
         ],
       },
-      C: {
+      A: {
         plant: { x: 86.5, y: 37.4 },
         entry: [
           { x: 75.22, y: 47.64 },
@@ -448,7 +448,7 @@ export const mapLayouts: Record<string, MapLayout> = {
     ],
     siteNames: ['A', 'B'],
     sites: {
-      A: {
+      B: {
         plant: { x: 21.4, y: 38.8 },
         entry: [
           { x: 36.65, y: 37.09 },
@@ -480,7 +480,7 @@ export const mapLayouts: Record<string, MapLayout> = {
           { x: 29.78, y: 42.08 },
         ],
       },
-      B: {
+      A: {
         plant: { x: 81.2, y: 27.2 },
         entry: [
           { x: 74.33, y: 40.36 },
@@ -536,7 +536,7 @@ export const mapLayouts: Record<string, MapLayout> = {
     ],
     siteNames: ['A', 'B', 'C'],
     sites: {
-      A: {
+      C: {
         plant: { x: 14.9, y: 42.6 },
         entry: [
           { x: 29.84, y: 39.62 },
@@ -600,7 +600,7 @@ export const mapLayouts: Record<string, MapLayout> = {
           { x: 50.44, y: 50.54 },
         ],
       },
-      C: {
+      A: {
         plant: { x: 86.1, y: 31.8 },
         entry: [
           { x: 76.3, y: 43.46 },
@@ -656,7 +656,7 @@ export const mapLayouts: Record<string, MapLayout> = {
     ],
     siteNames: ['A', 'B'],
     sites: {
-      A: {
+      B: {
         plant: { x: 13.95, y: 40.5 },
         entry: [
           { x: 28.04, y: 39.91 },
@@ -688,7 +688,7 @@ export const mapLayouts: Record<string, MapLayout> = {
           { x: 22.84, y: 44.87 },
         ],
       },
-      B: {
+      A: {
         plant: { x: 82.2, y: 37.3 },
         entry: [
           { x: 71.38, y: 48.02 },
