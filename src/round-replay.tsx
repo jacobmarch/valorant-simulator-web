@@ -22,7 +22,7 @@ const endText: Record<RoundReplay['endReason'], string> = {
 const speeds = [1, 2, 4]
 const EVENT_MS = 900
 /** How long a stage holds on screen before the next one starts, when the round is live. */
-const STAGE_MS = 2200
+const STAGE_MS = 1700
 const ROUND_PAUSE_MS = 1600
 
 function credits(buy: TeamBuy) {
@@ -146,7 +146,7 @@ export function RoundReplayView({
   const over = step >= steps
   const lastRound = index === replay.rounds.length - 1
   const finished = lastRound && over
-  const stages = roundStages(round)
+  const stages = roundStages(replay.map, round)
   const stageStarts = stages.map((stage) => stage.start)
   const atStage = stageStarts.includes(step)
   const nextStart = stageStarts.find((start) => start > step)
@@ -162,7 +162,7 @@ export function RoundReplayView({
         if (over) {
           setIndex((value) => value + 1)
           setStep(0)
-        } else setStep((value) => stepAfter(roundStages(replay.rounds[index]), value))
+        } else setStep((value) => stepAfter(roundStages(replay.map, replay.rounds[index]), value))
       },
       (over ? ROUND_PAUSE_MS : atStage ? STAGE_MS : EVENT_MS) / speed,
     )

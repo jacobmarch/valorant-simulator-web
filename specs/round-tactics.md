@@ -6,33 +6,53 @@ A watched round is played out on the minimap (see `round-stages.md`). The first 
 
 The layer is presentation only. It does not change the sim, its random draws, its results or its box scores. It decides where players stand around events the sim has already written.
 
+## Why it was reworked
+
+The first tactical pass (formations, scouting, a defence that answers the attack) fixed the worst of it, but rounds still read as copies. Every round was setup, scout, contact, post-plant. The formation and opening were picked from the map and round number alone, so round 7 on Haven was the same round in every match, and all the positions came from a handful of fixed point lists. The rework is aimed at that: more detailed movement and more interaction between the players, with rounds that do not repeat.
+
 ## What a round looks like now
 
-1. **Setup** (step 0). Attackers spawn. Defenders take a formation (below).
-2. **Scouting** (step 0.5). The attack opens one of four ways, picked per round (`ATTACK_OPENINGS`):
-   - `mid`: the attackers stand together in the middle of the map.
-   - `a-main` / `b-main` / `c-main`: the attackers start on the main route to site A, B or C, at that site's entry. They have not committed, so they can still pivot onto another site at contact. `c-main` only exists on maps with a third site (Haven and Lotus).
-   - `default`: the attackers spread out as their attack formation has them, and the lurker reads a flank.
+A round is a **plan** (`roundPlan` in `src/round-plan.ts`) played out as a list of **beats**. The plan is a pure function of the map and the round, but it is seeded from what the round contains: who attacked and won, how many events there were, the round's end time, and the times of its first events. Two matches on the same map and round number therefore get different plans. Nothing draws from the sim's random stream, so results and box scores are unchanged.
 
-   Defenders do not move. They have not seen the attack yet.
-3. **Contact** (step 1). Two decisions, in this order:
-   - **Decision 1, the attack commits.** Attackers go in to the hit site's entry and lanes in their formation. The lurker takes the site's lurk spot.
-   - **Decision 2, the defence answers.** If three or more defenders are on the hit site's holds, they fight, and the rest of the defence rotates in to the free holds. If fewer than three are there, they fall off to the site's retake points, and the rest of the team plays the retake later.
-4. **Post-plant**, when the spike goes down. Attackers stand round the spike and defenders come to the retake points. This is unchanged.
+**The plan chooses:**
 
-The round has two decision points before the plant, which is the minimum asked for:
-- **The attack picks its site** at contact, after the opening. The pick is fixed by the sim's site (see "The hit site" below), so the opening only changes where the attackers wait. An `a-main` or `b-main` opening that lands on the other site is a visible pivot.
-- **The defence answers** the attack's commit.
+| Choice | Options | Effect |
+| --- | --- | --- |
+| Attack plan | `default`, `rush`, `split`, `fake`, `slow` | Where the attack goes, and when it hits |
+| Opening | `mid`, `a-main`, `b-main`, `c-main`, `default` | Where `default`, `fake` and `slow` start. `rush` and `split` open on the hit site's main route |
+| Attack formation | `5-0`, `2-1-2`, `3-1-1` | Where the hit lands on the site |
+| Defence formation | `4-1`, `2-1-2`, `3-2` | Who holds which site |
+| Push | yes or no | A defender comes forward for information and may fight early |
+| Reads | yes or no | Defenders off the site rotate before the hit lands |
+| Retake | `tight` or `wide` | Whether the defence retakes from two points or spreads over all of them |
+| Lurker | flank side, and when it takes the lurk spot | Early or at the hit |
+| Slot shuffle | one per side | Which player stands on which point, so the same player is not always on the same spot |
 
-## Openings
+**The attack plans:**
+- `default`: take map control from the opening (mid, a main route, or a spread), then hit.
+- `rush`: skip map control and go straight at the hit site. It hits in the first seconds, so few kills fall before it.
+- `split`: reach the site from two routes at once, entries on one and lanes on the other.
+- `fake`: two attackers show on the other site during map control. They then come round onto the hit site's lanes. A defence that reads the fake rotates early and arrives in time. One that does not is caught on the wrong site and plays a retake.
+- `slow`: take the whole map first, and hit late, so more kills fall in map control.
 
-Each opening is chosen per round from the map and round number, so the same round always opens the same way. On two-site maps the four openings are equally likely. On three-site maps the pool adds `c-main`, so each opening is one in five.
+**The beats** (see `round-stages.md` for their steps):
+1. **Setup.** Attackers spawn. Defenders take their formation.
+2. **Opening.** The attack goes where its plan has it. A pushing defender may come forward.
+3. **Map control**, for `default`, `fake` and `slow`. The attack takes control points. The lurker takes a flank, or the lurk spot if it lurks early.
+4. **Kills in map control.** The sim's kills that fall before the plan's hit time (up to three) are fought on the control points: mid, flanks, and the site entries, or at the flank when the lurker is in the fight. The hit time depends on the plan, so a `rush` has almost none and a `slow` has several.
+5. **Reads.** Defenders off the hit site rotate through mid, if the plan says they read the attack.
+6. **Hit.** The attack commits to the site. Three or more defenders on it fight, and the rest rotate. Fewer fall off to the retake.
+7. **Rotation.** After the first fight on the site, the defenders who were rotating arrive: on the site's holds if the defence held, or on its retake points if it fell off.
+8. **Post-plant.** The attackers set up round the spike. The defence regroups, stacked in mid or spread round the map.
+9. **Retake.** The defence pushes in to the retake points, on two of them or on all.
 
-- `mid` stacks the attackers in the middle of the map, so the attack has no visible plan until it commits.
-- `a-main`, `b-main` and `c-main` put the attackers at the entry of that site. The pivot is visible when the hit site is another one.
-- `default` spreads them out, as their attack formation has them.
+The round has several decision points, which is more than the "one or two" first asked for:
+- **The attack picks a plan**, and with a `fake` or a main-route opening it picks a site it may not hit.
+- **The defence reads or does not.** This changes whether a rotation arrives in time.
+- **The defence answers the hit** by fighting or falling off.
+- **The retake** is tight or wide.
 
-Checked in the browser on Haven, after the 90° turn. The attack spawns at the bottom. Defenders face it, so A is the right-most site on screen, with B in the middle and C on the left. On round 3 (no plant, so the hit site alternates to A), a `c-main` opening scouts from C's entry on the left, then pivots right onto A at contact.
+Time is used, but only lightly. The sim writes a time for every event, and the plan uses the first events' times to set the seed and to decide how many kills fall before the hit. The beats themselves are not timed: the live timer holds each stage for a moment, and the stage view steps between them.
 
 ## Formations
 
@@ -46,7 +66,7 @@ Formations are picked per round from the map and round number, so the same round
 | 2-1-2 | two hold the **hit** site | one in mid, two on the other site | two on the site fall off to retake |
 | 3-2 | three hold the **hit** site | two on the other site | three fight, and two rotate in |
 
-**Attack** (`ATTACK_FORMATIONS`): `5-0`, `2-1-2`, `3-1-1`. These are the shapes of the four attackers who are not the lurker. They pick the staging points in mid (scouting) and the points they go in to on the hit site.
+**Attack** (`ATTACK_FORMATIONS`): `5-0`, `2-1-2`, `3-1-1`. These are the shapes of the four attackers who are not the lurker. They pick the points the attackers stage on (for the default opening) and the points they go in to on the hit site. A `rush` always goes in as a `5-0`, a `split` as a `2-1-2`, and a `fake` sends two to the lanes and two to the entries.
 
 - `5-0`: entry, then lane.
 - `2-1-2`: both lanes, then two on the entry.
@@ -62,10 +82,11 @@ The formation then has to read consistently with that site. This is the main com
 
 ## Kills
 
-The sim decides who kills whom. The layer makes sure every kill reads as a fight on the hit site:
+The sim decides who kills whom. The layer makes sure every kill reads as a fight in the right place for its phase:
 
-- Both players are moved onto a spot their side holds on the hit site, if they are not already on one. The victim settles first, then the killer.
-- A killer more than `FIGHT_RANGE` (30 units) from the victim moves to the nearest free spot on the site. Free means no other living player is on it.
+- Before the hit, a kill is fought on the control points. Attackers stand on mid or the flanks, defenders on mid or the site's entries. When the lurker is in the fight, it is at the flank (the lurker's flank points and the lurk spot, and the site's last holds).
+- From the hit on, both players are on a spot their side holds on the hit site. After the plant the post and retake points are in play too.
+- The victim settles first, then the killer. A killer more than `FIGHT_RANGE` (30 units) from the victim moves to the nearest free spot. Free means no other living player is on it.
 - The killer is always on the opposite side from the victim (the sim already guarantees this, and a test checks it).
 
 `FIGHT_RANGE` is about a site's width. A holder and an entry attacker on the same site can be that far apart, so a tighter range would move players around needlessly.
@@ -78,27 +99,34 @@ Everything above moves players only between the named points in `src/map-layouts
 
 `tests/round-stages.test.ts` covers the layer:
 
-- Every position is a named point.
+- Every position is a named point, at every step.
 - A planted round is played on the planted site.
-- After contact, attackers stand on the hit site, and defenders stand on the hit site's holds or retake points, on the other site's holds (a pivot), or in mid (2-1-2).
-- Every kill is between opposing sides, and both players stand on the hit site.
-- A dead player stays where they fell.
-- Attackers stand on separate spots, and the lurker is chosen by role.
+- After the hit, attackers stand on the hit site, and defenders stand on its holds or retake points, on the other site's holds (a pivot), or in mid (rotating).
+- Every kill is between opposing sides. Before the hit both players are on the control points. After it both are on the hit site.
+- Every attack plan and every opening happens, a fake shows a pair on the other site, and the defence rotates onto the site.
+- Rounds are not copies of each other: over the test fixture, nearly every round walks its own route, no one plan shape makes up more than 5% of rounds, and the same round number gets different plans in different matches.
+- A dead player stays where they fell. Attackers stand on separate spots, and the lurker is chosen by role.
+
+## How uniqueness is measured
+
+The test `rounds are not copies of each other` builds a signature for every round: the positions of all ten players at every beat and event. Over the 8-seed fixture (every map, every round), more than 97% of the signatures are distinct, and no plan shape (attack plan, opening, formations, hit time, push, reads, retake and site) covers more than 5% of rounds. Before the rework, the shape was set by the map and the round number alone.
 
 ## Plans
 
 These are not built yet. They are ordered by what they unlock.
 
 1. **Sim chooses the site from formations.** The sim should pick the hit site from the attack's read of the defence, and then the defence's setup should follow from the sim's own decision, rather than the other way round. This removes the compromise above. It changes results, so it needs its own change and a review of the box scores.
-2. **Scouting that changes the plan.** Attackers scout a site first, see the formation, and pick the site or the formation based on what they see. This needs decision 1 to be taken from the scout, not fixed.
+2. **Map control that changes the plan.** Attackers take control, see the defence, and pick the site or the plan from what they see. At the moment the plan is fixed, and a fake only fools the defence's rotation, not the site. This needs decision 1 to be taken from the control phase.
 3. **Defence decisions beyond fight or fall off.** Rotations that depend on what the defenders saw (a flank call, a late rotate, a hold on the site with a utility-led stand). Each adds a branch to decision 2.
 4. **Utility.** Smokes, flashes and molly can change where players stand. Each one needs its own point and timing, and the sim has to record it first.
-5. **Retake timing.** The retake now starts at the plant. A real retake waits for the defence to see the spike and leaves a gap for the attack to hold. That needs a delay stage after the plant, and the defence's rotation to start from its position at the plant rather than from setup.
-6. **Live match simulation.** When the sim plays live matches, the same decision points should be driven by the sim's own state (money, alive count, site control) rather than the formations. The layer should then read the sim's decisions directly, not infer them.
+5. **Retake timing.** The retake beat comes straight after the plant, with a regroup first. A real retake waits on the clock. Beats could then be placed by event time, not only by order.
+6. **Trades and assists.** A kill that trades a recent kill should be placed next to it, and assists should be placed beside the killer. The events already carry both.
+7. **Per-player routes.** Players now jump between points. A route between them (through mid, down a lane) would let a beat show movement, not only the arrival.
+8. **Live match simulation.** When the sim plays live matches, the same decision points should be driven by the sim's own state (money, alive count, site control) rather than the formations. The layer should then read the sim's decisions directly, not infer them.
 
-## Adding a formation
+## Adding a plan or a formation
 
-1. Add the name to `DEFENSE_FORMATIONS` or `ATTACK_FORMATIONS`.
-2. Add its setup to `defenseSetup` (defence) or its staging and hit points to `ATTACK_STAGING` and `ATTACK_HITS` (attack). Each setup has five players, so the counts must add up.
+1. Add the name to `ATTACK_PLANS`, `DEFENSE_FORMATIONS` or `ATTACK_FORMATIONS` (`src/round-plan.ts`).
+2. For a plan, add it to `PLAN_POOL` (its weight) and `HIT_TIME` (when it hits), and give it a case in `openingPoints`, `controlPoints` and `hitPoints` in `src/round-stages.ts`. For a defence formation, add it to `defenseSetup`. For an attack formation, add it to `ATTACK_STAGING` and `ATTACK_HITS`. Each setup has five players, so the counts must add up.
 3. Keep every point on a named layout point.
-4. Extend the tests if the new formation changes which points a player can stand on.
+4. Extend the tests if the new plan or formation changes which points a player can stand on.

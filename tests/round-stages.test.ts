@@ -4,12 +4,13 @@ import { mapImage } from '../src/map-images'
 import { simulateSeries } from '../src/game'
 import { type MapReplay, type SeriesReplay } from '../src/round-sim'
 import {
-  formationsFor,
-  hitSiteOf,
+  ATTACK_PLANS,
   pickLurker,
   roundFrame,
+  roundPlan,
   roundStages,
   stageIndexAt,
+  stepAfter,
 } from '../src/round-stages'
 import { createKickoffGame } from './helpers'
 
@@ -75,12 +76,12 @@ describe('round stages', () => {
     expect(mapLayouts.Bind.siteNames).toEqual(['A', 'B'])
   })
 
-  test('every round has two or three stages, starting with setup at step 0', () => {
+  test('every round has several beats, starting with setup at step 0', () => {
     for (const { map } of allMaps()) {
       for (const round of map.rounds) {
-        const stages = roundStages(round)
-        expect(stages.length).toBeGreaterThanOrEqual(2)
-        expect(stages.length).toBeLessThanOrEqual(4)
+        const stages = roundStages(map.map, round)
+        expect(stages.length).toBeGreaterThanOrEqual(4)
+        expect(stages.length).toBeLessThanOrEqual(9)
         expect(stages[0]).toMatchObject({ kind: 'setup', start: 0 })
         const starts = stages.map((stage) => stage.start)
         expect([...starts].sort((x, y) => x - y)).toEqual(starts)
@@ -95,7 +96,7 @@ describe('round stages', () => {
     for (const { map } of allMaps()) {
       for (const round of map.rounds) {
         const plantAt = round.events.findIndex((event) => event.kind === 'plant')
-        const stages = roundStages(round)
+        const stages = roundStages(map.map, round)
         const post = stages.find((stage) => stage.kind === 'post-plant')
         if (plantAt === -1) {
           expect(post).toBeUndefined()
@@ -111,7 +112,7 @@ describe('round stages', () => {
   test('stageIndexAt picks the stage a step falls in', () => {
     const stages = [
       { kind: 'setup' as const, label: 'Setup', start: 0 },
-      { kind: 'contact' as const, label: 'Contact', start: 1 },
+      { kind: 'hit' as const, label: 'A hit', start: 1 },
       { kind: 'post-plant' as const, label: 'Post-plant', start: 4 },
     ]
     expect(
@@ -264,7 +265,8 @@ describe('round stages', () => {
         checked += onHold.length
         // Just before the plant: the attackers have gone in and not yet moved on.
         const plantAt = round.events.indexOf(plant)
-        if (plantAt === 0) continue
+        // The hit has to have landed before the plant for the attack to be on the site.
+        if (plantAt <= roundPlan(map.map, round).hitIndex) continue
         const contact = roundFrame(map.map, round, sides, attackerSide, plantAt)
         const onSite = [...site.entry, ...site.lanes, site.lurk[0]]
         for (const mark of contact.marks) {
@@ -285,14 +287,16 @@ describe('round stages', () => {
     expect(checked).toBeGreaterThan(0)
   })
 
-  test('every kill is between opposing sides, and both stand on the hit site', () => {
-    let kills = 0
+  test('every kill is between opposing sides, in map control early and on the hit site after', () => {
+    let early = 0
+    let onSiteKills = 0
     for (const { map, sides } of allMaps()) {
       const layout = mapLayouts[map.map]
       for (const round of map.rounds) {
         const attackerSide = round.attackerId === map.aId ? 'a' : 'b'
-        const hit = layout.sites[hitSiteOf(layout, round)]
-        const onHit = [
+        const plan = roundPlan(map.map, round)
+        const hit = layout.sites[plan.hit]
+        const siteSpots = [
           ...hit.holds,
           ...hit.entry,
           ...hit.lanes,
@@ -300,8 +304,15 @@ describe('round stages', () => {
           ...hit.retake,
           hit.lurk[0],
         ]
-        const isOnHit = (mark: { x: number; y: number }) =>
-          onHit.some((point) => point.x === mark.x && point.y === mark.y)
+        const controlSpots = [
+          ...layout.mid,
+          ...layout.flank,
+          ...hit.entry,
+          ...hit.holds,
+          hit.lurk[0],
+        ]
+        const isOn = (mark: { x: number; y: number }, spots: { x: number; y: number }[]) =>
+          spots.some((point) => point.x === mark.x && point.y === mark.y)
         round.events.forEach((event, index) => {
           if (event.kind !== 'kill') return
           const side = (id: string) => (sides.a.includes(id) ? 'a' : 'b')
@@ -311,13 +322,20 @@ describe('round stages', () => {
           const killer = frame.marks.find((mark) => mark.id === event.killerId)
           const victim = frame.marks.find((mark) => mark.id === event.victimId)
           if (!killer || !victim) throw new Error('kill names a player not in the round')
-          kills++
-          expect(isOnHit(killer)).toBe(true)
-          expect(isOnHit(victim)).toBe(true)
+          if (index < plan.hitIndex) {
+            early++
+            expect(isOn(killer, controlSpots)).toBe(true)
+            expect(isOn(victim, controlSpots)).toBe(true)
+          } else {
+            onSiteKills++
+            expect(isOn(killer, siteSpots)).toBe(true)
+            expect(isOn(victim, siteSpots)).toBe(true)
+          }
         })
       }
     }
-    expect(kills).toBeGreaterThan(0)
+    expect(early).toBeGreaterThan(0)
+    expect(onSiteKills).toBeGreaterThan(0)
   })
 
   test('attacks open in the mid, on a main route, or on their default, and every opening happens', () => {
@@ -326,28 +344,25 @@ describe('round stages', () => {
       const layout = mapLayouts[map.map]
       for (const round of map.rounds) {
         const attackerSide = round.attackerId === map.aId ? 'a' : 'b'
-        const { opening } = formationsFor(map.map, round.round)
-        openings.add(opening)
-        const scouting = roundFrame(map.map, round, sides, attackerSide, 0.5)
-        const attackers = scouting.marks.filter((mark) => mark.attacking)
-        const lurker = layout.flank[0]
-        const spotsFor = (name: string) => {
-          const site = layout.sites[name]
-          return [...site.entry, site.lanes[0]]
-        }
+        const plan = roundPlan(map.map, round)
+        openings.add(plan.opening)
+        if (plan.attack === 'rush' || plan.attack === 'split') continue
+        const lurker = pickLurker(sides[attackerSide], () => 'Duelist')
+        const opening = roundFrame(map.map, round, sides, attackerSide, 0.25, lurker)
+        const crew = opening.marks.filter((mark) => mark.attacking && mark.id !== lurker)
         const mainSites: Record<string, number> = { 'a-main': 0, 'b-main': 1, 'c-main': 2 }
         const home =
-          opening === 'mid'
+          plan.opening === 'mid'
             ? layout.mid
-            : opening in mainSites
-              ? spotsFor(layout.siteNames[mainSites[opening]])
+            : plan.opening in mainSites
+              ? (() => {
+                  const site = layout.sites[layout.siteNames[mainSites[plan.opening]]]
+                  return [...site.entry, site.lanes[0]]
+                })()
               : null
         if (!home) continue
-        // Everyone but the lurker stands on the opening's own points.
-        for (const mark of attackers) {
-          if (mark.x === lurker.x && mark.y === lurker.y) continue
+        for (const mark of crew)
           expect(home.some((point) => point.x === mark.x && point.y === mark.y)).toBe(true)
-        }
       }
     }
     expect(openings).toEqual(new Set(['mid', 'a-main', 'b-main', 'c-main', 'default']))
@@ -366,7 +381,7 @@ describe('round stages', () => {
         const site = plant?.kind === 'plant' ? layout.sites[plant.site] : undefined
         // Contact comes before the plant, so read the frame just before it.
         const plantAt = plant?.kind === 'plant' ? round.events.indexOf(plant) : -1
-        if (plantAt === 0) continue
+        if (plantAt <= roundPlan(map.map, round).hitIndex) continue
         const frame = roundFrame(
           map.map,
           round,
@@ -375,6 +390,7 @@ describe('round stages', () => {
           plantAt === -1 ? 1 : plantAt,
           lurker,
         )
+        // Beats where attackers share a spot on purpose are not checked: only the attack's own.
         const spots = new Set(
           frame.marks
             .filter((mark) => mark.attacking && mark.alive)
@@ -387,12 +403,142 @@ describe('round stages', () => {
         if (site && lurking?.alive && lurking.attacking) {
           lurks++
           // The lurker sits on the lurk spot, or has moved onto the site to take a fight.
-          const onSite = [...site.lurk, ...site.entry, ...site.lanes]
+          const onSite = [...site.lurk, ...site.entry, ...site.lanes, ...layout.flank, ...site.post]
           expect(onSite.some((point) => point.x === lurking.x && point.y === lurking.y)).toBe(true)
         }
       }
     }
     expect(lurks).toBeGreaterThan(0)
+  })
+
+  test('stepAfter walks beats and events in order, never skipping an event', () => {
+    for (const { map } of allMaps().slice(0, 8)) {
+      for (const round of map.rounds) {
+        const stages = roundStages(map.map, round)
+        const seen: number[] = []
+        for (let step = 0; step <= round.events.length; step = stepAfter(stages, step))
+          seen.push(step)
+        for (let event = 0; event < round.events.length; event++) expect(seen).toContain(event)
+        for (const stage of stages) expect(seen).toContain(stage.start)
+      }
+    }
+  })
+
+  test('every attack plan happens, and each plan moves the attackers in its own way', () => {
+    const plans = new Set<string>()
+    let fakes = 0
+    for (const { map, sides } of allMaps()) {
+      const layout = mapLayouts[map.map]
+      for (const round of map.rounds) {
+        const attackerSide = round.attackerId === map.aId ? 'a' : 'b'
+        const plan = roundPlan(map.map, round)
+        plans.add(plan.attack)
+        if (plan.attack !== 'fake') continue
+        // A fake shows a pair on the other site during map control.
+        const fake = layout.sites[plan.fake]
+        const lurker = pickLurker(sides[attackerSide], () => 'Duelist')
+        const control = roundFrame(map.map, round, sides, attackerSide, 0.5, lurker)
+        const showing = control.marks.filter(
+          (mark) =>
+            mark.attacking &&
+            fake.entry.slice(0, 2).some((point) => point.x === mark.x && point.y === mark.y),
+        )
+        expect(showing.length).toBe(2)
+        expect(plan.fake).not.toBe(plan.hit)
+        fakes++
+      }
+    }
+    expect(fakes).toBeGreaterThan(0)
+    expect(plans).toEqual(new Set(ATTACK_PLANS))
+  })
+
+  test('the defence rotates: players off the site cross mid, then arrive on the site', () => {
+    let rotations = 0
+    for (const { map, sides } of allMaps()) {
+      const layout = mapLayouts[map.map]
+      for (const round of map.rounds) {
+        const stages = roundStages(map.map, round)
+        const rotate = stages.find((stage) => stage.kind === 'rotate')
+        if (!rotate) continue
+        const attackerSide = round.attackerId === map.aId ? 'a' : 'b'
+        const plan = roundPlan(map.map, round)
+        const site = layout.sites[plan.hit]
+        const onSite = [...site.holds, ...site.retake]
+        const before = roundFrame(map.map, round, sides, attackerSide, rotate.start - 0.25)
+        const after = roundFrame(map.map, round, sides, attackerSide, rotate.start)
+        for (const mark of after.marks) {
+          if (mark.attacking || !mark.alive) continue
+          const earlier = before.marks.find((candidate) => candidate.id === mark.id)
+          const wasOn = earlier ? onSite.some((p) => p.x === earlier.x && p.y === earlier.y) : false
+          // Anyone off the site before the rotation is on it after.
+          if (!wasOn && earlier?.alive) {
+            rotations++
+            expect(onSite.some((p) => p.x === mark.x && p.y === mark.y)).toBe(true)
+          }
+        }
+      }
+    }
+    expect(rotations).toBeGreaterThan(0)
+  })
+
+  test('rounds are not copies of each other', () => {
+    const signatures = new Set<string>()
+    const shapes = new Map<string, number>()
+    let rounds = 0
+    for (const { map, sides } of allMaps()) {
+      for (const round of map.rounds) {
+        const attackerSide = round.attackerId === map.aId ? 'a' : 'b'
+        const stages = roundStages(map.map, round)
+        const steps = new Set([
+          ...stages.map((stage) => stage.start),
+          ...round.events.map((_, index) => index + 1),
+        ])
+        const walk = [...steps]
+          .sort((x, y) => x - y)
+          .map((step) =>
+            roundFrame(map.map, round, sides, attackerSide, step)
+              .marks.map((mark) => `${mark.x},${mark.y},${mark.alive ? 1 : 0}`)
+              .join(';'),
+          )
+        signatures.add(`${map.map}|${walk.join('/')}`)
+        const plan = roundPlan(map.map, round)
+        const shape = [
+          map.map,
+          plan.attack,
+          plan.opening,
+          plan.formation,
+          plan.defense,
+          plan.hitIndex,
+          plan.push,
+          plan.reads,
+          plan.retake,
+          plan.hit,
+        ].join('|')
+        shapes.set(shape, (shapes.get(shape) ?? 0) + 1)
+        rounds++
+      }
+    }
+    // Every round walks its own route, and no one plan shape accounts for more than a few rounds.
+    expect(signatures.size / rounds).toBeGreaterThan(0.97)
+    expect(Math.max(...shapes.values()) / rounds).toBeLessThan(0.05)
+    expect(shapes.size / rounds).toBeGreaterThan(0.6)
+  })
+
+  test('the same round in a different match plays out differently', () => {
+    const maps = allMaps()
+    const first = maps.find((entry) => entry.map.rounds.length > 3)
+    if (!first) throw new Error('no map to compare')
+    const plansByRound = new Map<string, Set<string>>()
+    for (const { map } of maps)
+      for (const round of map.rounds) {
+        const plan = roundPlan(map.map, round)
+        const key = `${map.map}#${round.round}`
+        const set = plansByRound.get(key) ?? new Set<string>()
+        set.add(`${plan.attack}|${plan.defense}|${plan.opening}|${plan.hitIndex}`)
+        plansByRound.set(key, set)
+      }
+    const repeated = [...plansByRound.values()].filter((set) => set.size > 1)
+    expect(repeated.length).toBeGreaterThan(0)
   })
 
   test('a Sentinel or Controller is picked to lurk over other roles', () => {
