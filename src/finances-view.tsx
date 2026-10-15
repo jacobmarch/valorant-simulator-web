@@ -1,3 +1,4 @@
+import { DEBT_LIMIT } from './debt'
 import { currentTeam, saveGame, type GameState, type Team } from './game'
 import {
   SPONSOR_SETTLE_WEEK,
@@ -77,7 +78,16 @@ export function Finances({ s, setState }: { s: GameState; setState: (s: GameStat
       subtitle="Sponsor income against payroll, week by week."
     >
       <div className="stats">
-        <Stat label="Cash balance" value={money(t.cash)} detail="available for buyouts" accent />
+        <Stat
+          label="Cash balance"
+          value={money(t.cash)}
+          detail={
+            t.cash < 0
+              ? `in debt · the board fires you below ${money(-DEBT_LIMIT)}`
+              : 'available for signings and buyouts'
+          }
+          accent={t.cash >= 0}
+        />
         <Stat
           label="Weekly sponsor income"
           value={money(weeklySponsor)}

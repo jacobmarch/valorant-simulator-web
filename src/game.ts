@@ -10,6 +10,7 @@ import {
   overallRating,
   seedPotential,
 } from './development'
+import { DEBT_LIMIT, FIRED_TEAM_OPTIONS, pastDebtLimit } from './debt'
 import { iglAdjustment, refreshIgls } from './igl'
 import { attackerEdge, describeVeto, mapFit, runVeto } from './maps'
 import { type DatabasePlayer, type PlayerDatabase, validateDatabase } from './player-database'
@@ -209,6 +210,14 @@ export type JobOffer = {
   salary: number
   status: 'pending' | 'accepted' | 'declined'
 }
+/** A firing: the club the manager lost, its balance at the time, and the clubs offered next. */
+export type FiredState = {
+  season: number
+  week: number
+  teamId: string
+  balance: number
+  options: string[]
+}
 export type TransferRecord = {
   id: string
   season: number
@@ -248,6 +257,8 @@ export type GameState = {
   reviews?: SeasonReview[]
   /** Season whose review pops up on next load, until the manager dismisses it. */
   pendingReview?: number | null
+  /** Set when the board fires the manager for running past the debt limit; the save waits on a new club. */
+  fired?: FiredState | null
 }
 
 const SAVE_KEY = 'vct-manager-mvp-save-v1'
@@ -2986,6 +2997,7 @@ function finalizeCalendarWeek(state: GameState) {
   if (state.week === SPONSOR_SETTLE_WEEK) settleSponsorSeason(state)
   if (state.week === OFFSEASON_START_WEEK) warnExpiringContracts(state)
   if (state.week > 52) rolloverSeason(state)
+  checkFiring(state)
   ensureWeekScheduled(state, state.week)
   pruneHistory(state)
   state.saveTimestamp = new Date().toISOString()
@@ -3230,7 +3242,7 @@ export function simulateNextTournamentMatch(
   phase?: Exclude<CompetitionPhase, 'Break' | 'Offseason'>,
   region?: Region,
 ): GameState {
-  if (rosterBlock(input)) return input
+  if (input.fired || rosterBlock(input)) return input
   const state: GameState = structuredClone(input)
   ensureWeekScheduled(state, state.week)
   buildIntraWeekRounds(state, attackStyle, defenseStyle, false)
@@ -3289,7 +3301,7 @@ export function simulateTournamentFixture(
   replay?: SeriesReplay,
 ): GameState {
   const phase = phaseForWeek(input.week)
-  if (phase === 'Break' || phase === 'Offseason' || rosterBlock(input)) return input
+  if (phase === 'Break' || phase === 'Offseason' || input.fired || rosterBlock(input)) return input
   const state: GameState = structuredClone(input)
   ensureWeekScheduled(state, state.week)
   buildIntraWeekRounds(state, attackStyle, defenseStyle, false)
@@ -3677,7 +3689,7 @@ export function simulateTournamentRound(
   defenseStyle: string,
 ): GameState {
   const phase = phaseForWeek(input.week)
-  if (rosterBlock(input)) return input
+  if (input.fired || rosterBlock(input)) return input
   if (phase === 'Break' || phase === 'Offseason')
     return advanceWeek(input, attackStyle, defenseStyle)
   const state: GameState = structuredClone(input)
@@ -3709,7 +3721,7 @@ export function advanceWeek(
   attackStyle: string,
   defenseStyle: string,
 ): GameState {
-  if (rosterBlock(input)) return input
+  if (input.fired || rosterBlock(input)) return input
   const state: GameState = structuredClone(input),
     phase = phaseForWeek(state.week),
     managedTeam = currentTeam(state)
@@ -3773,6 +3785,45 @@ export function advanceWeek(
       )
   }
   finalizeCalendarWeek(state)
+  return state
+}
+/** The board fires the manager once the club's balance passes the debt limit. Runs at week end. */
+function checkFiring(state: GameState) {
+  const team = currentTeam(state)
+  if (state.fired || !pastDebtLimit(team)) return
+  const options = Object.values(state.teams)
+    .filter((other) => other.id !== team.id)
+    .sort(
+      (a, b) => teamStrength(state, a.id) - teamStrength(state, b.id) || a.id.localeCompare(b.id),
+    )
+    .slice(0, FIRED_TEAM_OPTIONS)
+    .map((other) => other.id)
+  state.fired = {
+    season: state.season,
+    week: state.week,
+    teamId: team.id,
+    balance: team.cash,
+    options,
+  }
+  // The board settles the old club's books before it passes to an AI organization.
+  team.cash = 0
+  state.inbox.unshift(
+    `The board has fired you from ${team.name} after its debt passed the $${DEBT_LIMIT.toLocaleString('en-US')} limit.`,
+  )
+}
+/** Takes one of the clubs the board offered after a firing, keeping the save and its history. */
+export function acceptFiredPosition(input: GameState, teamId: string): GameState {
+  if (!input.fired?.options.includes(teamId)) return input
+  const state = structuredClone(input)
+  const team = state.teams[teamId]
+  state.fired = null
+  state.currentTeamId = teamId
+  autoAssignRoles(state, team)
+  // The old club is an AI organization again, so its roster needs filling back to legal.
+  fillAiRosters(state)
+  state.inbox.unshift(`You have taken over ${team.name} after being fired.`)
+  state.saveTimestamp = new Date().toISOString()
+  saveGame(state)
   return state
 }
 export function acceptJob(state: GameState, id: string) {

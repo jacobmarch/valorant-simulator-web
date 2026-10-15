@@ -32,7 +32,8 @@ export const regionColors: Record<Region, string> = {
   China: '#e9c46a',
 }
 
-export const money = (value: number) => `$${Math.max(0, Math.round(value)).toLocaleString()}`
+export const money = (value: number) =>
+  `${value < 0 ? '-' : ''}$${Math.abs(Math.round(value)).toLocaleString()}`
 export const phaseName = (week: number) =>
   week < KICKOFF_START_WEEK
     ? 'Preseason'
