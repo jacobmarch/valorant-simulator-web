@@ -73,31 +73,30 @@ export type Spike = {
 export type RoundFrame = { marks: Mark[]; spike: Spike | null }
 
 /**
- * The defenders' setup: five points, one per slot. `other` is the site the attack may fake on. On
- * a map with a third site it is held too, so no site is ever left open.
- * - 4-1: four hold the other sites, so the attack pivots onto the hit site, where one defender waits.
- * - 2-1-2: two hold the hit site, one sits in mid, the rest hold the other sites.
- * - 3-2: three hold the hit site, the rest hold the other sites.
+ * The defenders' setup: five points, one per slot. The formation counts the players in each lane
+ * from left to right: the left site, mid, the right site (flipped when the plan says so). On a
+ * three-site map the lanes are the C, B and A sites, so no site is ever left open. The last slot
+ * is a mid player, who is the one that pushes.
  */
-function defenseSetup(
-  formation: DefenseFormation,
-  layout: MapLayout,
-  hit: string,
-  other: string,
-): Point[] {
-  const holds = (name: string) => layout.sites[name].holds
-  const third = layout.siteNames.find((name) => name !== hit && name !== other)
-  if (third) {
-    if (formation === '4-1')
-      return [holds(other)[0], holds(other)[1], holds(third)[0], holds(third)[1], holds(hit)[0]]
-    if (formation === '2-1-2')
-      return [holds(hit)[0], holds(hit)[1], layout.mid[0], holds(other)[0], holds(third)[0]]
-    return [holds(hit)[0], holds(hit)[1], holds(hit)[2], holds(other)[0], holds(third)[0]]
-  }
-  if (formation === '4-1') return [...holds(other).slice(0, 4), holds(hit)[0]]
-  if (formation === '2-1-2')
-    return [holds(hit)[0], holds(hit)[1], layout.mid[0], holds(other)[0], holds(other)[1]]
-  return [...holds(hit).slice(0, 3), holds(other)[0], holds(other)[1]]
+function defenseSetup(formation: DefenseFormation, layout: MapLayout, flip: boolean): Point[] {
+  const counts = formation.split('-').map(Number)
+  if (flip) counts.reverse()
+  const [left, middle, right] = counts
+  // Site letters run right to left, so the left-most site is the last one.
+  const sites = [...layout.siteNames].reverse()
+  const holds = (name: string, count: number) => layout.sites[name].holds.slice(0, count)
+  if (sites.length >= 3)
+    return [
+      ...holds(sites[0], left),
+      ...holds(sites[sites.length - 1], right),
+      ...holds(sites[1], middle),
+    ]
+  return [
+    ...holds(sites[0], left),
+    ...holds(sites[1], right),
+    ...[layout.mid[1], layout.mid[3]].slice(0, middle),
+    ...(middle > 2 ? [layout.mid[2]] : []),
+  ]
 }
 
 /** Whether a player stands on one of these points. */
@@ -169,6 +168,8 @@ export function pickLurker(attackers: string[], roleOf: (id: string) => Role): s
 
 type Roster = { id: string; side: Side }
 
+/** How close an attacker has to be to a site for the defence to see the attack on it. */
+const SEE_RANGE = 40
 /** Closest an enemy can stand to a player who is not in a fight with them. */
 const ENEMY_GAP = 12
 /** Closest two teammates can stand, so two dots are never drawn on top of each other. */
@@ -262,7 +263,7 @@ export function roundFrame(
   const plan = roundPlan(map, round)
   const site = layout.sites[plan.hit]
   const other = layout.sites[plan.fake]
-  const setup = defenseSetup(plan.defense, layout, plan.hit, plan.fake)
+  const setup = defenseSetup(plan.defense, layout, plan.flip)
   const roster: Roster[] = [
     ...sides.a.map((id) => ({ id, side: 'a' as const })),
     ...sides.b.map((id) => ({ id, side: 'b' as const })),
@@ -359,16 +360,37 @@ export function roundFrame(
   let spike: Spike | null = null
   // Set when the hit lands with fewer than three holders: the defence plays a retake instead.
   let fallen = false
-  const onSite = (mark: Mark) => standsOn(mark, site.holds) || standsOn(mark, site.retake)
-  /** Defenders not on the hit site, who are on their way to it. */
-  const rotators = () => alive(defenders).filter((player) => !onSite(pos[player.id]))
+  const onSite = (mark: Mark, target: SiteLayout = site) =>
+    standsOn(mark, target.holds) || standsOn(mark, target.retake)
+  /** Defenders not on a site, who are on their way to it. */
+  const rotators = (target: SiteLayout = site) =>
+    alive(defenders).filter((player) => !onSite(pos[player.id], target))
   /** Where rotators head: the holds nobody is on, or the retake points after a fall-off. */
-  const arrival = () => {
-    const spots = fallen ? site.retake : site.holds
+  const arrival = (target: SiteLayout = site, retake = fallen) => {
+    const spots = retake ? target.retake : target.holds
     const open = spots.filter(
       (spot) => !alive(defenders).some((player) => standsOn(pos[player.id], [spot])),
     )
     return open.length > 0 ? open : spots
+  }
+  /**
+   * The site the defence sees the attack on: where most attackers are within sight of it. The
+   * defence only reacts to what it sees, so attackers in mid or on a flank show nothing yet.
+   */
+  const seenSite = (): SiteLayout | undefined => {
+    let best: SiteLayout | undefined
+    let most = 0
+    for (const name of layout.siteNames) {
+      const target = layout.sites[name]
+      const seen = alive(attackers).filter(
+        (player) => distance(pos[player.id], target.plant) < SEE_RANGE,
+      ).length
+      if (seen > most) {
+        best = target
+        most = seen
+      }
+    }
+    return best
   }
   const applyBeat = (stage: Stage) => {
     if (stage.kind === 'opening') {
@@ -382,8 +404,18 @@ export function roundFrame(
       gather(crew, controlPoints(plan, layout))
       if (lurker) gather([lurker], plan.lurkEarly ? [site.lurk[0]] : [layout.flank[plan.flank]])
     } else if (stage.kind === 'read') {
-      // Defenders off the hit site see the attack coming and start rotating toward it.
-      if (plan.reads) gather(rotators(), arrival())
+      // The defence reacts to where it sees the attack. A defence that reads a fake holds its sites
+      // and only sends mid players toward the real one; one that does not rotates to the show.
+      const seen = seenSite()
+      if (seen) {
+        const fake = plan.attack === 'fake' && seen !== site
+        if (fake && plan.reads)
+          gather(
+            alive(defenders).filter((player) => standsOn(pos[player.id], layout.mid)),
+            arrival(site, false),
+          )
+        else if (!fake ? plan.reads : true) gather(rotators(seen), arrival(seen, false))
+      }
     } else if (stage.kind === 'hit') {
       gather(crew, hitPoints(plan, site))
       if (lurker) gather([lurker], [site.lurk[0]])

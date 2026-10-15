@@ -8,8 +8,11 @@
 import { layoutFor, type MapLayout } from './map-layouts'
 import type { RoundReplay } from './round-sim'
 
-/** Defence: how many hold the site the attack goes for; the rest sit off it. */
-export const DEFENSE_FORMATIONS = ['4-1', '2-1-2', '3-2'] as const
+/**
+ * Defence: how many players start in each lane, left to right: the left site, mid, the right
+ * site. On a three-site map the middle lane is the B site and mid is held by a pusher.
+ */
+export const DEFENSE_FORMATIONS = ['2-2-1', '2-1-2', '3-1-1'] as const
 export type DefenseFormation = (typeof DEFENSE_FORMATIONS)[number]
 /** Attack: how the attackers go in once the hit starts, not counting the lurker. */
 export const ATTACK_FORMATIONS = ['5-0', '2-1-2', '3-1-1'] as const
@@ -187,6 +190,7 @@ export function roundPlan(map: string, round: RoundReplay): RoundPlan {
     hitIndex,
     attackOrder: shuffled(5, next),
     defenseOrder: shuffled(5, next),
+    flip: next() < 0.5,
   }
 }
 

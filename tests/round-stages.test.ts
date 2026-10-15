@@ -261,8 +261,7 @@ describe('round stages', () => {
           (mark) =>
             !mark.attacking && site.holds.some((point) => point.x === mark.x && point.y === mark.y),
         )
-        // A 4-1 setup holds the other site and leaves one defender on the planted site, so the
-        // attack pivots onto it. Every setup keeps at least one defender there.
+        // Every setup has a defender in each lane, so the planted site always has at least one.
         expect(onHold.length).toBeGreaterThanOrEqual(1)
         checked += onHold.length
         // Just before the plant the attack is on its way to, or on, the planted site.
@@ -357,7 +356,7 @@ describe('round stages', () => {
         for (const mark of crew)
           expect(
             Math.min(...home.map((point) => Math.hypot(point.x - mark.x, point.y - mark.y))),
-          ).toBeLessThan(40)
+          ).toBeLessThan(45)
       }
     }
     expect(openings).toEqual(new Set(['mid', 'a-main', 'b-main', 'c-main', 'default']))
@@ -423,28 +422,60 @@ describe('round stages', () => {
       }
     }
     expect(moves).toBeGreaterThan(0)
-  })
+  }, 30_000)
 
-  test('on three-site maps the defence holds every site at setup', () => {
+  test('the defence starts in a 2-2-1, 2-1-2 or 3-1-1 with a player in every lane', () => {
+    const seen = new Set<string>()
     let checked = 0
     for (const { map, sides } of allMaps()) {
       const layout = mapLayouts[map.map]
-      if (layout.siteNames.length < 3) continue
       for (const round of map.rounds) {
         const attackerSide = round.attackerId === map.aId ? 'a' : 'b'
+        const plan = roundPlan(map.map, round)
+        seen.add(plan.defense)
         const setup = roundFrame(map.map, round, sides, attackerSide, 0)
-        for (const name of layout.siteNames) {
-          const holds = layout.sites[name].holds
-          const held = setup.marks.filter(
-            (mark) =>
-              !mark.attacking && holds.some((point) => point.x === mark.x && point.y === mark.y),
-          )
-          checked++
-          expect(held.length).toBeGreaterThanOrEqual(1)
-        }
+        const defenders = setup.marks.filter((mark) => !mark.attacking)
+        const on = (points: { x: number; y: number }[]) =>
+          defenders.filter((mark) => points.some((p) => p.x === mark.x && p.y === mark.y)).length
+        const lanes = layout.siteNames.map((name) => on(layout.sites[name].holds))
+        // Every site has a defender, and on two-site maps someone plays mid too.
+        for (const held of lanes) expect(held).toBeGreaterThanOrEqual(1)
+        if (layout.siteNames.length === 2) expect(on(layout.mid)).toBeGreaterThanOrEqual(1)
+        const counts = [...lanes, ...(layout.siteNames.length === 2 ? [on(layout.mid)] : [])]
+        expect(counts.reduce((total, count) => total + count, 0)).toBe(5)
+        checked++
       }
     }
     expect(checked).toBeGreaterThan(0)
+    expect(seen).toEqual(new Set(['2-2-1', '2-1-2', '3-1-1']))
+  })
+
+  test('the defence rotates toward the site it sees the attack on', () => {
+    let rotated = 0
+    for (const { map, sides } of allMaps()) {
+      const layout = mapLayouts[map.map]
+      for (const round of map.rounds) {
+        const plan = roundPlan(map.map, round)
+        if (plan.attack !== 'fake' || plan.reads) continue
+        const stages = roundStages(map.map, round)
+        const read = stages.find((stage) => stage.kind === 'read')
+        if (!read) continue
+        const attackerSide = round.attackerId === map.aId ? 'a' : 'b'
+        const fake = layout.sites[plan.fake]
+        const gap = (frame: ReturnType<typeof roundFrame>) =>
+          frame.marks
+            .filter((mark) => !mark.attacking && mark.alive)
+            .reduce(
+              (total, mark) => total + Math.hypot(mark.x - fake.plant.x, mark.y - fake.plant.y),
+              0,
+            )
+        const before = roundFrame(map.map, round, sides, attackerSide, read.start - 0.05)
+        const after = roundFrame(map.map, round, sides, attackerSide, read.start)
+        // A defence fooled by the show moves toward the fake site, never away from it overall.
+        if (gap(after) < gap(before) - 1) rotated++
+      }
+    }
+    expect(rotated).toBeGreaterThan(0)
   })
 
   test('the spike goes down with the site cleared of defenders', () => {

@@ -21,7 +21,7 @@ A round is a **plan** (`roundPlan` in `src/round-plan.ts`) played out as a list 
 | Attack plan | `default`, `rush`, `split`, `fake`, `slow` | Where the attack goes, and when it hits |
 | Opening | `mid`, `a-main`, `b-main`, `c-main`, `default` | Where `default`, `fake` and `slow` start. `rush` and `split` open on the hit site's main route |
 | Attack formation | `5-0`, `2-1-2`, `3-1-1` | Where the hit lands on the site |
-| Defence formation | `4-1`, `2-1-2`, `3-2` | Who holds which site. On a three-site map every site always has a defender, so no site is left open |
+| Defence formation | `2-2-1`, `2-1-2`, `3-1-1` | Players per lane, left to right, flipped by the plan. Every lane has a player, so no site is left open and mid is played |
 | Push | yes or no | A defender comes forward for information and may fight early |
 | Reads | yes or no | Defenders off the site rotate before the hit lands |
 | Retake | `tight` or `wide` | Whether the defence retakes from two points or spreads over all of them |
@@ -58,13 +58,20 @@ Time is used, but only lightly. The sim writes a time for every event, and the p
 
 Formations are picked per round from the map and round number, so the same round always lines up the same way.
 
-**Defence** (`DEFENSE_FORMATIONS`): `4-1`, `2-1-2`, `3-2`.
+**Defence** (`DEFENSE_FORMATIONS`): `2-2-1`, `2-1-2`, `3-1-1`. The numbers are how many defenders start in each lane, left to right: the left site, mid, the right site. The plan flips it right to left half the time. On a three-site map the lanes are the C, B and A sites, and a mid pusher comes from B. Every lane has a player in every round, so no site is left open and two-site maps always have someone in mid.
 
-| Formation | Main group (`main`) holds | Rest (`off`) | Effect |
+| Formation | Left site | Mid | Right site |
 | --- | --- | --- | --- |
-| 4-1 | four hold the **other** site | one on the hit site's first hold | the attack reads four on one site and pivots to the other |
-| 2-1-2 | two hold the **hit** site | one in mid, two on the other site | two on the site fall off to retake |
-| 3-2 | three hold the **hit** site | two on the other site | three fight, and two rotate in |
+| 2-2-1 | 2 | 2 | 1 |
+| 2-1-2 | 2 | 1 | 2 |
+| 3-1-1 | 3 | 1 | 1 |
+
+The defence is not tied to the hit site. The attack is where it is, and the defence reacts to what it sees, as below.
+
+**The defence's read.** At the `read` beat the defence looks at where the attackers stand: the site with most attackers within 40 units. It reacts to that, and only that, since attackers in mid or on a flank show nothing yet.
+- Attackers on a site with a `fake` plan: a defence that reads the fake holds its sites and sends only its mid players toward the real site. One that does not rotates to the show, then has to walk back through mid when the hit lands on the other site.
+- Any other plan: a defence that reads rotates defenders off that site toward it. One that does not waits for the hit.
+- At the hit, a site with three or more holders fights it, and fewer fall off to the retake. Defenders from other lanes keep rotating, and fight where they meet attackers in a lane.
 
 **Attack** (`ATTACK_FORMATIONS`): `5-0`, `2-1-2`, `3-1-1`. These are the shapes of the four attackers who are not the lurker. They pick the points the attackers stage on (for the default opening) and the points they go in to on the hit site. A `rush` always goes in as a `5-0`, a `split` as a `2-1-2`, and a `fake` sends two to the lanes and two to the entries.
 
@@ -78,7 +85,7 @@ The lurker is always separate. It is the first Sentinel or Controller, or the la
 
 The hit site is the site the spike went down on, which is the sim's result. On a round with no plant it alternates by round number, and that is the site every position is built around.
 
-The formation then has to read consistently with that site. This is the main compromise in this layer. The sim does not yet choose sites from formations, so `defenseSetup` decides the setup to fit the site the sim chose. A 4-1 setup holds the other site so the attack appears to pivot, and 2-1-2 and 3-2 hold the hit site. This keeps the picture honest with the box score, but it is not a real decision. See "Plans" below.
+The defence's formation does not depend on the hit site, so the site the sim chose can land on a heavy lane or a light one. This is the main compromise in this layer: the sim does not yet choose sites from the attack's read of the defence, so the pivot is not a real decision. See "Plans" below.
 
 ## Movement and fights
 
