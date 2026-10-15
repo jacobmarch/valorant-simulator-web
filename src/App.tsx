@@ -16,7 +16,9 @@ import {
 } from 'lucide-react'
 import { type ReactNode, useEffect, useState } from 'react'
 import { CompetitionV2 } from './competition-view'
+import { DEBT_LIMIT } from './debt'
 import { DEFAULT_TRAINING } from './development'
+import { FiredScreen } from './fired-view'
 import { Finances } from './finances-view'
 import {
   attentionItems,
@@ -28,6 +30,7 @@ import {
   trainingGaps,
 } from './flow'
 import {
+  acceptFiredPosition,
   advanceWeek,
   assignedRole,
   createGame,
@@ -554,7 +557,8 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
             {transferWindows
               .map((w) => (w.start === w.end ? `${w.start}` : `${w.start}–${w.end}`))
               .join(', ')}
-            . You have {money(t.cash)} available.
+            . You have {money(t.cash)} available. Signings and buyouts may take the club into debt,
+            down to {money(-DEBT_LIMIT)}; past that the board fires you.
           </p>
         </Modal>
       )}
@@ -895,6 +899,14 @@ export default function App() {
     }
   }
   if (!s) return <Start start={start} />
+  if (s.fired)
+    return (
+      <div className="shell fired">
+        <main>
+          <FiredScreen s={s} onTakeOver={(teamId) => setS(acceptFiredPosition(s, teamId))} />
+        </main>
+      </div>
+    )
   const t = currentTeam(s)
   const step = nextAction(s)
   const todo = attentionItems(s).filter((item) => item.level !== 'info')
@@ -1047,7 +1059,7 @@ export default function App() {
             <span>{dateForWeek(s.week)}</span>
             <em>{phaseName(s.week)}</em>
           </div>
-          <span className="cash" title="Cash balance">
+          <span className={t.cash < 0 ? 'cash debt' : 'cash'} title="Cash balance">
             {money(t.cash)}
           </span>
           <div className="continue">

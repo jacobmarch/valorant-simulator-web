@@ -3227,3 +3227,17 @@ table {
 .player-row .role-select {
   width: 128px;
 }
+
+/* Debt and firing */
+.cash.debt {
+  color: var(--neg);
+}
+.shell.fired main {
+  margin-left: 0;
+  width: 100%;
+}
+.firing-team {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}

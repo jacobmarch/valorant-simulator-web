@@ -1,4 +1,5 @@
 import { KICKOFF_START_WEEK } from './calendar'
+import { canAfford, DEBT_LIMIT } from './debt'
 import { MORALE_DEFAULT, overallRating, prospectPotential, retirementChance } from './development'
 import type { GameState, Player, PlayerStatus, Team, TransferRecord } from './game'
 import { bestRoleAssignment } from './roles'
@@ -45,7 +46,8 @@ export function importCount(state: GameState, team: Team) {
 export type TransferOutcome = { ok: true; state: GameState } | { ok: false; error: string }
 
 const money = (value: number) => Math.round(value / 1000) * 1000
-const dollars = (value: number) => `$${Math.round(value).toLocaleString('en-US')}`
+const dollars = (value: number) =>
+  `${value < 0 ? '-' : ''}$${Math.abs(Math.round(value)).toLocaleString('en-US')}`
 const random = (state: GameState) => {
   state.rng = (state.rng * 1664525 + 1013904223) >>> 0
   return state.rng / 4294967296
@@ -262,6 +264,17 @@ function leaveTeam(state: GameState, player: Player) {
   repairLineup(state, team.id)
 }
 
+/**
+ * Why `team` cannot pay `cost` for `subject`, or null when it can. The managed club may borrow up to
+ * DEBT_LIMIT, so a signing or buyout is only refused once it would breach that limit.
+ */
+function spendError(state: GameState, team: Team, cost: number, subject: string) {
+  if (canAfford(state, team, cost)) return null
+  if (team.id !== state.currentTeamId)
+    return `${team.name} has ${dollars(team.cash)}, not enough to cover ${dollars(cost)}.`
+  return `${subject} costs ${dollars(cost)}, which would take ${team.name} past its ${dollars(DEBT_LIMIT)} debt limit. It has ${dollars(team.cash)}.`
+}
+
 export function signFreeAgentError(state: GameState, teamId: string, playerId: string) {
   const team = state.teams[teamId],
     player = state.players[playerId]
@@ -272,8 +285,8 @@ export function signFreeAgentError(state: GameState, teamId: string, playerId: s
   if (team.playerIds.length >= MAX_ROSTER)
     return `${team.name} already has ${MAX_ROSTER} players, the maximum roster. Release someone first.`
   const cost = contractValue(player)
-  if (team.cash < cost)
-    return `${team.name} has ${dollars(team.cash)} but signing ${player.name} costs ${dollars(cost)}.`
+  const spend = spendError(state, team, cost, `Signing ${player.name}`)
+  if (spend) return spend
   return importError(state, player, team)
 }
 export function signFreeAgent(input: GameState, teamId: string, playerId: string): TransferOutcome {
@@ -314,8 +327,8 @@ export function buyOutError(state: GameState, buyerId: string, playerId: string)
   if (buyer.playerIds.length >= MAX_ROSTER)
     return `${buyer.name} already has ${MAX_ROSTER} players, the maximum roster. Release someone first.`
   const fee = contractValue(player)
-  if (buyer.cash < fee)
-    return `${buyer.name} has ${dollars(buyer.cash)} but ${player.name}'s buyout is ${dollars(fee)}.`
+  const spend = spendError(state, buyer, fee, `${player.name}'s buyout`)
+  if (spend) return spend
   // An AI seller signs a free-agent replacement; the manager's own team must stay legal by hand.
   if (
     seller.id === state.currentTeamId &&

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import { MORALE_DEFAULT } from '../src/development'
+import { DEBT_LIMIT } from '../src/debt'
 import { nextAction } from '../src/flow'
 import { advanceWeek, createGame, type GameState } from '../src/game'
 import {
@@ -88,8 +89,8 @@ describe('buyouts', () => {
   })
   test('buyouts require enough cash and roster space', () => {
     const state = createGame('Manager', 'c9')
-    state.teams.c9.cash = 1000
-    expect(expectError(buyOutPlayer(state, 'c9', 'sen-1'))).toContain('buyout is')
+    state.teams.c9.cash = -DEBT_LIMIT
+    expect(expectError(buyOutPlayer(state, 'c9', 'sen-1'))).toContain('debt limit')
     state.teams.c9.cash = 100_000_000
     let next = state
     const targets = Object.values(state.players).filter(
