@@ -32,7 +32,7 @@ Each opening is chosen per round from the map and round number, so the same roun
 - `a-main`, `b-main` and `c-main` put the attackers at the entry of that site. The pivot is visible when the hit site is another one.
 - `default` spreads them out, as their attack formation has them.
 
-Checked in the browser on Haven round 2: a `b-main` opening stands at B's entry while scouting, then the attackers pivot to the middle site at contact, where the sim planted. On Haven round 3 a `c-main` opening stands at C's entry (the middle site) and hits there, with no pivot.
+Checked in the browser on Haven. Site letters on Haven put B in the middle, with A at the bottom and C at the top. On round 2, a `b-main` opening scouts from B's entry and hits B, with no pivot. On round 3, a `c-main` opening scouts from C's entry at the top, then pivots down to A at the bottom at contact. That round had no plant, so the hit site alternated to A.
 
 ## Formations
 

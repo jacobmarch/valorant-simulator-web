@@ -4,7 +4,8 @@
 // Each map's minimap is turned so its sites sit above the mid and the attack spawn sits at the
 // bottom. The highlighted zones on the source images are the sites, and each one is a site point.
 // Site letters follow left-to-right order after the turn, which is a guess for the images without
-// labels, so check them against the game. Every point was placed on the turned image and snapped to
+// labels, so check them against the game. Haven's letters were set by hand, so B is the middle site
+// with A and C on the outside, as on Lotus. Every point was placed on the turned image and snapped to
 // the nearest floor pixel, so none sits on a wall or in a void. To move a point, edit it here.
 //
 // Attackers spread out across these points rather than moving as one group: some take the site's
@@ -328,38 +329,6 @@ export const mapLayouts: Record<string, MapLayout> = {
     siteNames: ['A', 'B', 'C'],
     sites: {
       A: {
-        plant: { x: 60.7, y: 50.5 },
-        entry: [
-          { x: 46.44, y: 53.12 },
-          { x: 40.72, y: 49.57 },
-          { x: 47.77, y: 43.92 },
-        ],
-        lanes: [
-          { x: 30.08, y: 63.08 },
-          { x: 31.39, y: 35.11 },
-        ],
-        lurk: [{ x: 53.74, y: 28.15 }],
-        holds: [
-          { x: 60.98, y: 44.51 },
-          { x: 60.42, y: 56.49 },
-          { x: 67.69, y: 50.83 },
-          { x: 66.91, y: 43.92 },
-          { x: 66.02, y: 57.27 },
-        ],
-        post: [
-          { x: 61.13, y: 42.73 },
-          { x: 60.33, y: 58.49 },
-          { x: 68.69, y: 50.87 },
-          { x: 52.71, y: 50.13 },
-        ],
-        retake: [
-          { x: 48.07, y: 41.1 },
-          { x: 47.33, y: 59.94 },
-          { x: 43.72, y: 49.71 },
-          { x: 51.71, y: 50.08 },
-        ],
-      },
-      B: {
         plant: { x: 62.6, y: 86.5 },
         entry: [
           { x: 52.36, y: 75.22 },
@@ -389,6 +358,38 @@ export const mapLayouts: Record<string, MapLayout> = {
           { x: 50.89, y: 76.85 },
           { x: 57.72, y: 70.33 },
           { x: 59.66, y: 77.99 },
+        ],
+      },
+      B: {
+        plant: { x: 60.7, y: 50.5 },
+        entry: [
+          { x: 46.44, y: 53.12 },
+          { x: 40.72, y: 49.57 },
+          { x: 47.77, y: 43.92 },
+        ],
+        lanes: [
+          { x: 30.08, y: 63.08 },
+          { x: 31.39, y: 35.11 },
+        ],
+        lurk: [{ x: 53.74, y: 28.15 }],
+        holds: [
+          { x: 60.98, y: 44.51 },
+          { x: 60.42, y: 56.49 },
+          { x: 67.69, y: 50.83 },
+          { x: 66.91, y: 43.92 },
+          { x: 66.02, y: 57.27 },
+        ],
+        post: [
+          { x: 61.13, y: 42.73 },
+          { x: 60.33, y: 58.49 },
+          { x: 68.69, y: 50.87 },
+          { x: 52.71, y: 50.13 },
+        ],
+        retake: [
+          { x: 48.07, y: 41.1 },
+          { x: 47.33, y: 59.94 },
+          { x: 43.72, y: 49.71 },
+          { x: 51.71, y: 50.08 },
         ],
       },
       C: {
