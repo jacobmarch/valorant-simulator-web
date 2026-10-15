@@ -11,7 +11,7 @@ import { useEffect, useState } from 'react'
 import { assignedRole, type GameState } from './game'
 import { RoundMap } from './round-map'
 import { buyLabel, clock, type MapReplay, type RoundReplay, type TeamBuy } from './round-sim'
-import { pickLurker, roundFrame, roundStages, stepAfter } from './round-stages'
+import { FIGHT_AT, pickLurker, roundFrame, roundStages, stepAfter } from './round-stages'
 import { TeamMark } from './ui'
 
 const endText: Record<RoundReplay['endReason'], string> = {
@@ -23,6 +23,8 @@ const speeds = [1, 2, 4]
 const EVENT_MS = 900
 /** How long a stage holds on screen before the next one starts, when the round is live. */
 const STAGE_MS = 1700
+/** How long two fighters stand together before the kill lands, when the round is live. */
+const FIGHT_MS = 650
 const ROUND_PAUSE_MS = 1600
 
 function credits(buy: TeamBuy) {
@@ -149,6 +151,7 @@ export function RoundReplayView({
   const stages = roundStages(replay.map, round)
   const stageStarts = stages.map((stage) => stage.start)
   const atStage = stageStarts.includes(step)
+  const atFight = Math.abs((step % 1) - FIGHT_AT) < 1e-6
   const nextStart = stageStarts.find((start) => start > step)
 
   useEffect(() => {
@@ -162,12 +165,15 @@ export function RoundReplayView({
         if (over) {
           setIndex((value) => value + 1)
           setStep(0)
-        } else setStep((value) => stepAfter(roundStages(replay.map, replay.rounds[index]), value))
+        } else
+          setStep((value) =>
+            stepAfter(roundStages(replay.map, replay.rounds[index]), value, replay.rounds[index]),
+          )
       },
-      (over ? ROUND_PAUSE_MS : atStage ? STAGE_MS : EVENT_MS) / speed,
+      (over ? ROUND_PAUSE_MS : atStage ? STAGE_MS : atFight ? FIGHT_MS : EVENT_MS) / speed,
     )
     return () => window.clearTimeout(timer)
-  }, [playing, index, step, over, finished, speed, atStage, replay])
+  }, [playing, index, step, over, finished, speed, atStage, atFight, replay])
 
   useEffect(() => {
     if (over) setRevealed((value) => Math.max(value, index + 1))

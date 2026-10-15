@@ -17,10 +17,12 @@ The stages are beats of the round. A step is how many events have happened, and 
 - Setup, always first: step 0.
 - Opening: step 0.25. The attack goes where its plan has it.
 - Map control: step 0.5, for the plans that take control (default, fake, slow). Rush and split skip it.
-- Reads: step `h + 0.75`, where `h` is how many kills fell before the hit. Defenders off the site start rotating if they read the attack.
-- Hit: step `h + 1`, with the first fight on the site. Skipped when the plant is the hit's first event.
+- Reads: step `h + 0.6`, where `h` is how many kills fell before the hit. Defenders off the site start rotating if they read the attack.
+- Hit: step `h + 0.8`. Skipped when the plant is the first event after map control.
 - Rotation: step `h + 1.5`, partway through the fight, when more events follow.
-- Post-plant: step `plantIndex + 1`. Retake: step `plantIndex + 1.5`, when more events follow the plant.
+- Post-plant: step `plantIndex + 0.8`. Retake: step `plantIndex + 1.5`, when more events follow the plant.
+
+Every stage after setup starts on a fractional step, so its movement shows before the event that follows it. Each kill also has a fight step at `index + 0.9` (`FIGHT_AT`): the two fighters have moved together and both are alive. The kill lands on step `index + 1`, where the victim is marked dead where they stand. Players are always moved first, then die.
 
 A round has between four and nine stages. The live timer holds each stage start for a moment, and a Continue Round press jumps to the next one.
 
@@ -31,8 +33,11 @@ Every player stands on a named point from `src/map-layouts.ts`, and only on thos
 - The hit site is the one the spike goes down on. If the spike never goes down, the attack goes for a site that alternates by round, and every position below uses that site.
 - Formations are picked per round from the map and round number, so the same round always lines up the same way. Defence is 4-1, 2-1-2 or 3-2; attack is 5-0, 2-1-2 or 3-1-1.
 - Setup: attackers stand on the attack spawn. Defenders take their formation, with players shuffled across its slots by the plan. See `round-tactics.md`.
-- Opening and map control: the attackers take the points their plan has them on (mid, a main route, two routes, a pair showing on the other site), and the lurker takes a flank. A pushing defender may come forward. Kills in this phase happen on the control points (mid, flanks, site entries), or at the flank when the lurker is in the fight.
-- Hit: the attackers go in to the hit site. Three or more defenders on the site fight it, and the rest rotate through mid and arrive at the rotation beat. Fewer than three fall off to the retake points, and the rest of the team plays the retake. From here every fight is on the hit site. Kills happen where the fighters stand: when a killer is more than 30 units from the victim, the killer moves to the nearest free point its side can fight from, so a kill is always between players in the same fight. Victims stay where they fell, marked dead.
+- Movement: after setup, nobody jumps. Each beat gives a side goals (staging points, hit points, retake points), the goals are handed out so the group walks the least, and every player takes one walk toward theirs: at most 40 units along the named points, or 70 on the opening, which leaves the spawn. A long trip, such as a rotation from one site to the other, takes several beats and passes through mid.
+- Spacing: a player never stands within 12 units of an enemy or 7 of a teammate, except the two players about to fight. So nobody stands beside an enemy without a fight.
+- Opening and map control: the attackers walk toward the points their plan has them on (mid, a main route, two routes, a pair showing on the other site), and the lurker takes a flank. A pushing defender may come forward.
+- Hit: the attackers walk in to the hit site. Three or more defenders on the site fight it, and the rest keep walking in through mid and arrive at the rotation beat. Fewer than three fall off to the retake points, and the rest of the team plays the retake.
+- Fights: before a kill, the fighters are moved to the pair of points within 30 units of each other that takes the least walking, so players already close barely move. Before the hit that can be anywhere on the map. From the hit on it is on the hit site, or on the mid and flanks leading to it.
 - The lurker is the first Sentinel or Controller among the attackers, as a team usually sends one to flank. With neither, the last attacker lurks, so one attacker is always apart from the group.
 - Post-plant: attackers stand on the site's post points round the spike. Defenders regroup (stacked in mid, or spread round the map), then come in to the retake points, on two points or all of them.
 - The planter and the defuser stand beside the spike, on the site's first post point.

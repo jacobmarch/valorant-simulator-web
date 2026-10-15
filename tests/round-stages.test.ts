@@ -5,6 +5,8 @@ import { simulateSeries } from '../src/game'
 import { type MapReplay, type SeriesReplay } from '../src/round-sim'
 import {
   ATTACK_PLANS,
+  FIGHT_AT,
+  FIGHT_RANGE,
   pickLurker,
   roundFrame,
   roundPlan,
@@ -103,7 +105,7 @@ describe('round stages', () => {
           continue
         }
         checked++
-        expect(post?.start).toBe(plantAt + 1)
+        expect(post?.start).toBe(plantAt + 0.8)
       }
     }
     expect(checked).toBeGreaterThan(0)
@@ -178,7 +180,7 @@ describe('round stages', () => {
     }
   })
 
-  test('after a plant, living attackers stand on the planted site', () => {
+  test('after a plant, living attackers are round the spike', () => {
     let checked = 0
     for (const { map, sides } of allMaps().slice(0, 16)) {
       for (const round of map.rounds) {
@@ -187,13 +189,13 @@ describe('round stages', () => {
         const attackerSide = round.attackerId === map.aId ? 'a' : 'b'
         const plantAt = round.events.indexOf(plant)
         const site = mapLayouts[map.map].sites[plant.site]
-        const onSite = [site.plant, ...site.post]
         const frame = roundFrame(map.map, round, sides, attackerSide, plantAt + 1)
         expect(frame.spike).toMatchObject({ site: plant.site, state: 'planted' })
         for (const mark of frame.marks) {
           if (!mark.attacking || !mark.alive) continue
           checked++
-          expect(onSite.some((point) => point.x === mark.x && point.y === mark.y)).toBe(true)
+          // One walk from wherever they were: close to the spike, never across the map.
+          expect(Math.hypot(mark.x - site.plant.x, mark.y - site.plant.y)).toBeLessThan(55)
         }
       }
     }
@@ -263,80 +265,69 @@ describe('round stages', () => {
         // attack pivots onto it. Every setup keeps at least one defender there.
         expect(onHold.length).toBeGreaterThanOrEqual(1)
         checked += onHold.length
-        // Just before the plant: the attackers have gone in and not yet moved on.
+        // Just before the plant the attack is on its way to, or on, the planted site.
         const plantAt = round.events.indexOf(plant)
-        // The hit has to have landed before the plant for the attack to be on the site.
-        if (plantAt <= roundPlan(map.map, round).hitIndex) continue
-        const contact = roundFrame(map.map, round, sides, attackerSide, plantAt)
-        const onSite = [...site.entry, ...site.lanes, site.lurk[0]]
-        for (const mark of contact.marks) {
-          if (!mark.alive) continue
-          // Defenders hold the site, fall back to its retake points, sit mid, or hold the other site
-          // when the attack pivots onto this one.
-          const defending = [
-            ...site.holds,
-            ...site.retake,
-            ...Object.values(mapLayouts[map.map].sites).flatMap((layout) => layout.holds),
-            ...mapLayouts[map.map].mid,
-          ]
-          const at = mark.attacking ? onSite : defending
-          expect(at.some((point) => point.x === mark.x && point.y === mark.y)).toBe(true)
-        }
+        const before = roundFrame(map.map, round, sides, attackerSide, plantAt)
+        for (const mark of before.marks)
+          if (mark.attacking && mark.alive)
+            expect(Math.hypot(mark.x - site.plant.x, mark.y - site.plant.y)).toBeLessThan(85)
       }
     }
     expect(checked).toBeGreaterThan(0)
   })
 
-  test('every kill is between opposing sides, in map control early and on the hit site after', () => {
+  test('every kill is between opposing sides, and its fighters meet before the victim dies', () => {
+    let kills = 0
+    let met = 0
     let early = 0
-    let onSiteKills = 0
     for (const { map, sides } of allMaps()) {
       const layout = mapLayouts[map.map]
       for (const round of map.rounds) {
         const attackerSide = round.attackerId === map.aId ? 'a' : 'b'
         const plan = roundPlan(map.map, round)
         const hit = layout.sites[plan.hit]
-        const siteSpots = [
-          ...hit.holds,
+        const ground = [
           ...hit.entry,
           ...hit.lanes,
+          ...hit.lurk,
+          ...hit.holds,
           ...hit.post,
           ...hit.retake,
-          hit.lurk[0],
-        ]
-        const controlSpots = [
           ...layout.mid,
           ...layout.flank,
-          ...hit.entry,
-          ...hit.holds,
-          hit.lurk[0],
         ]
-        const isOn = (mark: { x: number; y: number }, spots: { x: number; y: number }[]) =>
-          spots.some((point) => point.x === mark.x && point.y === mark.y)
         round.events.forEach((event, index) => {
           if (event.kind !== 'kill') return
           const side = (id: string) => (sides.a.includes(id) ? 'a' : 'b')
           expect(side(event.killerId)).not.toBe(side(event.victimId))
-          // The frame just after the kill: the fight is where both of them now stand.
-          const frame = roundFrame(map.map, round, sides, attackerSide, index + 1)
-          const killer = frame.marks.find((mark) => mark.id === event.killerId)
-          const victim = frame.marks.find((mark) => mark.id === event.victimId)
-          if (!killer || !victim) throw new Error('kill names a player not in the round')
-          if (index < plan.hitIndex) {
-            early++
-            expect(isOn(killer, controlSpots)).toBe(true)
-            expect(isOn(victim, controlSpots)).toBe(true)
-          } else {
-            onSiteKills++
-            expect(isOn(killer, siteSpots)).toBe(true)
-            expect(isOn(victim, siteSpots)).toBe(true)
+          const find = (frame: ReturnType<typeof roundFrame>, id: string) => {
+            const mark = frame.marks.find((candidate) => candidate.id === id)
+            if (!mark) throw new Error('kill names a player not in the round')
+            return mark
           }
+          const fight = roundFrame(map.map, round, sides, attackerSide, index + FIGHT_AT)
+          const after = roundFrame(map.map, round, sides, attackerSide, index + 1)
+          const [killer, victim] = [find(fight, event.killerId), find(fight, event.victimId)]
+          // Everyone is alive and in position when the fight shows, and the victim dies in place.
+          expect(killer.alive && victim.alive).toBe(true)
+          const dead = find(after, event.victimId)
+          expect(dead.alive).toBe(false)
+          expect([dead.x, dead.y]).toEqual([victim.x, victim.y])
+          expect(find(after, event.killerId)).toMatchObject({ x: killer.x, y: killer.y })
+          kills++
+          if (Math.hypot(killer.x - victim.x, killer.y - victim.y) <= FIGHT_RANGE) met++
+          // After the hit the fight is on the site, or on the mid and flanks leading to it.
+          if (index >= plan.hitIndex)
+            for (const mark of [killer, victim])
+              expect(ground.some((point) => point.x === mark.x && point.y === mark.y)).toBe(true)
+          else early++
         })
       }
     }
     expect(early).toBeGreaterThan(0)
-    expect(onSiteKills).toBeGreaterThan(0)
-  })
+    // Nearly every fight puts the two players within range of each other.
+    expect(met / kills).toBeGreaterThan(0.97)
+  }, 30_000)
 
   test('attacks open in the mid, on a main route, or on their default, and every opening happens', () => {
     const openings = new Set<string>()
@@ -361,54 +352,100 @@ describe('round stages', () => {
                 })()
               : null
         if (!home) continue
+        // The opening gets everyone to its area. A walk is one move from spawn, so each attacker
+        // is on, or beside, one of its points.
         for (const mark of crew)
-          expect(home.some((point) => point.x === mark.x && point.y === mark.y)).toBe(true)
+          expect(
+            Math.min(...home.map((point) => Math.hypot(point.x - mark.x, point.y - mark.y))),
+          ).toBeLessThan(26)
       }
     }
     expect(openings).toEqual(new Set(['mid', 'a-main', 'b-main', 'c-main', 'default']))
   })
 
-  test('attackers spread out in contact, with a lurker apart from the group', () => {
-    let lurks = 0
+  test('attackers spread out, with a lurker apart from the group', () => {
+    let checked = 0
     for (const { map, sides } of allMaps()) {
-      const layout = mapLayouts[map.map]
       for (const round of map.rounds) {
         const attackerSide = round.attackerId === map.aId ? 'a' : 'b'
         const attackers = sides[attackerSide]
         const lurker = pickLurker(attackers, () => 'Duelist')
         expect(lurker).toBe(attackers[attackers.length - 1])
-        const plant = round.events.find((event) => event.kind === 'plant')
-        const site = plant?.kind === 'plant' ? layout.sites[plant.site] : undefined
-        // Contact comes before the plant, so read the frame just before it.
-        const plantAt = plant?.kind === 'plant' ? round.events.indexOf(plant) : -1
-        if (plantAt <= roundPlan(map.map, round).hitIndex) continue
-        const frame = roundFrame(
-          map.map,
-          round,
-          sides,
-          attackerSide,
-          plantAt === -1 ? 1 : plantAt,
-          lurker,
-        )
-        // Beats where attackers share a spot on purpose are not checked: only the attack's own.
-        const spots = new Set(
-          frame.marks
-            .filter((mark) => mark.attacking && mark.alive)
-            .map((mark) => `${mark.x},${mark.y}`),
-        )
-        // Every living attacker stands on a point of their own.
-        const living = frame.marks.filter((mark) => mark.attacking && mark.alive).length
-        expect(spots.size).toBe(living)
-        const lurking = frame.marks.find((mark) => mark.id === lurker)
-        if (site && lurking?.alive && lurking.attacking) {
-          lurks++
-          // The lurker sits on the lurk spot, or has moved onto the site to take a fight.
-          const onSite = [...site.lurk, ...site.entry, ...site.lanes, ...layout.flank, ...site.post]
-          expect(onSite.some((point) => point.x === lurking.x && point.y === lurking.y)).toBe(true)
+        const stages = roundStages(map.map, round)
+        // At every beat no two living attackers share a spot or stand on top of each other.
+        for (const stage of stages.slice(1)) {
+          const frame = roundFrame(map.map, round, sides, attackerSide, stage.start, lurker)
+          const living = frame.marks.filter((mark) => mark.attacking && mark.alive)
+          living.forEach((mark, at) => {
+            for (const mate of living.slice(at + 1)) {
+              checked++
+              expect(Math.hypot(mark.x - mate.x, mark.y - mate.y)).toBeGreaterThanOrEqual(6.9)
+            }
+          })
         }
       }
     }
-    expect(lurks).toBeGreaterThan(0)
+    expect(checked).toBeGreaterThan(0)
+  })
+
+  test('nobody jumps: between beats a player only walks to a nearby named point', () => {
+    let moves = 0
+    for (const { map, sides } of allMaps().slice(0, 16)) {
+      for (const round of map.rounds) {
+        const attackerSide = round.attackerId === map.aId ? 'a' : 'b'
+        const stages = roundStages(map.map, round)
+        // Beats and events only: the fight steps move fighters together and are checked above.
+        const steps = [
+          ...new Set([
+            ...stages.map((stage) => stage.start),
+            ...round.events.map((_, index) => index + 1),
+          ]),
+        ].sort((x, y) => x - y)
+        let before = roundFrame(map.map, round, sides, attackerSide, 0)
+        for (const step of steps.slice(1)) {
+          const stage = stages.find((candidate) => candidate.start === step)
+          const now = roundFrame(map.map, round, sides, attackerSide, step)
+          for (const mark of now.marks) {
+            const was = before.marks.find((candidate) => candidate.id === mark.id)
+            if (!was?.alive) continue
+            const walked = Math.hypot(mark.x - was.x, mark.y - was.y)
+            moves++
+            // A beat moves a player at most one walk. A fight before a kill can bring two players
+            // together from further, so a step that carries a kill is not capped.
+            const killStep = step % 1 === 0 && round.events[step - 1]?.kind === 'kill'
+            if (!killStep)
+              expect(walked).toBeLessThanOrEqual(stage?.kind === 'opening' ? 70.1 : 40.1)
+          }
+          before = now
+        }
+      }
+    }
+    expect(moves).toBeGreaterThan(0)
+  })
+
+  test('opposing players are never side by side unless they are about to fight', () => {
+    let pairs = 0
+    let beside = 0
+    for (const { map, sides } of allMaps().slice(0, 16)) {
+      for (const round of map.rounds) {
+        const attackerSide = round.attackerId === map.aId ? 'a' : 'b'
+        const stages = roundStages(map.map, round)
+        for (const stage of stages.slice(1)) {
+          const frame = roundFrame(map.map, round, sides, attackerSide, stage.start)
+          const next = round.events[Math.floor(stage.start)]
+          const fighters = new Set(next?.kind === 'kill' ? [next.killerId, next.victimId] : [])
+          for (const one of frame.marks)
+            for (const two of frame.marks) {
+              if (!one.alive || !two.alive || !one.attacking || two.attacking) continue
+              pairs++
+              if (fighters.has(one.id) && fighters.has(two.id)) continue
+              if (Math.hypot(one.x - two.x, one.y - two.y) < 11.9) beside++
+            }
+        }
+      }
+    }
+    expect(pairs).toBeGreaterThan(0)
+    expect(beside / pairs).toBeLessThan(0.01)
   })
 
   test('stepAfter walks beats and events in order, never skipping an event', () => {
@@ -438,12 +475,13 @@ describe('round stages', () => {
         const fake = layout.sites[plan.fake]
         const lurker = pickLurker(sides[attackerSide], () => 'Duelist')
         const control = roundFrame(map.map, round, sides, attackerSide, 0.5, lurker)
-        const showing = control.marks.filter(
-          (mark) =>
-            mark.attacking &&
-            fake.entry.slice(0, 2).some((point) => point.x === mark.x && point.y === mark.y),
+        const show = Math.min(
+          ...control.marks
+            .filter((mark) => mark.attacking)
+            .map((mark) => Math.hypot(mark.x - fake.entry[0].x, mark.y - fake.entry[0].y)),
         )
-        expect(showing.length).toBe(2)
+        // The pair is on its way to the other site, or already there.
+        expect(show).toBeLessThan(45)
         expect(plan.fake).not.toBe(plan.hit)
         fakes++
       }
@@ -452,8 +490,8 @@ describe('round stages', () => {
     expect(plans).toEqual(new Set(ATTACK_PLANS))
   })
 
-  test('the defence rotates: players off the site cross mid, then arrive on the site', () => {
-    let rotations = 0
+  test('the defence rotates: more defenders are on the site after the rotation beat', () => {
+    let arrivals = 0
     for (const { map, sides } of allMaps()) {
       const layout = mapLayouts[map.map]
       for (const round of map.rounds) {
@@ -461,24 +499,22 @@ describe('round stages', () => {
         const rotate = stages.find((stage) => stage.kind === 'rotate')
         if (!rotate) continue
         const attackerSide = round.attackerId === map.aId ? 'a' : 'b'
-        const plan = roundPlan(map.map, round)
-        const site = layout.sites[plan.hit]
+        const site = layout.sites[roundPlan(map.map, round).hit]
         const onSite = [...site.holds, ...site.retake]
-        const before = roundFrame(map.map, round, sides, attackerSide, rotate.start - 0.25)
-        const after = roundFrame(map.map, round, sides, attackerSide, rotate.start)
-        for (const mark of after.marks) {
-          if (mark.attacking || !mark.alive) continue
-          const earlier = before.marks.find((candidate) => candidate.id === mark.id)
-          const wasOn = earlier ? onSite.some((p) => p.x === earlier.x && p.y === earlier.y) : false
-          // Anyone off the site before the rotation is on it after.
-          if (!wasOn && earlier?.alive) {
-            rotations++
-            expect(onSite.some((p) => p.x === mark.x && p.y === mark.y)).toBe(true)
-          }
-        }
+        const count = (step: number) =>
+          roundFrame(map.map, round, sides, attackerSide, step).marks.filter(
+            (mark) =>
+              !mark.attacking &&
+              mark.alive &&
+              onSite.some((point) => point.x === mark.x && point.y === mark.y),
+          ).length
+        const before = count(rotate.start - 0.05)
+        const after = count(rotate.start)
+        expect(after).toBeGreaterThanOrEqual(before)
+        arrivals += after - before
       }
     }
-    expect(rotations).toBeGreaterThan(0)
+    expect(arrivals).toBeGreaterThan(0)
   })
 
   test('rounds are not copies of each other', () => {

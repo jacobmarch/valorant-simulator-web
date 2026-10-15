@@ -20,6 +20,7 @@ import {
   roundStages,
   stageIndexAt,
   stepAfter,
+  FIGHT_AT,
   type AttackFormation,
   type AttackOpening,
   type AttackPlan,
@@ -42,6 +43,7 @@ export {
   roundStages,
   stageIndexAt,
   stepAfter,
+  FIGHT_AT,
 }
 export type {
   AttackFormation,
@@ -159,18 +161,81 @@ export function pickLurker(attackers: string[], roleOf: (id: string) => Role): s
 
 type Roster = { id: string; side: Side }
 
+/** Closest an enemy can stand to a player who is not in a fight with them. */
+const ENEMY_GAP = 12
+/** Closest two teammates can stand, so two dots are never drawn on top of each other. */
+const TEAM_GAP = 7
+/** The most a player walks in one beat, from named point to named point. */
+const MOVE_LIMIT = 40
+/** The first beat leaves the spawn, which is further from everything. */
+const OPENING_LIMIT = 70
+
+/** Every point of a map, as the places a player can pass through or stand on. */
+function walkable(layout: MapLayout): Point[] {
+  return [
+    ...layout.mid,
+    ...layout.flank,
+    ...layout.siteNames.flatMap((name) => {
+      const site = layout.sites[name]
+      return [
+        ...site.entry,
+        ...site.lanes,
+        ...site.lurk,
+        ...site.holds,
+        ...site.post,
+        ...site.retake,
+      ]
+    }),
+  ]
+}
+
+/** Best way to hand `goals` out to `players`: the one with the least walking in total. */
+function assignGoals<T extends { x: number; y: number }>(
+  players: T[],
+  goals: Point[],
+): Map<T, Point> {
+  const count = players.length
+  const targets = Array.from({ length: count }, (_, at) => goals[at % goals.length])
+  const best = { cost: Number.POSITIVE_INFINITY, order: [] as number[] }
+  const order: number[] = []
+  const used = new Set<number>()
+  const search = (at: number, cost: number) => {
+    if (cost >= best.cost) return
+    if (at === count) {
+      best.cost = cost
+      best.order = [...order]
+      return
+    }
+    for (let goal = 0; goal < count; goal++) {
+      if (used.has(goal)) continue
+      used.add(goal)
+      order.push(goal)
+      search(at + 1, cost + distance(players[at], targets[goal]))
+      order.pop()
+      used.delete(goal)
+    }
+  }
+  search(0, 0)
+  return new Map(players.map((player, at) => [player, targets[best.order[at]]]))
+}
+
 /**
  * Where everyone stands after `step` of a round.
  *
- * - Setup: attackers spawn; defenders take their formation.
+ * Nobody jumps. Setup puts everyone on their formation, and after that a player only walks:
+ * each beat gives a side goals, and every player moves toward theirs along the named points, at
+ * most `MOVE_LIMIT` a beat, taking whichever walkable point gets them closest. A long trip, like a
+ * rotation from one site to the other, takes several beats and passes through mid.
+ *
  * - Opening and control: the attackers go where their plan has them (mid, a main route, split
- *   across two routes, a pair showing on the other site), and the lurker takes a flank. A pushing
- *   defender may come forward, and kills in this phase fall on the control points.
+ *   across two routes, a pair showing on the other site), and the lurker takes a flank.
  * - Read: defenders off the hit site start rotating if they read the attack.
  * - Hit: the attackers commit to the site. Three or more holders fight it; fewer fall off to the
- *   retake while the rest rotate through mid. The rotation arrives partway through the fight.
+ *   retake. Defenders off the site keep rotating, and arrive partway through the fight.
  * - Post-plant: the attackers set up round the spike and the defenders regroup, then retake.
- * - The planter and the defuser stand beside the spike. Victims stay where they fell.
+ * - Fights: for a kill, the step before it (`FIGHT_AT`) moves the two fighters together, alive.
+ *   The kill itself marks the victim dead where they stand. Anyone else keeps their distance from
+ *   an enemy, so two opposing players are never side by side without a fight.
  */
 export function roundFrame(
   map: string,
@@ -196,14 +261,11 @@ export function roundFrame(
   const defenders = roster.filter((player) => !attacking(player))
   const lurker = attackers.find((player) => player.id === lurkerId)
   const crew = attackers.filter((player) => player !== lurker)
-  // Slots: who stands on which point of a list. They come from the plan's shuffle, and stay with a
-  // player for the whole round, living or dead.
+  // Slots only decide who starts where on the defence's formation.
   const slots = new Map<string, number>()
-  const ranked = (order: number[], group: Roster[]) => order.filter((rank) => rank < group.length)
-  ranked(plan.attackOrder, crew).forEach((rank, at) => slots.set(crew[at].id, rank))
-  ranked(plan.defenseOrder, defenders).forEach((rank, at) => slots.set(defenders[at].id, rank))
+  const ranks = plan.defenseOrder.filter((rank) => rank < defenders.length)
+  defenders.forEach((player, at) => slots.set(player.id, ranks[at]))
   const slotOf = (player: Roster) => slots.get(player.id) ?? 0
-  const pointAt = (points: Point[], player: Roster) => points[slotOf(player) % points.length]
 
   const pos: Record<string, Mark> = {}
   const place = (player: Roster, at: Point) => {
@@ -217,13 +279,49 @@ export function roundFrame(
     }
   }
   const alive = (group: Roster[]) => group.filter((player) => pos[player.id]?.alive !== false)
-  // A spot nobody living is on, so two players never share one.
-  const taken = (spot: Point, self: string) =>
-    Object.values(pos).some(
-      (mark) => mark.alive && mark.id !== self && mark.x === spot.x && mark.y === spot.y,
+  const roads = walkable(layout)
+
+  // The two players whose fight is next. They may stand beside each other; nobody else may.
+  let fighting = new Set<string>()
+  // Whether a player may stand on `spot`: not on or beside a teammate, and not beside an enemy
+  // unless the two are about to fight.
+  const free = (spot: Point, who: Roster) =>
+    !Object.values(pos).some((mark) => {
+      if (!mark.alive || mark.id === who.id) return false
+      const apart = distance(mark, spot)
+      if (mark.side === who.side) return apart < TEAM_GAP
+      return apart < ENEMY_GAP && !(fighting.has(mark.id) && fighting.has(who.id))
+    })
+  /** One walk toward a goal: the open walkable point within `limit` that gets closest to it. */
+  const advance = (player: Roster, goal: Point, limit = MOVE_LIMIT) => {
+    const here = pos[player.id]
+    let best: Point | undefined
+    let bestGap = distance(here, goal)
+    for (const road of [goal, ...roads]) {
+      if (distance(road, here) > limit || !free(road, player)) continue
+      const gap = distance(road, goal)
+      if (gap < bestGap - 0.01) {
+        best = road
+        bestGap = gap
+      }
+    }
+    if (best) place(player, best)
+  }
+  /** A side's walk: goals handed out for the least walking, then each player takes a step. */
+  const march = (group: Roster[], goals: Point[], limit = MOVE_LIMIT) => {
+    if (group.length === 0) return
+    const targets = assignGoals(
+      group.map((player) => ({ player, x: pos[player.id].x, y: pos[player.id].y })),
+      goals,
     )
-  const freeOf = (spots: Point[], self: string) =>
-    spots.find((spot) => !taken(spot, self)) ?? spots[0]
+    // Players nearest their goal go first, so a player already in place keeps their spot.
+    const order = [...targets.entries()].sort(
+      ([a, ga], [b, gb]) => distance(a, ga) - distance(b, gb),
+    )
+    for (const [{ player }, goal] of order) advance(player, goal, limit)
+  }
+  const gather = (group: Roster[], goals: Point[], limit?: number) =>
+    march(alive(group), goals, limit)
 
   attackers.forEach((player, at) =>
     place(player, layout.attackSpawn[at % layout.attackSpawn.length]),
@@ -242,133 +340,151 @@ export function roundFrame(
   // Set when the hit lands with fewer than three holders: the defence plays a retake instead.
   let fallen = false
   const onSite = (mark: Mark) => standsOn(mark, site.holds) || standsOn(mark, site.retake)
+  /** Defenders not on the hit site, who are on their way to it. */
+  const rotators = () => alive(defenders).filter((player) => !onSite(pos[player.id]))
+  /** Where rotators head: the holds nobody is on, or the retake points after a fall-off. */
+  const arrival = () => {
+    const spots = fallen ? site.retake : site.holds
+    const open = spots.filter(
+      (spot) => !alive(defenders).some((player) => standsOn(pos[player.id], [spot])),
+    )
+    return open.length > 0 ? open : spots
+  }
   const applyBeat = (stage: Stage) => {
     if (stage.kind === 'opening') {
-      const points = openingPoints(plan, layout)
-      alive(crew).forEach((player) => place(player, pointAt(points, player)))
-      if (lurker && alive([lurker]).length) place(lurker, layout.flank[plan.flank])
-      // A pushing defender comes forward for information. The last slot is always one that
-      // is off the main hold, so the site is never left empty.
-      if (plan.push) {
-        const pusher = defenders.find((player) => slotOf(player) === 4)
-        if (pusher && alive([pusher]).length)
-          place(pusher, freeOf([layout.mid[1], layout.mid[3]], pusher.id))
-      }
+      gather(crew, openingPoints(plan, layout), OPENING_LIMIT)
+      if (lurker) gather([lurker], [layout.flank[plan.flank]], OPENING_LIMIT)
+      // A pushing defender comes forward for information. Slot 4 is always off the main hold, so
+      // the site is never left empty.
+      const pusher = defenders.find((player) => slotOf(player) === 4)
+      if (plan.push && pusher) gather([pusher], [layout.mid[1], layout.mid[3]])
     } else if (stage.kind === 'control') {
-      const points = controlPoints(plan, layout)
-      alive(crew).forEach((player) => place(player, pointAt(points, player)))
-      if (lurker && alive([lurker]).length)
-        place(lurker, plan.lurkEarly ? site.lurk[0] : layout.flank[1 - plan.flank])
+      gather(crew, controlPoints(plan, layout))
+      if (lurker) gather([lurker], plan.lurkEarly ? [site.lurk[0]] : [layout.flank[plan.flank]])
     } else if (stage.kind === 'read') {
-      // Defenders off the hit site see the attack coming and start rotating through mid.
-      if (plan.reads)
-        alive(defenders)
-          .filter((player) => !onSite(pos[player.id]) && !standsOn(pos[player.id], layout.mid))
-          .forEach((player) => place(player, freeOf(layout.mid, player.id)))
+      // Defenders off the hit site see the attack coming and start rotating toward it.
+      if (plan.reads) gather(rotators(), arrival())
     } else if (stage.kind === 'hit') {
-      const points = hitPoints(plan, site)
-      alive(crew).forEach((player) => place(player, pointAt(points, player)))
-      if (lurker && alive([lurker]).length) place(lurker, site.lurk[0])
+      gather(crew, hitPoints(plan, site))
+      if (lurker) gather([lurker], [site.lurk[0]])
       // The defence answers. Three or more holding the site fight it while the rest rotate in;
       // fewer fall off to the retake points, and the rest of the team plays the retake.
       const holding = alive(defenders).filter((player) => standsOn(pos[player.id], site.holds))
       fallen = holding.length < 3
-      if (fallen) holding.forEach((player) => place(player, freeOf(site.retake, player.id)))
-      alive(defenders)
-        .filter((player) => !onSite(pos[player.id]) && !standsOn(pos[player.id], layout.mid))
-        .forEach((player) => place(player, freeOf(layout.mid, player.id)))
+      if (fallen) gather(holding, site.retake)
+      gather(rotators(), arrival())
     } else if (stage.kind === 'rotate') {
-      const arrival = fallen ? site.retake : site.holds
-      alive(defenders)
-        .filter((player) => !onSite(pos[player.id]))
-        .forEach((player) => place(player, freeOf(arrival, player.id)))
+      // Everyone still walking in arrives: the defenders rotating, and the attackers who faked.
+      gather(rotators(), arrival())
+      gather(crew, hitPoints(plan, site))
     } else if (stage.kind === 'post-plant') {
-      alive(crew).forEach((player) => place(player, pointAt(site.post, player)))
-      if (lurker && alive([lurker]).length) place(lurker, site.post[site.post.length - 1])
+      gather(crew, site.post)
+      if (lurker) gather([lurker], [site.post[site.post.length - 1]])
       // The defence regroups before the retake: stacked in mid, or spread round the map.
-      const regroup =
+      gather(
+        defenders,
         plan.retake === 'tight'
           ? [layout.mid[1], layout.mid[2]]
-          : [other.holds[0], layout.mid[0], layout.mid[3], other.holds[1], layout.mid[4]]
-      alive(defenders).forEach((player) => place(player, pointAt(regroup, player)))
+          : [other.holds[0], layout.mid[0], layout.mid[3], other.holds[1], layout.mid[4]],
+      )
     } else if (stage.kind === 'retake') {
-      const retake = plan.retake === 'tight' ? site.retake.slice(0, 2) : site.retake
-      alive(defenders).forEach((player) => place(player, pointAt(retake, player)))
+      gather(defenders, plan.retake === 'tight' ? site.retake.slice(0, 2) : site.retake)
     }
   }
 
-  const attackSpots = [...site.entry, ...site.lanes, site.lurk[0]]
-  const defenseSpots = [...site.holds, ...site.retake]
-  // Where a fight happens. Before the hit it is on the control points, or at the lurker's flank
-  // when the lurker is in it; from the hit on it is on the site.
-  const spotsFor = (mark: Mark, index: number, lurkFight: boolean) => {
-    const planted = spike !== null
-    if (index < plan.hitIndex) {
-      if (lurkFight)
-        return mark.attacking
-          ? [layout.flank[plan.flank], layout.flank[1 - plan.flank], site.lurk[0]]
-          : site.holds.slice(-2)
-      return mark.attacking ? [...layout.mid, ...layout.flank] : [...layout.mid, ...site.entry]
+  // Where a fight can happen. Before the hit it can be anywhere on the map. From the hit on it is
+  // on the hit site, or on mid and the flanks leading to it.
+  const siteGround = [
+    ...site.entry,
+    ...site.lanes,
+    ...site.lurk,
+    ...site.holds,
+    ...site.post,
+    ...site.retake,
+    ...layout.mid,
+    ...layout.flank,
+  ]
+  const fightGround = (index: number) => (index < plan.hitIndex ? roads : siteGround)
+  /**
+   * Brings two players into a fight: the pair of points within `FIGHT_RANGE` of each other that
+   * takes the least walking, so players who are already close barely move.
+   */
+  const meet = (index: number, killerId: string, victimId: string) => {
+    const killer = pos[killerId]
+    const victim = pos[victimId]
+    if (!killer?.alive || !victim?.alive) return
+    const ground = fightGround(index)
+    if (
+      standsOn(killer, ground) &&
+      standsOn(victim, ground) &&
+      distance(killer, victim) <= FIGHT_RANGE
+    )
+      return
+    const who = (id: string) => roster.find((player) => player.id === id) as Roster
+    const [killerWho, victimWho] = [who(killerId), who(victimId)]
+    let best: { a: Point; b: Point } | undefined
+    let bestCost = Number.POSITIVE_INFINITY
+    for (const a of ground) {
+      if (!free(a, killerWho)) continue
+      for (const b of ground) {
+        if (distance(a, b) > FIGHT_RANGE || (a.x === b.x && a.y === b.y) || !free(b, victimWho))
+          continue
+        const cost = distance(killer, a) + distance(victim, b)
+        if (cost < bestCost) {
+          best = { a, b }
+          bestCost = cost
+        }
+      }
     }
-    if (mark.attacking) return planted ? [...attackSpots, ...site.post] : attackSpots
-    return planted ? [...defenseSpots, ...site.retake] : defenseSpots
+    if (best) {
+      place(killerWho, best.a)
+      place(victimWho, best.b)
+    }
   }
 
-  const shown = Math.min(Math.floor(step), round.events.length)
+  const events = round.events
   const beats = stages.filter((stage) => stage.start > 0)
   let applied = 0
   // Apply every beat that has started by `limit`, in order.
   const catchUp = (limit: number) => {
     while (applied < beats.length && beats[applied].start <= limit) applyBeat(beats[applied++])
   }
+  /** The next event's fighters, who may close in on each other before it. */
+  const expecting = (index: number) => {
+    const event = events[index]
+    fighting = new Set(event?.kind === 'kill' ? [event.killerId, event.victimId] : [])
+  }
+  const shown = Math.min(Math.floor(step), events.length)
   for (let index = 0; index < shown; index++) {
-    catchUp(index + 1)
-    const event = round.events[index]
+    expecting(index)
+    catchUp(index + FIGHT_AT)
+    const event = events[index]
     if (event.kind === 'kill') {
-      const victim = pos[event.victimId]
-      const killer = pos[event.killerId]
-      if (victim?.alive && killer?.alive) {
-        const lurkFight = event.killerId === lurkerId || event.victimId === lurkerId
-        // Puts a player on the fight's spots if they are not already on them, and in range of the
-        // other player in the fight. The victim settles first, then the killer closes in on them.
-        const settle = (id: string, otherId: string) => {
-          const mark = pos[id]
-          const opponent = pos[otherId]
-          const spots = spotsFor(mark, index, lurkFight)
-          if (standsOn(mark, spots) && distance(mark, opponent) <= FIGHT_RANGE) return
-          const free = spots.filter((spot) => !taken(spot, id))
-          const pool = free.length > 0 ? free : spots
-          const nearest = pool.reduce((best, spot) =>
-            distance(spot, opponent) < distance(best, opponent) ? spot : best,
-          )
-          place({ id, side: mark.side }, nearest)
-        }
-        settle(event.victimId, event.killerId)
-        settle(event.killerId, event.victimId)
-      }
-      // Read the victim again: settling may have replaced their mark.
+      meet(index, event.killerId, event.victimId)
+      // Read the victim fresh: the fight may have moved them.
       const down = pos[event.victimId]
       if (down) down.alive = false
     } else if (event.kind === 'plant') {
       const planted = layout.sites[event.site]
-      const planter = pos[event.playerId]
+      const planter = roster.find((player) => player.id === event.playerId)
       // The planter kneels beside the spike, so the spike stays visible.
-      if (planter?.alive && planted)
-        place({ id: event.playerId, side: planter.side }, planted.post[0])
+      if (planter && pos[planter.id].alive && planted) advance(planter, planted.post[0])
       if (planted)
         spike = { x: planted.plant.x, y: planted.plant.y, site: event.site, state: 'planted' }
     } else if (spike !== null) {
       const live: Spike = spike
-      const defuser = pos[event.playerId]
-      if (defuser?.alive) {
-        place({ id: event.playerId, side: defuser.side }, layout.sites[live.site].post[0])
-      }
+      const defuser = roster.find((player) => player.id === event.playerId)
+      if (defuser && pos[defuser.id].alive) advance(defuser, layout.sites[live.site].post[0])
       spike = { ...live, state: 'defused' }
     }
   }
+  expecting(shown)
   catchUp(step)
+  // Between a kill's fight and its death step, the fighters stand together and both are alive.
+  const next = events[shown]
+  if (next?.kind === 'kill' && step >= shown + FIGHT_AT) meet(shown, next.killerId, next.victimId)
   const finalSpike = spike as Spike | null
-  if (finalSpike && step > round.events.length && round.endReason === 'detonation')
+  if (finalSpike && step > events.length && round.endReason === 'detonation')
     spike = { ...finalSpike, state: 'detonated' }
   return { marks: roster.map((player) => pos[player.id]), spike }
 }

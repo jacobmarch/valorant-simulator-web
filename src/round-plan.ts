@@ -76,7 +76,8 @@ export type StageKind =
 /**
  * A stage starts on a step. A step is how many events have happened: whole numbers are the events
  * themselves, and a fractional step is a beat between two events (0.25 comes after setup, before
- * the first event).
+ * the first event). Every stage after setup starts on a fractional step, so a stage's movement
+ * shows before the event that follows it.
  */
 export type Stage = { kind: StageKind; label: string; start: number }
 
@@ -213,22 +214,37 @@ export function roundStages(map: string, round: RoundReplay): Stage[] {
     stages.push({ kind: 'control', label: 'Map control', start: 0.5 })
   const hit = plan.hitIndex
   const plantAt = round.events.findIndex((event) => event.kind === 'plant')
-  stages.push({ kind: 'read', label: 'Reads', start: hit + 0.75 })
+  stages.push({ kind: 'read', label: 'Reads', start: hit + 0.6 })
   // A plant on the first event after control is the hit; the post-plant stage covers it.
-  if (plantAt !== hit) stages.push({ kind: 'hit', label: `${plan.hit} hit`, start: hit + 1 })
+  if (plantAt !== hit) stages.push({ kind: 'hit', label: `${plan.hit} hit`, start: hit + 0.8 })
   if (round.events[hit].kind === 'kill' && hit + 1 < count && (plantAt === -1 || plantAt > hit))
     stages.push({ kind: 'rotate', label: 'Rotation', start: hit + 1.5 })
   if (plantAt !== -1) {
-    stages.push({ kind: 'post-plant', label: 'Post-plant', start: plantAt + 1 })
+    stages.push({ kind: 'post-plant', label: 'Post-plant', start: plantAt + 0.8 })
     if (plantAt + 1 < count) stages.push({ kind: 'retake', label: 'Retake', start: plantAt + 1.5 })
   }
   return stages
 }
 
-/** The next step the round can stop on after `step`: the next stage start, or the next event. */
-export function stepAfter(stages: Stage[], step: number): number {
+/**
+ * How far into a kill's step the fight shows: the fighters have moved together and nobody has
+ * died yet. The death lands on the whole step after.
+ */
+export const FIGHT_AT = 0.9
+
+/**
+ * The next step the round can stop on after `step`: the next stage start, the next event, and,
+ * when the round is given, the moment before each kill when its fighters have met.
+ */
+export function stepAfter(stages: Stage[], step: number, round?: RoundReplay): number {
   const next = stages.find((stage) => stage.start > step)
-  return Math.min(Math.floor(step) + 1, next?.start ?? Number.POSITIVE_INFINITY)
+  let stop = Math.min(Math.floor(step) + 1, next?.start ?? Number.POSITIVE_INFINITY)
+  if (round) {
+    const index = Math.floor(step)
+    if (round.events[index]?.kind === 'kill' && index + FIGHT_AT > step)
+      stop = Math.min(stop, index + FIGHT_AT)
+  }
+  return stop
 }
 
 /** Index into the stages of the stage a step falls in. */
