@@ -69,11 +69,13 @@ export function hitSiteOf(layout: MapLayout, round: RoundReplay): string {
 }
 
 /**
- * How the attack opens. `main` means the attackers all start together in the main mid, and pick the
- * site from there. `default` means the attackers spread out on their usual formation and scout
- * with a lurker on a flank.
+ * How the attack opens, before it commits to a site:
+ * - `mid`: the attackers stand together in the middle of the map.
+ * - `a-main` / `b-main`: the attackers start on the main route to site A or B, at that site's entry.
+ *   They can still pivot onto the other site at contact.
+ * - `default`: the attackers spread out as their formation has them, with the lurker on a flank.
  */
-export const ATTACK_OPENINGS = ['main', 'default'] as const
+export const ATTACK_OPENINGS = ['mid', 'a-main', 'b-main', 'default'] as const
 export type AttackOpening = (typeof ATTACK_OPENINGS)[number]
 
 /**
@@ -138,6 +140,18 @@ const ATTACK_HITS: Record<AttackFormation, (site: SiteLayout) => Point[]> = {
 export const FIGHT_RANGE = 30
 
 const distance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y)
+
+/** The points the attackers, other than the lurker, scout from for an opening. */
+function openingStaging(
+  opening: AttackOpening,
+  attack: AttackFormation,
+  layout: MapLayout,
+): Point[] {
+  if (opening === 'mid') return layout.mid.slice(0, 4)
+  if (opening === 'default') return ATTACK_STAGING[attack](layout)
+  const site = layout.sites[layout.siteNames[opening === 'a-main' ? 0 : 1]]
+  return [...site.entry, site.lanes[0]]
+}
 
 /**
  * The stages of a round, in order. Setup is always first. Scouting comes next when anything
@@ -241,12 +255,7 @@ export function roundFrame(
       const living = alive(attackers)
       const lurker = living.find((player) => player.id === lurkerId)
       const others = living.filter((player) => player !== lurker)
-      // Opening in the main mid, the attackers stand together. Opening on the default, they spread
-      // out as their formation has them.
-      const staging =
-        formations.opening === 'main'
-          ? [layout.mid[0], layout.mid[1], layout.mid[2], layout.mid[3]]
-          : ATTACK_STAGING[formations.attack](layout)
+      const staging = openingStaging(formations.opening, formations.attack, layout)
       others.forEach((player, at) => place(player, staging[at % staging.length]))
       if (lurker) place(lurker, layout.flank[0])
     }

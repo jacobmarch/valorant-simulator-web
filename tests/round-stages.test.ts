@@ -320,7 +320,7 @@ describe('round stages', () => {
     expect(kills).toBeGreaterThan(0)
   })
 
-  test('attacks open in the main mid or on their default, and both happen', () => {
+  test('attacks open in the mid, on a main route, or on their default, and every opening happens', () => {
     const openings = new Set<string>()
     for (const { map, sides } of allMaps()) {
       const layout = mapLayouts[map.map]
@@ -329,17 +329,29 @@ describe('round stages', () => {
         const { opening } = formationsFor(map.map, round.round)
         openings.add(opening)
         const scouting = roundFrame(map.map, round, sides, attackerSide, 0.5)
-        const inMid = layout.mid.map((point) => `${point.x},${point.y}`)
-        if (opening === 'main') {
-          // Everyone but the lurker stands in the main mid.
-          for (const mark of scouting.marks.filter((mark) => mark.attacking)) {
-            if (mark.x === layout.flank[0].x && mark.y === layout.flank[0].y) continue
-            expect(inMid).toContain(`${mark.x},${mark.y}`)
-          }
+        const attackers = scouting.marks.filter((mark) => mark.attacking)
+        const lurker = layout.flank[0]
+        const spotsFor = (name: string) => {
+          const site = layout.sites[name]
+          return [...site.entry, site.lanes[0]]
+        }
+        const home =
+          opening === 'mid'
+            ? layout.mid
+            : opening === 'a-main'
+              ? spotsFor(layout.siteNames[0])
+              : opening === 'b-main'
+                ? spotsFor(layout.siteNames[1])
+                : null
+        if (!home) continue
+        // Everyone but the lurker stands on the opening's own points.
+        for (const mark of attackers) {
+          if (mark.x === lurker.x && mark.y === lurker.y) continue
+          expect(home.some((point) => point.x === mark.x && point.y === mark.y)).toBe(true)
         }
       }
     }
-    expect(openings).toEqual(new Set(['main', 'default']))
+    expect(openings).toEqual(new Set(['mid', 'a-main', 'b-main', 'default']))
   })
 
   test('attackers spread out in contact, with a lurker apart from the group', () => {

@@ -9,8 +9,9 @@ The layer is presentation only. It does not change the sim, its random draws, it
 ## What a round looks like now
 
 1. **Setup** (step 0). Attackers spawn. Defenders take a formation (below).
-2. **Scouting** (step 0.5). The attack opens one of two ways, picked per round (`ATTACK_OPENINGS`):
-   - `main`: the attackers start together in the main mid. They have not chosen a site yet.
+2. **Scouting** (step 0.5). The attack opens one of four ways, picked per round (`ATTACK_OPENINGS`):
+   - `mid`: the attackers stand together in the middle of the map.
+   - `a-main` / `b-main`: the attackers start on the main route to site A or B, at that site's entry. They have not committed, so they can still pivot onto the other site at contact.
    - `default`: the attackers spread out as their attack formation has them, and the lurker reads a flank.
 
    Defenders do not move. They have not seen the attack yet.
@@ -20,12 +21,18 @@ The layer is presentation only. It does not change the sim, its random draws, it
 4. **Post-plant**, when the spike goes down. Attackers stand round the spike and defenders come to the retake points. This is unchanged.
 
 The round has two decision points before the plant, which is the minimum asked for:
-- **The attack picks its site** at contact, after the opening. The pick is fixed by the sim's site and the formation (see "The hit site" below), so the opening only changes where the attackers wait, not where they go.
+- **The attack picks its site** at contact, after the opening. The pick is fixed by the sim's site (see "The hit site" below), so the opening only changes where the attackers wait. An `a-main` or `b-main` opening that lands on the other site is a visible pivot.
 - **The defence answers** the attack's commit.
 
 ## Openings
 
-`main` and `default` are chosen per round from the map and round number, so the same round always opens the same way. A `main` opening stacks the attackers in the main mid, so the attack has no visible plan until it commits. A `default` opening spreads them out, as their formation has them. The mid points are shared by both openings, so the difference shows in where the attackers stand while scouting.
+Each opening is chosen per round from the map and round number, so the same round always opens the same way. The four openings are equally likely across rounds.
+
+- `mid` stacks the attackers in the middle of the map, so the attack has no visible plan until it commits.
+- `a-main` and `b-main` put the attackers at the entry of that site. The pivot is visible when the hit site is the other one.
+- `default` spreads them out, as their attack formation has them.
+
+Checked in the browser on Haven round 2: a `b-main` opening stands at B's entry while scouting, then the attackers pivot to the middle site at contact, where the sim planted.
 
 ## Formations
 
