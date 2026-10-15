@@ -8,8 +8,10 @@ import {
   Play,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import type { GameState } from './game'
+import { assignedRole, type GameState } from './game'
+import { RoundMap } from './round-map'
 import { buyLabel, clock, type MapReplay, type RoundReplay, type TeamBuy } from './round-sim'
+import { FIGHT_AT, pickLurker, roundFrame, roundStages, stepAfter } from './round-stages'
 import { TeamMark } from './ui'
 
 const endText: Record<RoundReplay['endReason'], string> = {
@@ -19,6 +21,10 @@ const endText: Record<RoundReplay['endReason'], string> = {
 }
 const speeds = [1, 2, 4]
 const EVENT_MS = 900
+/** How long a stage holds on screen before the next one starts, when the round is live. */
+const STAGE_MS = 1700
+/** How long two fighters stand together before the kill lands, when the round is live. */
+const FIGHT_MS = 650
 const ROUND_PAUSE_MS = 1600
 
 function credits(buy: TeamBuy) {
@@ -142,6 +148,11 @@ export function RoundReplayView({
   const over = step >= steps
   const lastRound = index === replay.rounds.length - 1
   const finished = lastRound && over
+  const stages = roundStages(replay.map, round)
+  const stageStarts = stages.map((stage) => stage.start)
+  const atStage = stageStarts.includes(step)
+  const atFight = Math.abs((step % 1) - FIGHT_AT) < 1e-6
+  const nextStart = stageStarts.find((start) => start > step)
 
   useEffect(() => {
     if (!playing) return
@@ -154,12 +165,15 @@ export function RoundReplayView({
         if (over) {
           setIndex((value) => value + 1)
           setStep(0)
-        } else setStep((value) => value + 1)
+        } else
+          setStep((value) =>
+            stepAfter(roundStages(replay.map, replay.rounds[index]), value, replay.rounds[index]),
+          )
       },
-      (over ? ROUND_PAUSE_MS : EVENT_MS) / speed,
+      (over ? ROUND_PAUSE_MS : atStage ? STAGE_MS : atFight ? FIGHT_MS : EVENT_MS) / speed,
     )
     return () => window.clearTimeout(timer)
-  }, [playing, index, step, over, finished, speed])
+  }, [playing, index, step, over, finished, speed, atStage, atFight, replay])
 
   useEffect(() => {
     if (over) setRevealed((value) => Math.max(value, index + 1))
@@ -168,6 +182,16 @@ export function RoundReplayView({
     setPlaying(false)
     setIndex(Math.max(0, Math.min(replay.rounds.length - 1, next)))
     setStep(Number.POSITIVE_INFINITY)
+  }
+  /** Next: the next stage of this round, then the round's result, then the next round at its setup. */
+  const nextStage = () => {
+    setPlaying(false)
+    if (nextStart !== undefined) setStep(nextStart)
+    else if (!over) setStep(Number.POSITIVE_INFINITY)
+    else if (!lastRound) {
+      setIndex((value) => value + 1)
+      setStep(0)
+    }
   }
   const skipToEnd = () => goTo(replay.rounds.length - 1)
   const togglePlay = () => {
@@ -187,6 +211,19 @@ export function RoundReplayView({
   const story = roundStory(s, replay, index, over)
   const stripLength = stripRounds(replay, revealed)
   const aAttacking = round.attackerId === a.id
+  const attackingTeam = aAttacking ? a : b
+  // The lurker is picked from the attacking team's roles, so the same player lurks every time.
+  const lurker = pickLurker(attackingTeam.lineup, (id) =>
+    assignedRole(attackingTeam, s.players[id]),
+  )
+  const frame = roundFrame(
+    replay.map,
+    round,
+    { a: a.lineup, b: b.lineup },
+    aAttacking ? 'a' : 'b',
+    step,
+    lurker,
+  )
   const teamClass = (id: string) => (id === a.id ? 'side-a' : 'side-b')
   const sideOf = (playerId: string) => (a.lineup.includes(playerId) ? 'side-a' : 'side-b')
   const name = (id: string) => s.players[id]?.name ?? id
@@ -240,61 +277,66 @@ export function RoundReplayView({
 
       <p className="replay-story">{story ?? ' '}</p>
 
-      <div className="replay-grid">
-        <ol className="replay-feed">
-          {shownEvents.map((event, at) => (
-            <li key={`${event.kind}-${at}`}>
-              <time>{clock(event.time)}</time>
-              {event.kind === 'kill' ? (
-                <>
-                  <span className={sideOf(event.killerId)}>{name(event.killerId)}</span>
-                  <em>
-                    {event.weapon}
-                    {event.headshot && <Crosshair size={12} aria-label="Headshot" />}
-                  </em>
-                  <span className={`victim ${sideOf(event.victimId)}`}>{name(event.victimId)}</span>
-                  {event.first && <small>First blood</small>}
-                </>
-              ) : event.kind === 'plant' ? (
-                <span className="replay-spike">
-                  {name(event.playerId)} plants on {event.site}
-                </span>
-              ) : (
-                <span className="replay-spike">{name(event.playerId)} defuses</span>
-              )}
-            </li>
-          ))}
-          {over && (
-            <li className={`replay-end ${teamClass(round.winnerId)}`}>
-              <time>{clock(round.endTime)}</time>
-              <strong>
-                {s.teams[round.winnerId].short} win the round · {endText[round.endReason]}
-              </strong>
-            </li>
-          )}
-          {!shownEvents.length && !over && <li className="muted">Buy phase…</li>}
-        </ol>
-        <div className="replay-rosters">
-          {[a, b].map((team) => (
-            <table key={team.id} className={teamClass(team.id)}>
-              <thead>
-                <tr>
-                  <th>{team.short}</th>
-                  <th>K</th>
-                  <th>D</th>
-                </tr>
-              </thead>
-              <tbody>
-                {team.lineup.map((id) => (
-                  <tr key={id} className={dead.has(id) ? 'dead' : ''}>
-                    <td>{name(id)}</td>
-                    <td>{kd[id]?.k ?? 0}</td>
-                    <td>{kd[id]?.d ?? 0}</td>
+      <div className="replay-body">
+        <RoundMap map={replay.map} frame={frame} name={name} />
+        <div className="replay-grid">
+          <ol className="replay-feed">
+            {shownEvents.map((event, at) => (
+              <li key={`${event.kind}-${at}`}>
+                <time>{clock(event.time)}</time>
+                {event.kind === 'kill' ? (
+                  <>
+                    <span className={sideOf(event.killerId)}>{name(event.killerId)}</span>
+                    <em>
+                      {event.weapon}
+                      {event.headshot && <Crosshair size={12} aria-label="Headshot" />}
+                    </em>
+                    <span className={`victim ${sideOf(event.victimId)}`}>
+                      {name(event.victimId)}
+                    </span>
+                    {event.first && <small>First blood</small>}
+                  </>
+                ) : event.kind === 'plant' ? (
+                  <span className="replay-spike">
+                    {name(event.playerId)} plants on {event.site}
+                  </span>
+                ) : (
+                  <span className="replay-spike">{name(event.playerId)} defuses</span>
+                )}
+              </li>
+            ))}
+            {over && (
+              <li className={`replay-end ${teamClass(round.winnerId)}`}>
+                <time>{clock(round.endTime)}</time>
+                <strong>
+                  {s.teams[round.winnerId].short} win the round · {endText[round.endReason]}
+                </strong>
+              </li>
+            )}
+            {!shownEvents.length && !over && <li className="muted">Buy phase…</li>}
+          </ol>
+          <div className="replay-rosters">
+            {[a, b].map((team) => (
+              <table key={team.id} className={teamClass(team.id)}>
+                <thead>
+                  <tr>
+                    <th>{team.short}</th>
+                    <th>K</th>
+                    <th>D</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          ))}
+                </thead>
+                <tbody>
+                  {team.lineup.map((id) => (
+                    <tr key={id} className={dead.has(id) ? 'dead' : ''}>
+                      <td>{name(id)}</td>
+                      <td>{kd[id]?.k ?? 0}</td>
+                      <td>{kd[id]?.d ?? 0}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -311,13 +353,9 @@ export function RoundReplayView({
           {playing ? <Pause size={15} /> : <Play size={15} />}
           {playing ? 'Pause' : 'Play'}
         </button>
-        <button
-          className="secondary"
-          onClick={() => goTo(over ? index + 1 : index)}
-          disabled={finished}
-          aria-label="Next round"
-        >
+        <button className="secondary" onClick={nextStage} disabled={finished}>
           <ChevronRight size={15} />
+          Continue Round
         </button>
         <button
           className="secondary"
@@ -326,6 +364,11 @@ export function RoundReplayView({
           {speed}x
         </button>
         <span className="replay-spacer" />
+        {!over && (
+          <button className="secondary" onClick={() => goTo(index)}>
+            End round
+          </button>
+        )}
         {finished ? (
           <button className="primary" onClick={onDone}>
             {s.teams[round.winnerId].name} take {replay.map} <ArrowRight size={15} />

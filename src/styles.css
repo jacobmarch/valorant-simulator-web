@@ -2534,6 +2534,112 @@ table {
   font-weight: 600;
   color: var(--text);
 }
+.replay-body {
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+.replay-body .replay-grid {
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+}
+/* Round map: the minimap with players marked on the points they stand at. */
+.round-map {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+.round-map-board {
+  position: relative;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+.round-map-board img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.round-dot,
+.round-spike {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  transition:
+    left 0.6s ease,
+    top 0.6s ease,
+    opacity 0.3s ease;
+  pointer-events: auto;
+}
+.round-dot {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 2px solid var(--text);
+  border-radius: 50%;
+  background: var(--surface-1);
+  color: var(--text);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.5);
+  z-index: 2;
+}
+.round-dot.side-a {
+  border-color: var(--side-a);
+  color: var(--side-a);
+}
+.round-dot.side-b {
+  border-color: var(--side-b);
+  color: var(--side-b);
+}
+.round-dot.defense {
+  border-style: dashed;
+}
+.round-dot.dead {
+  opacity: 0.45;
+  border-style: dotted;
+  color: var(--text-3);
+}
+.round-dot.dead.side-a,
+.round-dot.dead.side-b {
+  border-color: var(--text-4);
+}
+.round-spike {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--warn);
+  color: #1a1305;
+  font-size: 9px;
+  font-weight: 800;
+  box-shadow: 0 0 0 0 rgb(242 184 75 / 0.6);
+  animation: spike-pulse 1.6s ease-out infinite;
+  z-index: 1;
+}
+.round-spike.defused {
+  background: var(--text-3);
+  color: var(--surface-1);
+  animation: none;
+}
+.round-spike.detonated {
+  background: var(--neg);
+  color: #fff;
+  animation: none;
+}
+@keyframes spike-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgb(242 184 75 / 0.6);
+  }
+  100% {
+    box-shadow: 0 0 0 12px rgb(242 184 75 / 0);
+  }
+}
 .replay-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
@@ -2556,6 +2662,7 @@ table {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
   animation: fade-in 0.25s ease;
 }
 .replay-feed time {
@@ -2582,6 +2689,8 @@ table {
   margin-left: auto;
   font-size: 11px;
   color: var(--neg);
+  white-space: nowrap;
+  margin-left: auto;
 }
 .replay .replay-spike {
   color: var(--text-2);
@@ -2641,6 +2750,12 @@ table {
   flex: 1;
 }
 @media (max-width: 640px) {
+  .replay-body {
+    grid-template-columns: 1fr;
+  }
+  .replay-body .replay-grid {
+    grid-template-columns: 1fr;
+  }
   .replay-grid {
     grid-template-columns: 1fr;
   }
