@@ -68,15 +68,27 @@ export function hitSiteOf(layout: MapLayout, round: RoundReplay): string {
   return plantedSite(round) ?? layout.siteNames[round.round % layout.siteNames.length]
 }
 
-/** Formations for a round, picked from the map and round number so the same round always repeats. */
+/**
+ * How the attack opens. `main` means the attackers all start together in the main mid, and pick the
+ * site from there. `default` means the attackers spread out on their usual formation and scout
+ * with a lurker on a flank.
+ */
+export const ATTACK_OPENINGS = ['main', 'default'] as const
+export type AttackOpening = (typeof ATTACK_OPENINGS)[number]
+
+/**
+ * Formations and opening for a round, picked from the map and round number so the same round
+ * always repeats.
+ */
 export function formationsFor(
   map: string,
   round: number,
-): { defense: DefenseFormation; attack: AttackFormation } {
+): { defense: DefenseFormation; attack: AttackFormation; opening: AttackOpening } {
   const seed = [...map].reduce((total, char) => (total * 31 + char.charCodeAt(0)) >>> 0, 7) + round
   return {
     defense: DEFENSE_FORMATIONS[seed % DEFENSE_FORMATIONS.length],
     attack: ATTACK_FORMATIONS[(seed * 5 + 1) % ATTACK_FORMATIONS.length],
+    opening: ATTACK_OPENINGS[(seed * 7 + 3) % ATTACK_OPENINGS.length],
   }
 }
 
@@ -229,7 +241,12 @@ export function roundFrame(
       const living = alive(attackers)
       const lurker = living.find((player) => player.id === lurkerId)
       const others = living.filter((player) => player !== lurker)
-      const staging = ATTACK_STAGING[formations.attack](layout)
+      // Opening in the main mid, the attackers stand together. Opening on the default, they spread
+      // out as their formation has them.
+      const staging =
+        formations.opening === 'main'
+          ? [layout.mid[0], layout.mid[1], layout.mid[2], layout.mid[3]]
+          : ATTACK_STAGING[formations.attack](layout)
       others.forEach((player, at) => place(player, staging[at % staging.length]))
       if (lurker) place(lurker, layout.flank[0])
     }

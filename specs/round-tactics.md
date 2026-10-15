@@ -9,13 +9,23 @@ The layer is presentation only. It does not change the sim, its random draws, it
 ## What a round looks like now
 
 1. **Setup** (step 0). Attackers spawn. Defenders take a formation (below).
-2. **Scouting** (step 0.5). Attackers look in from mid, and the lurker reads a flank. Defenders do not move. They have not seen the attack yet.
+2. **Scouting** (step 0.5). The attack opens one of two ways, picked per round (`ATTACK_OPENINGS`):
+   - `main`: the attackers start together in the main mid. They have not chosen a site yet.
+   - `default`: the attackers spread out as their attack formation has them, and the lurker reads a flank.
+
+   Defenders do not move. They have not seen the attack yet.
 3. **Contact** (step 1). Two decisions, in this order:
    - **Decision 1, the attack commits.** Attackers go in to the hit site's entry and lanes in their formation. The lurker takes the site's lurk spot.
    - **Decision 2, the defence answers.** If three or more defenders are on the hit site's holds, they fight, and the rest of the defence rotates in to the free holds. If fewer than three are there, they fall off to the site's retake points, and the rest of the team plays the retake later.
 4. **Post-plant**, when the spike goes down. Attackers stand round the spike and defenders come to the retake points. This is unchanged.
 
-The round has two decision points before the plant, which is the minimum asked for. The attack's choice of site is also a decision, but it is decided by the formation (see below), not played live.
+The round has two decision points before the plant, which is the minimum asked for:
+- **The attack picks its site** at contact, after the opening. The pick is fixed by the sim's site and the formation (see "The hit site" below), so the opening only changes where the attackers wait, not where they go.
+- **The defence answers** the attack's commit.
+
+## Openings
+
+`main` and `default` are chosen per round from the map and round number, so the same round always opens the same way. A `main` opening stacks the attackers in the main mid, so the attack has no visible plan until it commits. A `default` opening spreads them out, as their formation has them. The mid points are shared by both openings, so the difference shows in where the attackers stand while scouting.
 
 ## Formations
 

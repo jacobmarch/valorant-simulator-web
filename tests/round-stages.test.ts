@@ -3,7 +3,14 @@ import { mapLayouts } from '../src/map-layouts'
 import { mapImage } from '../src/map-images'
 import { simulateSeries } from '../src/game'
 import { type MapReplay, type SeriesReplay } from '../src/round-sim'
-import { hitSiteOf, pickLurker, roundFrame, roundStages, stageIndexAt } from '../src/round-stages'
+import {
+  formationsFor,
+  hitSiteOf,
+  pickLurker,
+  roundFrame,
+  roundStages,
+  stageIndexAt,
+} from '../src/round-stages'
 import { createKickoffGame } from './helpers'
 
 const memory = new Map<string, string>()
@@ -311,6 +318,28 @@ describe('round stages', () => {
       }
     }
     expect(kills).toBeGreaterThan(0)
+  })
+
+  test('attacks open in the main mid or on their default, and both happen', () => {
+    const openings = new Set<string>()
+    for (const { map, sides } of allMaps()) {
+      const layout = mapLayouts[map.map]
+      for (const round of map.rounds) {
+        const attackerSide = round.attackerId === map.aId ? 'a' : 'b'
+        const { opening } = formationsFor(map.map, round.round)
+        openings.add(opening)
+        const scouting = roundFrame(map.map, round, sides, attackerSide, 0.5)
+        const inMid = layout.mid.map((point) => `${point.x},${point.y}`)
+        if (opening === 'main') {
+          // Everyone but the lurker stands in the main mid.
+          for (const mark of scouting.marks.filter((mark) => mark.attacking)) {
+            if (mark.x === layout.flank[0].x && mark.y === layout.flank[0].y) continue
+            expect(inMid).toContain(`${mark.x},${mark.y}`)
+          }
+        }
+      }
+    }
+    expect(openings).toEqual(new Set(['main', 'default']))
   })
 
   test('attackers spread out in contact, with a lurker apart from the group', () => {
