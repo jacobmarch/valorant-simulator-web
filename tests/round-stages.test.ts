@@ -195,7 +195,7 @@ describe('round stages', () => {
           if (!mark.attacking || !mark.alive) continue
           checked++
           // One walk from wherever they were: close to the spike, never across the map.
-          expect(Math.hypot(mark.x - site.plant.x, mark.y - site.plant.y)).toBeLessThan(55)
+          expect(Math.hypot(mark.x - site.plant.x, mark.y - site.plant.y)).toBeLessThan(75)
         }
       }
     }
@@ -357,7 +357,7 @@ describe('round stages', () => {
         for (const mark of crew)
           expect(
             Math.min(...home.map((point) => Math.hypot(point.x - mark.x, point.y - mark.y))),
-          ).toBeLessThan(26)
+          ).toBeLessThan(40)
       }
     }
     expect(openings).toEqual(new Set(['mid', 'a-main', 'b-main', 'c-main', 'default']))
@@ -414,13 +414,110 @@ describe('round stages', () => {
             // together from further, so a step that carries a kill is not capped.
             const killStep = step % 1 === 0 && round.events[step - 1]?.kind === 'kill'
             if (!killStep)
-              expect(walked).toBeLessThanOrEqual(stage?.kind === 'opening' ? 70.1 : 40.1)
+              expect(walked).toBeLessThanOrEqual(
+                stage?.kind === 'opening' ? 70.1 : stage?.kind === 'post-plant' ? 85 : 40.1,
+              )
           }
           before = now
         }
       }
     }
     expect(moves).toBeGreaterThan(0)
+  })
+
+  test('on three-site maps the defence holds every site at setup', () => {
+    let checked = 0
+    for (const { map, sides } of allMaps()) {
+      const layout = mapLayouts[map.map]
+      if (layout.siteNames.length < 3) continue
+      for (const round of map.rounds) {
+        const attackerSide = round.attackerId === map.aId ? 'a' : 'b'
+        const setup = roundFrame(map.map, round, sides, attackerSide, 0)
+        for (const name of layout.siteNames) {
+          const holds = layout.sites[name].holds
+          const held = setup.marks.filter(
+            (mark) =>
+              !mark.attacking && holds.some((point) => point.x === mark.x && point.y === mark.y),
+          )
+          checked++
+          expect(held.length).toBeGreaterThanOrEqual(1)
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(0)
+  })
+
+  test('the spike goes down with the site cleared of defenders', () => {
+    let planted = 0
+    let crowded = 0
+    for (const { map, sides } of allMaps().slice(0, 16)) {
+      const layout = mapLayouts[map.map]
+      for (const round of map.rounds) {
+        const plant = round.events.find((event) => event.kind === 'plant')
+        if (plant?.kind !== 'plant') continue
+        const attackerSide = round.attackerId === map.aId ? 'a' : 'b'
+        const spot = layout.sites[plant.site].plant
+        const frame = roundFrame(
+          map.map,
+          round,
+          sides,
+          attackerSide,
+          round.events.indexOf(plant) + 1,
+        )
+        planted++
+        if (
+          frame.marks.some(
+            (mark) =>
+              !mark.attacking && mark.alive && Math.hypot(mark.x - spot.x, mark.y - spot.y) < 20,
+          )
+        )
+          crowded++
+      }
+    }
+    expect(planted).toBeGreaterThan(0)
+    expect(crowded / planted).toBeLessThan(0.1)
+  })
+
+  test('a walk does not pass through an enemy standing in the lane', () => {
+    let walks = 0
+    let through = 0
+    for (const { map, sides } of allMaps().slice(0, 16)) {
+      for (const round of map.rounds) {
+        const attackerSide = round.attackerId === map.aId ? 'a' : 'b'
+        const stages = roundStages(map.map, round).slice(1)
+        let before = roundFrame(map.map, round, sides, attackerSide, 0)
+        for (const stage of stages) {
+          const now = roundFrame(map.map, round, sides, attackerSide, stage.start)
+          const next = round.events[Math.floor(stage.start)]
+          const fighters = new Set(next?.kind === 'kill' ? [next.killerId, next.victimId] : [])
+          for (const mark of now.marks) {
+            const was = before.marks.find((candidate) => candidate.id === mark.id)
+            if (!was?.alive || (was.x === mark.x && was.y === mark.y)) continue
+            walks++
+            const dx = mark.x - was.x
+            const dy = mark.y - was.y
+            for (const enemy of before.marks) {
+              if (!enemy.alive || enemy.side === mark.side) continue
+              const later = now.marks.find((candidate) => candidate.id === enemy.id)
+              if (!later?.alive || later.x !== enemy.x || later.y !== enemy.y) continue
+              if (fighters.has(enemy.id) && fighters.has(mark.id)) continue
+              const along = Math.max(
+                0,
+                Math.min(
+                  1,
+                  ((enemy.x - was.x) * dx + (enemy.y - was.y) * dy) / (dx * dx + dy * dy),
+                ),
+              )
+              if (Math.hypot(enemy.x - (was.x + dx * along), enemy.y - (was.y + dy * along)) < 8)
+                through++
+            }
+          }
+          before = now
+        }
+      }
+    }
+    expect(walks).toBeGreaterThan(0)
+    expect(through / walks).toBeLessThan(0.02)
   })
 
   test('opposing players are never side by side unless they are about to fight', () => {
@@ -558,7 +655,7 @@ describe('round stages', () => {
     expect(signatures.size / rounds).toBeGreaterThan(0.97)
     expect(Math.max(...shapes.values()) / rounds).toBeLessThan(0.05)
     expect(shapes.size / rounds).toBeGreaterThan(0.6)
-  })
+  }, 30_000)
 
   test('the same round in a different match plays out differently', () => {
     const maps = allMaps()

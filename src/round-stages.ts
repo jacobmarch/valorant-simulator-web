@@ -73,23 +73,31 @@ export type Spike = {
 export type RoundFrame = { marks: Mark[]; spike: Spike | null }
 
 /**
- * The defenders' setup. `main` of them stand on `mainSite`'s holds, and the rest stand at `off`.
- * - 4-1: four hold the other site, so the attack pivots onto the hit site, where one defender waits.
- * - 2-1-2: two hold the hit site, one sits in mid, two hold the other site.
- * - 3-2: three hold the hit site, two hold the other site.
+ * The defenders' setup: five points, one per slot. `other` is the site the attack may fake on. On
+ * a map with a third site it is held too, so no site is ever left open.
+ * - 4-1: four hold the other sites, so the attack pivots onto the hit site, where one defender waits.
+ * - 2-1-2: two hold the hit site, one sits in mid, the rest hold the other sites.
+ * - 3-2: three hold the hit site, the rest hold the other sites.
  */
 function defenseSetup(
   formation: DefenseFormation,
   layout: MapLayout,
   hit: string,
   other: string,
-): { main: number; mainSite: string; off: Point[] } {
-  const hitSite = layout.sites[hit]
-  const otherSite = layout.sites[other]
-  if (formation === '4-1') return { main: 4, mainSite: other, off: [hitSite.holds[0]] }
+): Point[] {
+  const holds = (name: string) => layout.sites[name].holds
+  const third = layout.siteNames.find((name) => name !== hit && name !== other)
+  if (third) {
+    if (formation === '4-1')
+      return [holds(other)[0], holds(other)[1], holds(third)[0], holds(third)[1], holds(hit)[0]]
+    if (formation === '2-1-2')
+      return [holds(hit)[0], holds(hit)[1], layout.mid[0], holds(other)[0], holds(third)[0]]
+    return [holds(hit)[0], holds(hit)[1], holds(hit)[2], holds(other)[0], holds(third)[0]]
+  }
+  if (formation === '4-1') return [...holds(other).slice(0, 4), holds(hit)[0]]
   if (formation === '2-1-2')
-    return { main: 2, mainSite: hit, off: [layout.mid[0], otherSite.holds[0], otherSite.holds[1]] }
-  return { main: 3, mainSite: hit, off: [otherSite.holds[0], otherSite.holds[1]] }
+    return [holds(hit)[0], holds(hit)[1], layout.mid[0], holds(other)[0], holds(other)[1]]
+  return [...holds(hit).slice(0, 3), holds(other)[0], holds(other)[1]]
 }
 
 /** Whether a player stands on one of these points. */
@@ -167,6 +175,10 @@ const ENEMY_GAP = 12
 const TEAM_GAP = 7
 /** The most a player walks in one beat, from named point to named point. */
 const MOVE_LIMIT = 40
+/** How close a walk may pass an enemy. Nobody walks through a lane an enemy is standing in. */
+const PASS_GAP = 9
+/** How far from the spike a defender can be when it goes down: a plant needs the site cleared. */
+const PLANT_CLEAR = 28
 /** The first beat leaves the spawn, which is further from everything. */
 const OPENING_LIMIT = 70
 
@@ -250,8 +262,7 @@ export function roundFrame(
   const plan = roundPlan(map, round)
   const site = layout.sites[plan.hit]
   const other = layout.sites[plan.fake]
-  const defense = defenseSetup(plan.defense, layout, plan.hit, plan.fake)
-  const mainHolds = layout.sites[defense.mainSite].holds
+  const setup = defenseSetup(plan.defense, layout, plan.hit, plan.fake)
   const roster: Roster[] = [
     ...sides.a.map((id) => ({ id, side: 'a' as const })),
     ...sides.b.map((id) => ({ id, side: 'b' as const })),
@@ -292,13 +303,28 @@ export function roundFrame(
       if (mark.side === who.side) return apart < TEAM_GAP
       return apart < ENEMY_GAP && !(fighting.has(mark.id) && fighting.has(who.id))
     })
+  /** Whether walking from one point to another goes past an enemy, who blocks the lane. */
+  const blocked = (from: Point, to: Point, who: Roster) =>
+    Object.values(pos).some((mark) => {
+      if (!mark.alive || mark.side === who.side) return false
+      if (fighting.has(mark.id) && fighting.has(who.id)) return false
+      const dx = to.x - from.x
+      const dy = to.y - from.y
+      const length = dx * dx + dy * dy
+      const along =
+        length === 0
+          ? 0
+          : Math.max(0, Math.min(1, ((mark.x - from.x) * dx + (mark.y - from.y) * dy) / length))
+      return Math.hypot(mark.x - (from.x + dx * along), mark.y - (from.y + dy * along)) < PASS_GAP
+    })
   /** One walk toward a goal: the open walkable point within `limit` that gets closest to it. */
   const advance = (player: Roster, goal: Point, limit = MOVE_LIMIT) => {
     const here = pos[player.id]
     let best: Point | undefined
     let bestGap = distance(here, goal)
     for (const road of [goal, ...roads]) {
-      if (distance(road, here) > limit || !free(road, player)) continue
+      if (distance(road, here) > limit || !free(road, player) || blocked(here, road, player))
+        continue
       const gap = distance(road, goal)
       if (gap < bestGap - 0.01) {
         best = road
@@ -327,13 +353,7 @@ export function roundFrame(
     place(player, layout.attackSpawn[at % layout.attackSpawn.length]),
   )
   defenders.forEach((player) => {
-    const slot = slotOf(player)
-    place(
-      player,
-      slot < defense.main
-        ? mainHolds[slot]
-        : defense.off[(slot - defense.main) % defense.off.length],
-    )
+    place(player, setup[slotOf(player) % setup.length])
   })
 
   let spike: Spike | null = null
@@ -378,14 +398,29 @@ export function roundFrame(
       gather(rotators(), arrival())
       gather(crew, hitPoints(plan, site))
     } else if (stage.kind === 'post-plant') {
+      // The plant needs the site cleared: any defender still near the spike has been pushed off it.
+      const regroupGoals =
+        plan.retake === 'tight'
+          ? [layout.mid[1], layout.mid[2]]
+          : [other.holds[0], layout.mid[0], layout.mid[3], other.holds[1], layout.mid[4]]
+      const near = alive(defenders).filter(
+        (player) => distance(pos[player.id], site.plant) < PLANT_CLEAR,
+      )
+      for (const player of near) {
+        const here = pos[player.id]
+        // Off the site by the nearest way out that does not cross an enemy, or any way out.
+        const exits = roads
+          .filter((road) => distance(road, site.plant) >= PLANT_CLEAR && free(road, player))
+          .sort((a, b) => distance(a, here) - distance(b, here))
+        const out = exits.find((road) => !blocked(here, road, player)) ?? exits[0]
+        if (out) place(player, out)
+      }
       gather(crew, site.post)
       if (lurker) gather([lurker], [site.post[site.post.length - 1]])
       // The defence regroups before the retake: stacked in mid, or spread round the map.
       gather(
-        defenders,
-        plan.retake === 'tight'
-          ? [layout.mid[1], layout.mid[2]]
-          : [other.holds[0], layout.mid[0], layout.mid[3], other.holds[1], layout.mid[4]],
+        defenders.filter((player) => !near.includes(player)),
+        regroupGoals,
       )
     } else if (stage.kind === 'retake') {
       gather(defenders, plan.retake === 'tight' ? site.retake.slice(0, 2) : site.retake)
@@ -424,17 +459,22 @@ export function roundFrame(
     const [killerWho, victimWho] = [who(killerId), who(victimId)]
     let best: { a: Point; b: Point } | undefined
     let bestCost = Number.POSITIVE_INFINITY
-    for (const a of ground) {
-      if (!free(a, killerWho)) continue
-      for (const b of ground) {
-        if (distance(a, b) > FIGHT_RANGE || (a.x === b.x && a.y === b.y) || !free(b, victimWho))
-          continue
-        const cost = distance(killer, a) + distance(victim, b)
-        if (cost < bestCost) {
-          best = { a, b }
-          bestCost = cost
+    // Prefer a meeting that does not take either fighter through an enemy's lane.
+    for (const clear of [true, false]) {
+      for (const a of ground) {
+        if (!free(a, killerWho) || (clear && blocked(killer, a, killerWho))) continue
+        for (const b of ground) {
+          if (distance(a, b) > FIGHT_RANGE || (a.x === b.x && a.y === b.y) || !free(b, victimWho))
+            continue
+          if (clear && blocked(victim, b, victimWho)) continue
+          const cost = distance(killer, a) + distance(victim, b)
+          if (cost < bestCost) {
+            best = { a, b }
+            bestCost = cost
+          }
         }
       }
+      if (best) break
     }
     if (best) {
       place(killerWho, best.a)

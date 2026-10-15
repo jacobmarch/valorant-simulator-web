@@ -21,7 +21,7 @@ A round is a **plan** (`roundPlan` in `src/round-plan.ts`) played out as a list 
 | Attack plan | `default`, `rush`, `split`, `fake`, `slow` | Where the attack goes, and when it hits |
 | Opening | `mid`, `a-main`, `b-main`, `c-main`, `default` | Where `default`, `fake` and `slow` start. `rush` and `split` open on the hit site's main route |
 | Attack formation | `5-0`, `2-1-2`, `3-1-1` | Where the hit lands on the site |
-| Defence formation | `4-1`, `2-1-2`, `3-2` | Who holds which site |
+| Defence formation | `4-1`, `2-1-2`, `3-2` | Who holds which site. On a three-site map every site always has a defender, so no site is left open |
 | Push | yes or no | A defender comes forward for information and may fight early |
 | Reads | yes or no | Defenders off the site rotate before the hit lands |
 | Retake | `tight` or `wide` | Whether the defence retakes from two points or spreads over all of them |
@@ -88,6 +88,10 @@ The first version of the rework put each beat's players on fixed lists of points
 
 **Players keep their distance.** A player never walks to a point within 12 units of an enemy or 7 of a teammate, except the two players who are about to fight. So a team that walks up to an enemy stops short, and nobody stands beside an enemy for a whole beat without a fight.
 
+**Lanes are blocked by enemies.** A walk is refused if it would pass within 9 units of a living enemy, so nobody walks through a lane an enemy is standing in, and a defender cannot appear behind attackers who hold both ends of a main. Fighters about to meet are the only exception. The map has no wall data, so this nearness check stands in for line of sight.
+
+**A plant needs the site cleared.** At the post-plant beat any defender within 28 units of the spike is pushed off the site, by the nearest way out that does not cross an enemy. The attack never plants with a defender beside the spike.
+
 **Players move first, then die.** Every kill has a fight step before it (`FIGHT_AT`, 0.9 into the step). On it the killer and victim are moved to the pair of points within `FIGHT_RANGE` (30 units) of each other that takes the least walking. If they are already in range they do not move. On the next step the victim is marked dead where they stand, so the death icon never appears before a move. Before the hit the fight can be anywhere on the map. From the hit on it is on the hit site, or on the mid and flanks leading to it.
 
 The killer is always on the opposite side from the victim (the sim already guarantees this, and a test checks it).
@@ -104,6 +108,7 @@ Everything above moves players only between the named points in `src/map-layouts
 - A planted round is played on the planted site.
 - After the rotation beat, more defenders are on the site than before.
 - Every kill is between opposing sides. The fighters meet within range and both are alive on the fight step, and the victim dies where they stand. After the hit the fight is on the site, mid or the flanks.
+- On three-site maps every site has at least one defender at setup. The spike goes down with the site cleared. A walk does not pass through an enemy in the lane.
 - Nobody jumps: between beats a player only walks one step to a nearby point. Opposing players are never side by side unless they are about to fight.
 - Every attack plan and every opening happens, a fake shows a pair on the other site, and the defence rotates onto the site.
 - Rounds are not copies of each other: over the test fixture, nearly every round walks its own route, no one plan shape makes up more than 5% of rounds, and the same round number gets different plans in different matches.
