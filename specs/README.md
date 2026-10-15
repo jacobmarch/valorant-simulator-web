@@ -9,5 +9,6 @@ Each file describes one feature contract. Implementers should read the relevant 
 - `training-scouting.md` — individual hours, rating movement, and scouting discovery.
 - `automation-save.md` — delegation modes, disabled systems, local persistence, New Game, and Reset Save.
 - `round-stages.md` — stages within a watched round, player positions on a schematic map, and stage playback.
+- `round-tactics.md` — the tactical layer on the minimap: formations, decision points, kills on the hit site, and the plan for later work.
 
 Every specification should contain purpose, inputs, state changes, validation, user-visible output, edge cases, and acceptance criteria.

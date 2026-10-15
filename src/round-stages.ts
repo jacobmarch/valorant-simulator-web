@@ -81,22 +81,29 @@ export function formationsFor(
 }
 
 /**
- * The defenders' setup: `main` of them hold the hit site's holds, and the rest stand at `off`.
- * - 4-1: four on the site, one on the other site's lurk spot.
- * - 2-1-2: two on the site, one mid, two on the other site.
- * - 3-2: three on the site, two on the other site.
+ * The defenders' setup. `main` of them stand on `mainSite`'s holds, and the rest stand at `off`.
+ * The attack reads the setup, and the formation sets which site it goes for:
+ * - 4-1: four hold the other site, so the attack pivots onto the hit site, where one defender waits.
+ * - 2-1-2: two hold the hit site, one sits in mid, two hold the other site.
+ * - 3-2: three hold the hit site, two hold the other site.
  */
 function defenseSetup(
   formation: DefenseFormation,
   layout: MapLayout,
   hit: string,
-): { main: number; off: Point[] } {
-  const other = layout.sites[layout.siteNames.find((name) => name !== hit) ?? hit]
-  if (formation === '4-1') return { main: 4, off: [other.lurk[0]] }
+): { main: number; mainSite: string; off: Point[] } {
+  const other = layout.siteNames.find((name) => name !== hit) ?? hit
+  const hitSite = layout.sites[hit]
+  const otherSite = layout.sites[other]
+  if (formation === '4-1') return { main: 4, mainSite: other, off: [hitSite.holds[0]] }
   if (formation === '2-1-2')
-    return { main: 2, off: [layout.mid[0], other.holds[0], other.holds[1]] }
-  return { main: 3, off: [other.holds[0], other.holds[1]] }
+    return { main: 2, mainSite: hit, off: [layout.mid[0], otherSite.holds[0], otherSite.holds[1]] }
+  return { main: 3, mainSite: hit, off: [otherSite.holds[0], otherSite.holds[1]] }
 }
+
+/** Whether a player stands on one of these points. */
+const standsOn = (mark: { x: number; y: number }, points: Point[]) =>
+  points.some((point) => point.x === mark.x && point.y === mark.y)
 
 /** Where the attackers without the lurker scout from, in mid, before the hit. */
 const ATTACK_STAGING: Record<AttackFormation, (layout: MapLayout) => Point[]> = {
@@ -178,6 +185,7 @@ export function roundFrame(
   const site = layout.sites[hit]
   const formations = formationsFor(map, round.round)
   const defense = defenseSetup(formations.defense, layout, hit)
+  const mainHolds = layout.sites[defense.mainSite].holds
   const roster: Roster[] = [
     ...sides.a.map((id) => ({ id, side: 'a' as const })),
     ...sides.b.map((id) => ({ id, side: 'b' as const })),
@@ -200,12 +208,7 @@ export function roundFrame(
   // Where each side can fight on this site before the spike goes down, so a kill can be placed on
   // the points they hold. After the plant the post and retake points are in play too.
   const attackSpots = [...site.entry, ...site.lanes, site.lurk[0]]
-  const defenseSpots = [...site.holds]
-  const rotateOffSite = () =>
-    defenders
-      .slice(defense.main)
-      .filter((player) => pos[player.id]?.alive !== false)
-      .forEach((player, at) => place(player, site.holds[(defense.main + at) % site.holds.length]))
+  const defenseSpots = [...site.holds, ...site.retake]
 
   attackers.forEach((player, at) =>
     place(player, layout.attackSpawn[at % layout.attackSpawn.length]),
@@ -213,7 +216,7 @@ export function roundFrame(
   defenders.forEach((player, at) =>
     place(
       player,
-      at < defense.main ? site.holds[at] : defense.off[(at - defense.main) % defense.off.length],
+      at < defense.main ? mainHolds[at] : defense.off[(at - defense.main) % defense.off.length],
     ),
   )
 
@@ -221,15 +224,14 @@ export function roundFrame(
   // Movement for a stage, applied before its first event (or at its start, for scouting).
   const applyStart = (stage: Stage) => {
     if (stage.kind === 'scout') {
-      // The lurker reads the map from a flank while the rest look in from mid, and the defenders
-      // off the site see that and shift onto it.
+      // The lurker reads the map from a flank while the rest look in from mid. The defence does not
+      // move yet: it answers once the attack is in.
       const living = alive(attackers)
       const lurker = living.find((player) => player.id === lurkerId)
       const others = living.filter((player) => player !== lurker)
       const staging = ATTACK_STAGING[formations.attack](layout)
       others.forEach((player, at) => place(player, staging[at % staging.length]))
       if (lurker) place(lurker, layout.flank[0])
-      rotateOffSite()
     }
     if (stage.kind === 'contact') {
       const living = alive(attackers)
@@ -238,6 +240,18 @@ export function roundFrame(
       const slots = ATTACK_HITS[formations.attack](site)
       others.forEach((player, at) => place(player, slots[at % slots.length]))
       if (lurker) place(lurker, site.lurk[0])
+      // The defence answers. Three or more holding the site fight it while the rest rotate in.
+      // Fewer fall off to the retake points, and the rest of the team plays the retake.
+      const live = alive(defenders)
+      const holding = live.filter((player) => standsOn(pos[player.id], site.holds))
+      if (holding.length >= 3) {
+        const free = site.holds.filter(
+          (spot) => !live.some((player) => standsOn(pos[player.id], [spot])),
+        )
+        live
+          .filter((player) => !standsOn(pos[player.id], site.holds))
+          .forEach((player, at) => place(player, free[at % free.length]))
+      } else holding.forEach((player, at) => place(player, site.retake[at % site.retake.length]))
     }
     if (stage.kind === 'post-plant') {
       alive(attackers).forEach((player, at) => place(player, site.post[at % site.post.length]))
@@ -256,29 +270,41 @@ export function roundFrame(
     if (event.kind === 'kill') {
       const victim = pos[event.victimId]
       const killer = pos[event.killerId]
-      // A kill is a fight, so the killer stands in range of the victim, on the nearest point its
-      // side holds on this site.
-      if (victim?.alive && killer?.alive && distance(killer, victim) > FIGHT_RANGE) {
+      if (victim?.alive && killer?.alive) {
         const planted = spike !== null
-        const spots = killer.attacking
-          ? planted
-            ? [...attackSpots, ...site.post]
-            : attackSpots
-          : planted
-            ? [...defenseSpots, ...site.retake]
-            : defenseSpots
-        // Prefer a point nobody living is on, so two players never share a spot.
-        const taken = (spot: Point) =>
+        const spotsFor = (mark: Mark) =>
+          mark.attacking
+            ? planted
+              ? [...attackSpots, ...site.post]
+              : attackSpots
+            : planted
+              ? [...defenseSpots, ...site.retake]
+              : defenseSpots
+        // A spot nobody living is on, so two players never share one.
+        const taken = (spot: Point, self: string) =>
           Object.values(pos).some(
-            (mark) => mark.alive && mark.id !== killer.id && mark.x === spot.x && mark.y === spot.y,
+            (mark) => mark.alive && mark.id !== self && mark.x === spot.x && mark.y === spot.y,
           )
-        const free = spots.filter((spot) => !taken(spot))
-        const nearest = (free.length > 0 ? free : spots).reduce((best, spot) =>
-          distance(spot, victim) < distance(best, victim) ? spot : best,
-        )
-        place({ id: killer.id, side: killer.side }, nearest)
+        // Puts a player on the hit site if they are not already on it, and in range of the other
+        // player in the fight. The victim settles first, then the killer closes in on them.
+        const settle = (id: string, otherId: string) => {
+          const mark = pos[id]
+          const other = pos[otherId]
+          const spots = spotsFor(mark)
+          if (standsOn(mark, spots) && distance(mark, other) <= FIGHT_RANGE) return
+          const free = spots.filter((spot) => !taken(spot, id))
+          const pool = free.length > 0 ? free : spots
+          const nearest = pool.reduce((best, spot) =>
+            distance(spot, other) < distance(best, other) ? spot : best,
+          )
+          place({ id, side: mark.side }, nearest)
+        }
+        settle(event.victimId, event.killerId)
+        settle(event.killerId, event.victimId)
       }
-      if (victim) victim.alive = false
+      // Read the victim again: settling may have replaced their mark.
+      const fallen = pos[event.victimId]
+      if (fallen) fallen.alive = false
     } else if (event.kind === 'plant') {
       const planted = layout.sites[event.site]
       const planter = pos[event.playerId]

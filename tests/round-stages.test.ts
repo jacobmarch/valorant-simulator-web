@@ -251,8 +251,9 @@ describe('round stages', () => {
           (mark) =>
             !mark.attacking && site.holds.some((point) => point.x === mark.x && point.y === mark.y),
         )
-        // Every formation keeps at least two defenders on the planted site.
-        expect(onHold.length).toBeGreaterThanOrEqual(2)
+        // A 4-1 setup holds the other site and leaves one defender on the planted site, so the
+        // attack pivots onto it. Every setup keeps at least one defender there.
+        expect(onHold.length).toBeGreaterThanOrEqual(1)
         checked += onHold.length
         // Just before the plant: the attackers have gone in and not yet moved on.
         const plantAt = round.events.indexOf(plant)
@@ -261,7 +262,15 @@ describe('round stages', () => {
         const onSite = [...site.entry, ...site.lanes, site.lurk[0]]
         for (const mark of contact.marks) {
           if (!mark.alive) continue
-          const at = mark.attacking ? onSite : site.holds
+          // Defenders hold the site, fall back to its retake points, sit mid, or hold the other site
+          // when the attack pivots onto this one.
+          const defending = [
+            ...site.holds,
+            ...site.retake,
+            ...Object.values(mapLayouts[map.map].sites).flatMap((layout) => layout.holds),
+            ...mapLayouts[map.map].mid,
+          ]
+          const at = mark.attacking ? onSite : defending
           expect(at.some((point) => point.x === mark.x && point.y === mark.y)).toBe(true)
         }
       }
