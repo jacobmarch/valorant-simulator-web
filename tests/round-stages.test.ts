@@ -335,14 +335,13 @@ describe('round stages', () => {
           const site = layout.sites[name]
           return [...site.entry, site.lanes[0]]
         }
+        const mainSites: Record<string, number> = { 'a-main': 0, 'b-main': 1, 'c-main': 2 }
         const home =
           opening === 'mid'
             ? layout.mid
-            : opening === 'a-main'
-              ? spotsFor(layout.siteNames[0])
-              : opening === 'b-main'
-                ? spotsFor(layout.siteNames[1])
-                : null
+            : opening in mainSites
+              ? spotsFor(layout.siteNames[mainSites[opening]])
+              : null
         if (!home) continue
         // Everyone but the lurker stands on the opening's own points.
         for (const mark of attackers) {
@@ -351,7 +350,7 @@ describe('round stages', () => {
         }
       }
     }
-    expect(openings).toEqual(new Set(['mid', 'a-main', 'b-main', 'default']))
+    expect(openings).toEqual(new Set(['mid', 'a-main', 'b-main', 'c-main', 'default']))
   })
 
   test('attackers spread out in contact, with a lurker apart from the group', () => {

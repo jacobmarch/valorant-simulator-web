@@ -11,7 +11,7 @@ The layer is presentation only. It does not change the sim, its random draws, it
 1. **Setup** (step 0). Attackers spawn. Defenders take a formation (below).
 2. **Scouting** (step 0.5). The attack opens one of four ways, picked per round (`ATTACK_OPENINGS`):
    - `mid`: the attackers stand together in the middle of the map.
-   - `a-main` / `b-main`: the attackers start on the main route to site A or B, at that site's entry. They have not committed, so they can still pivot onto the other site at contact.
+   - `a-main` / `b-main` / `c-main`: the attackers start on the main route to site A, B or C, at that site's entry. They have not committed, so they can still pivot onto another site at contact. `c-main` only exists on maps with a third site (Haven and Lotus).
    - `default`: the attackers spread out as their attack formation has them, and the lurker reads a flank.
 
    Defenders do not move. They have not seen the attack yet.
@@ -26,13 +26,13 @@ The round has two decision points before the plant, which is the minimum asked f
 
 ## Openings
 
-Each opening is chosen per round from the map and round number, so the same round always opens the same way. The four openings are equally likely across rounds.
+Each opening is chosen per round from the map and round number, so the same round always opens the same way. On two-site maps the four openings are equally likely. On three-site maps the pool adds `c-main`, so each opening is one in five.
 
 - `mid` stacks the attackers in the middle of the map, so the attack has no visible plan until it commits.
-- `a-main` and `b-main` put the attackers at the entry of that site. The pivot is visible when the hit site is the other one.
+- `a-main`, `b-main` and `c-main` put the attackers at the entry of that site. The pivot is visible when the hit site is another one.
 - `default` spreads them out, as their attack formation has them.
 
-Checked in the browser on Haven round 2: a `b-main` opening stands at B's entry while scouting, then the attackers pivot to the middle site at contact, where the sim planted.
+Checked in the browser on Haven round 2: a `b-main` opening stands at B's entry while scouting, then the attackers pivot to the middle site at contact, where the sim planted. On Haven round 3 a `c-main` opening stands at C's entry (the middle site) and hits there, with no pivot.
 
 ## Formations
 

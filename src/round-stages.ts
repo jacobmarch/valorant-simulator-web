@@ -71,12 +71,14 @@ export function hitSiteOf(layout: MapLayout, round: RoundReplay): string {
 /**
  * How the attack opens, before it commits to a site:
  * - `mid`: the attackers stand together in the middle of the map.
- * - `a-main` / `b-main`: the attackers start on the main route to site A or B, at that site's entry.
- *   They can still pivot onto the other site at contact.
+ * - `a-main` / `b-main` / `c-main`: the attackers start on the main route to that site, at its
+ *   entry. They can still pivot onto another site at contact. `c-main` only exists on maps with a
+ *   third site.
  * - `default`: the attackers spread out as their formation has them, with the lurker on a flank.
  */
 export const ATTACK_OPENINGS = ['mid', 'a-main', 'b-main', 'default'] as const
-export type AttackOpening = (typeof ATTACK_OPENINGS)[number]
+export const THREE_SITE_OPENINGS = [...ATTACK_OPENINGS, 'c-main'] as const
+export type AttackOpening = (typeof THREE_SITE_OPENINGS)[number]
 
 /**
  * Formations and opening for a round, picked from the map and round number so the same round
@@ -87,10 +89,12 @@ export function formationsFor(
   round: number,
 ): { defense: DefenseFormation; attack: AttackFormation; opening: AttackOpening } {
   const seed = [...map].reduce((total, char) => (total * 31 + char.charCodeAt(0)) >>> 0, 7) + round
+  // Three-site maps add a C main to the openings, so the pool is larger there.
+  const openings = layoutFor(map).siteNames.length >= 3 ? THREE_SITE_OPENINGS : ATTACK_OPENINGS
   return {
     defense: DEFENSE_FORMATIONS[seed % DEFENSE_FORMATIONS.length],
     attack: ATTACK_FORMATIONS[(seed * 5 + 1) % ATTACK_FORMATIONS.length],
-    opening: ATTACK_OPENINGS[(seed * 7 + 3) % ATTACK_OPENINGS.length],
+    opening: openings[(seed * 7 + 3) % openings.length],
   }
 }
 
@@ -149,7 +153,8 @@ function openingStaging(
 ): Point[] {
   if (opening === 'mid') return layout.mid.slice(0, 4)
   if (opening === 'default') return ATTACK_STAGING[attack](layout)
-  const site = layout.sites[layout.siteNames[opening === 'a-main' ? 0 : 1]]
+  const siteIndex = { 'a-main': 0, 'b-main': 1, 'c-main': 2 }[opening]
+  const site = layout.sites[layout.siteNames[siteIndex]]
   return [...site.entry, site.lanes[0]]
 }
 
