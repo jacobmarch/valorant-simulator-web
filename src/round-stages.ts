@@ -13,7 +13,11 @@ import { layoutFor, type MapLayout, type Point, type SiteLayout } from './map-la
 import type { Role } from './seed'
 import type { RoundReplay } from './round-sim'
 
-export type StageKind = 'setup' | 'contact' | 'post-plant'
+export type StageKind = 'setup' | 'scout' | 'contact' | 'post-plant'
+/**
+ * A stage starts on a step. Steps are whole numbers for events, and the scouting beat sits at
+ * 0.5: after setup, before the first event.
+ */
 export type Stage = { kind: StageKind; label: string; start: number }
 export type Side = 'a' | 'b'
 export type Mark = {
@@ -94,6 +98,13 @@ function defenseSetup(
   return { main: 3, off: [other.holds[0], other.holds[1]] }
 }
 
+/** Where the attackers without the lurker scout from, in mid, before the hit. */
+const ATTACK_STAGING: Record<AttackFormation, (layout: MapLayout) => Point[]> = {
+  '5-0': (layout) => [layout.mid[0], layout.mid[1], layout.mid[2], layout.mid[3]],
+  '2-1-2': (layout) => [layout.mid[0], layout.mid[1], layout.mid[3], layout.mid[4]],
+  '3-1-1': (layout) => [layout.mid[0], layout.mid[1], layout.mid[2], layout.mid[4]],
+}
+
 /** Where the attackers without the lurker go in, in order, once the hit starts. */
 const ATTACK_HITS: Record<AttackFormation, (site: SiteLayout) => Point[]> = {
   '5-0': (site) => [...site.entry, site.lanes[0]],
@@ -102,18 +113,34 @@ const ATTACK_HITS: Record<AttackFormation, (site: SiteLayout) => Point[]> = {
 }
 
 /**
- * The stages of a round, in order. Setup is always first. Contact covers the fights before the
- * spike goes down, and is skipped when the spike goes down before the first kill. Post-plant
- * covers everything after the plant, including the defuse or detonation.
+ * How close a killer has to stand to a victim for the kill to read as a fight. About a site's width:
+ * a holder can be this far from an entry point even on the same site.
+ */
+export const FIGHT_RANGE = 30
+
+const distance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y)
+
+/**
+ * The stages of a round, in order. Setup is always first. Scouting comes next when anything
+ * happens, with the attackers in mid and the lurker out on a flank. Contact covers the fights
+ * before the spike goes down, and is skipped when the spike goes down before the first kill.
+ * Post-plant covers everything after the plant, including the defuse or detonation.
  */
 export function roundStages(round: RoundReplay): Stage[] {
   const stages: Stage[] = [{ kind: 'setup', label: 'Setup', start: 0 }]
   const plantAt = round.events.findIndex((event) => event.kind === 'plant')
   const planted = plantAt !== -1
+  if (round.events.length > 0) stages.push({ kind: 'scout', label: 'Scouting', start: 0.5 })
   if (planted ? plantAt >= 1 : round.events.length > 0)
     stages.push({ kind: 'contact', label: 'Contact', start: 1 })
   if (planted) stages.push({ kind: 'post-plant', label: 'Post-plant', start: plantAt + 1 })
   return stages
+}
+
+/** The next step the round can stop on after `step`: the next stage start, or the next event. */
+export function stepAfter(stages: Stage[], step: number): number {
+  const next = stages.find((stage) => stage.start > step)
+  return Math.min(step + 1, next?.start ?? Number.POSITIVE_INFINITY)
 }
 
 /** Index into the stages of the stage a step falls in. */
@@ -170,6 +197,15 @@ export function roundFrame(
     }
   }
   const alive = (group: Roster[]) => group.filter((player) => pos[player.id]?.alive !== false)
+  // Where each side can fight on this site before the spike goes down, so a kill can be placed on
+  // the points they hold. After the plant the post and retake points are in play too.
+  const attackSpots = [...site.entry, ...site.lanes, site.lurk[0]]
+  const defenseSpots = [...site.holds]
+  const rotateOffSite = () =>
+    defenders
+      .slice(defense.main)
+      .filter((player) => pos[player.id]?.alive !== false)
+      .forEach((player, at) => place(player, site.holds[(defense.main + at) % site.holds.length]))
 
   attackers.forEach((player, at) =>
     place(player, layout.attackSpawn[at % layout.attackSpawn.length]),
@@ -182,8 +218,19 @@ export function roundFrame(
   )
 
   let spike: Spike | null = null
-  // Movement for the stage that starts at `index + 1`, applied just before event `index`.
+  // Movement for a stage, applied before its first event (or at its start, for scouting).
   const applyStart = (stage: Stage) => {
+    if (stage.kind === 'scout') {
+      // The lurker reads the map from a flank while the rest look in from mid, and the defenders
+      // off the site see that and shift onto it.
+      const living = alive(attackers)
+      const lurker = living.find((player) => player.id === lurkerId)
+      const others = living.filter((player) => player !== lurker)
+      const staging = ATTACK_STAGING[formations.attack](layout)
+      others.forEach((player, at) => place(player, staging[at % staging.length]))
+      if (lurker) place(lurker, layout.flank[0])
+      rotateOffSite()
+    }
     if (stage.kind === 'contact') {
       const living = alive(attackers)
       const lurker = living.find((player) => player.id === lurkerId)
@@ -191,11 +238,6 @@ export function roundFrame(
       const slots = ATTACK_HITS[formations.attack](site)
       others.forEach((player, at) => place(player, slots[at % slots.length]))
       if (lurker) place(lurker, site.lurk[0])
-      // Defenders off the site rotate in to hold it, so the fight is on the site.
-      defenders
-        .slice(defense.main)
-        .filter((player) => pos[player.id]?.alive !== false)
-        .forEach((player, at) => place(player, site.holds[(defense.main + at) % site.holds.length]))
     }
     if (stage.kind === 'post-plant') {
       alive(attackers).forEach((player, at) => place(player, site.post[at % site.post.length]))
@@ -203,7 +245,9 @@ export function roundFrame(
     }
   }
 
-  const shown = Math.min(step, round.events.length)
+  const shown = Math.min(Math.floor(step), round.events.length)
+  const scout = stages.find((stage) => stage.kind === 'scout')
+  if (scout && step >= scout.start) applyStart(scout)
   for (let index = 0; index < shown; index++) {
     stages.forEach((stage) => {
       if (stage.start === index + 1 && stage.start > 0) applyStart(stage)
@@ -211,6 +255,29 @@ export function roundFrame(
     const event = round.events[index]
     if (event.kind === 'kill') {
       const victim = pos[event.victimId]
+      const killer = pos[event.killerId]
+      // A kill is a fight, so the killer stands in range of the victim, on the nearest point its
+      // side holds on this site.
+      if (victim?.alive && killer?.alive && distance(killer, victim) > FIGHT_RANGE) {
+        const planted = spike !== null
+        const spots = killer.attacking
+          ? planted
+            ? [...attackSpots, ...site.post]
+            : attackSpots
+          : planted
+            ? [...defenseSpots, ...site.retake]
+            : defenseSpots
+        // Prefer a point nobody living is on, so two players never share a spot.
+        const taken = (spot: Point) =>
+          Object.values(pos).some(
+            (mark) => mark.alive && mark.id !== killer.id && mark.x === spot.x && mark.y === spot.y,
+          )
+        const free = spots.filter((spot) => !taken(spot))
+        const nearest = (free.length > 0 ? free : spots).reduce((best, spot) =>
+          distance(spot, victim) < distance(best, victim) ? spot : best,
+        )
+        place({ id: killer.id, side: killer.side }, nearest)
+      }
       if (victim) victim.alive = false
     } else if (event.kind === 'plant') {
       const planted = layout.sites[event.site]

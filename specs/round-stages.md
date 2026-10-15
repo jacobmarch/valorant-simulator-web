@@ -2,7 +2,7 @@
 
 ## Purpose
 
-When the manager watches a series round by round, each round is also shown on the map's minimap, with every player marked where they stand. A round is split into stages so the manager can step through its shape: setup, contact, and post-plant. This is only part of the watched replay. Quick sims have no stages and no positions.
+When the manager watches a series round by round, each round is also shown on the map's minimap, with every player marked where they stand. A round is split into stages so the manager can step through its shape: setup, scouting, contact, and post-plant. This is only part of the watched replay. Quick sims have no stages and no positions.
 
 ## Inputs
 
@@ -13,6 +13,7 @@ When the manager watches a series round by round, each round is also shown on th
 ## Stages
 
 - Setup, always first: starts at step 0, before any event.
+- Scouting, when anything happens: starts at step 0.5, after setup and before the first event. The attackers look in from mid, the lurker reads a flank, and the defenders off the site shift onto it.
 - Contact, when there are fights before the spike goes down, or when the round has no plant: starts at step 1.
 - Post-plant, when the spike is planted: starts right after the plant event, step `plantIndex + 1`.
 
@@ -25,7 +26,7 @@ Every player stands on a named point from `src/map-layouts.ts`, and only on thos
 - The hit site is the one the spike goes down on. If the spike never goes down, the attack goes for a site that alternates by round, and every position below uses that site.
 - Formations are picked per round from the map and round number, so the same round always lines up the same way. Defence is 4-1, 2-1-2 or 3-2; attack is 5-0, 2-1-2 or 3-1-1.
 - Setup: attackers stand on the attack spawn. Defenders take their formation: the main group on the hit site's holds, the rest on the other site's lurk and holds, or mid for the 2-1-2 middle.
-- Contact: the lurker takes the hit site's lurk point. The other attackers go in to the site's entry points and lanes in their formation. Defenders off the site rotate onto its holds. Every fight is on the hit site, so nobody is left fighting in mid. Kills happen where the fighters stand. Victims stay where they fell, marked dead.
+- Contact: the lurker takes the hit site's lurk point. The other attackers go in to the site's entry points and lanes in their formation. Defenders off the site rotate onto its holds. Every fight is on the hit site, so nobody is left fighting in mid. Kills happen where the fighters stand: when a killer is more than 30 units from the victim, the killer moves to the nearest free point its side holds on that site, so a kill is always between players on the hit site. Victims stay where they fell, marked dead.
 - The lurker is the first Sentinel or Controller among the attackers, as a team usually sends one to flank. With neither, the last attacker lurks, so one attacker is always apart from the group.
 - Post-plant: attackers stand on the site's post points round the spike. Defenders come in to the site's retake points.
 - The planter and the defuser stand beside the spike, on the site's first post point.

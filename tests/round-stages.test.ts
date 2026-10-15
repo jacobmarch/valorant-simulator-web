@@ -3,7 +3,7 @@ import { mapLayouts } from '../src/map-layouts'
 import { mapImage } from '../src/map-images'
 import { simulateSeries } from '../src/game'
 import { type MapReplay, type SeriesReplay } from '../src/round-sim'
-import { pickLurker, roundFrame, roundStages, stageIndexAt } from '../src/round-stages'
+import { hitSiteOf, pickLurker, roundFrame, roundStages, stageIndexAt } from '../src/round-stages'
 import { createKickoffGame } from './helpers'
 
 const memory = new Map<string, string>()
@@ -269,6 +269,41 @@ describe('round stages', () => {
     expect(checked).toBeGreaterThan(0)
   })
 
+  test('every kill is between opposing sides, and both stand on the hit site', () => {
+    let kills = 0
+    for (const { map, sides } of allMaps()) {
+      const layout = mapLayouts[map.map]
+      for (const round of map.rounds) {
+        const attackerSide = round.attackerId === map.aId ? 'a' : 'b'
+        const hit = layout.sites[hitSiteOf(layout, round)]
+        const onHit = [
+          ...hit.holds,
+          ...hit.entry,
+          ...hit.lanes,
+          ...hit.post,
+          ...hit.retake,
+          hit.lurk[0],
+        ]
+        const isOnHit = (mark: { x: number; y: number }) =>
+          onHit.some((point) => point.x === mark.x && point.y === mark.y)
+        round.events.forEach((event, index) => {
+          if (event.kind !== 'kill') return
+          const side = (id: string) => (sides.a.includes(id) ? 'a' : 'b')
+          expect(side(event.killerId)).not.toBe(side(event.victimId))
+          // The frame just after the kill: the fight is where both of them now stand.
+          const frame = roundFrame(map.map, round, sides, attackerSide, index + 1)
+          const killer = frame.marks.find((mark) => mark.id === event.killerId)
+          const victim = frame.marks.find((mark) => mark.id === event.victimId)
+          if (!killer || !victim) throw new Error('kill names a player not in the round')
+          kills++
+          expect(isOnHit(killer)).toBe(true)
+          expect(isOnHit(victim)).toBe(true)
+        })
+      }
+    }
+    expect(kills).toBeGreaterThan(0)
+  })
+
   test('attackers spread out in contact, with a lurker apart from the group', () => {
     let lurks = 0
     for (const { map, sides } of allMaps()) {
@@ -302,9 +337,9 @@ describe('round stages', () => {
         const lurking = frame.marks.find((mark) => mark.id === lurker)
         if (site && lurking?.alive && lurking.attacking) {
           lurks++
-          expect(site.lurk.some((point) => point.x === lurking.x && point.y === lurking.y)).toBe(
-            true,
-          )
+          // The lurker sits on the lurk spot, or has moved onto the site to take a fight.
+          const onSite = [...site.lurk, ...site.entry, ...site.lanes]
+          expect(onSite.some((point) => point.x === lurking.x && point.y === lurking.y)).toBe(true)
         }
       }
     }

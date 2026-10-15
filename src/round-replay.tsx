@@ -11,7 +11,7 @@ import { useEffect, useState } from 'react'
 import { assignedRole, type GameState } from './game'
 import { RoundMap } from './round-map'
 import { buyLabel, clock, type MapReplay, type RoundReplay, type TeamBuy } from './round-sim'
-import { pickLurker, roundFrame, roundStages } from './round-stages'
+import { pickLurker, roundFrame, roundStages, stepAfter } from './round-stages'
 import { TeamMark } from './ui'
 
 const endText: Record<RoundReplay['endReason'], string> = {
@@ -162,12 +162,12 @@ export function RoundReplayView({
         if (over) {
           setIndex((value) => value + 1)
           setStep(0)
-        } else setStep((value) => value + 1)
+        } else setStep((value) => stepAfter(roundStages(replay.rounds[index]), value))
       },
       (over ? ROUND_PAUSE_MS : atStage ? STAGE_MS : EVENT_MS) / speed,
     )
     return () => window.clearTimeout(timer)
-  }, [playing, index, step, over, finished, speed, atStage])
+  }, [playing, index, step, over, finished, speed, atStage, replay])
 
   useEffect(() => {
     if (over) setRevealed((value) => Math.max(value, index + 1))
