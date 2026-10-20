@@ -355,7 +355,7 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
         </section>
       )}
       <div className="columns roster-columns">
-        <section className="panel">
+        <section className="panel depth-panel">
           <PanelTitle
             eyebrow="CURRENT ROSTER"
             title="Depth chart"
@@ -365,13 +365,22 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
               </span>
             }
           />
+          <div className="depth-head" aria-hidden="true">
+            <span />
+            <span>Player</span>
+            <span className="num">Salary</span>
+            <span className="num">OVR</span>
+            <span>Lineup role</span>
+            <span>Status</span>
+            <span />
+          </div>
           <div className="market-list roster-list">
             {ps.map((p) => {
               const releaseBlock = releaseError(s, t.id, p.id),
                 role = assignedRole(t, p),
                 penalty = rolePenalty(p, role)
               return (
-                <div className="player-row" key={p.id}>
+                <div className="player-row depth-row" key={p.id}>
                   <b className="avatar" style={{ color: t.color, background: `${t.color}22` }}>
                     {p.name.slice(0, 2).toUpperCase()}
                   </b>
@@ -383,28 +392,30 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
                       </Badge>
                       <Badge>{p.primaryRole}</Badge>
                       {p.igl && <Badge color={tone.accent}>IGL</Badge>}
-                      <Badge color={p.years <= 1 ? tone.warn : tone.muted}>
-                        {`Age ${p.age} · ${p.years}y left`}
-                      </Badge>
                       {p.isImport && <Badge>Import</Badge>}
                     </span>
                     <small>
-                      POT {p.potential} · Morale {Math.round(p.morale)} · Form{' '}
+                      <span className={p.years <= 1 ? 'depth-warn' : undefined}>
+                        {`Age ${p.age} · ${p.years}y left`}
+                      </span>
+                      {` · POT ${p.potential} · Morale ${Math.round(p.morale)} · Form `}
                       {p.form > 0 ? '+' : ''}
                       {p.form.toFixed(1)}
                     </small>
                   </div>
-                  <b className="salary">
+                  <b className="salary depth-salary">
                     {money(p.salary)}
                     <small>/ YR</small>
                   </b>
-                  <b className={`ovr${p.status === 'starter' && penalty ? ' off-role' : ''}`}>
+                  <b
+                    className={`ovr depth-ovr${p.status === 'starter' && penalty ? ' off-role' : ''}`}
+                  >
                     {playerOverall(p) + (p.status === 'starter' ? penalty : 0)}
                     <small>OVR</small>
                   </b>
                   {p.status === 'starter' ? (
                     <select
-                      className="role-select"
+                      className="role-select depth-role"
                       title="Role played in the lineup"
                       value={role}
                       onChange={(e) => {
@@ -423,9 +434,10 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
                       })}
                     </select>
                   ) : (
-                    <span className="role-select" />
+                    <span className="depth-role" />
                   )}
                   <select
+                    className="depth-status"
                     value={p.status}
                     onChange={(e) =>
                       apply(
@@ -443,7 +455,8 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
                     <option value="inactive">Inactive</option>
                   </select>
                   <button
-                    className="x"
+                    className="x depth-release"
+                    aria-label={releaseBlock ?? `Release ${p.name}`}
                     title={releaseBlock ?? `Release ${p.name}`}
                     onClick={() => apply(releasePlayer(s, t.id, p.id))}
                   >
