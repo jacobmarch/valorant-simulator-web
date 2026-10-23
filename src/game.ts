@@ -1,4 +1,5 @@
 import { KICKOFF_START_WEEK } from './calendar'
+import { DEBT_LIMIT, FIRED_TEAM_OPTIONS, pastDebtLimit } from './debt'
 import {
   agePlayer as ageDevelopment,
   conditionBonus,
@@ -10,19 +11,19 @@ import {
   overallRating,
   seedPotential,
 } from './development'
-import { DEBT_LIMIT, FIRED_TEAM_OPTIONS, pastDebtLimit } from './debt'
 import { iglAdjustment, refreshIgls } from './igl'
+import { suggestLineup } from './lineup'
 import { attackerEdge, describeVeto, mapFit, runVeto } from './maps'
 import { type DatabasePlayer, type PlayerDatabase, validateDatabase } from './player-database'
 import { payEventPrizes } from './prizes'
 import { bestRoleAssignment, compositionPenalty, roleRating } from './roles'
 import {
+  type Aggression,
+  aggressionFor,
   buyStrength,
   chooseBuy,
   type Economy,
   type EndReason,
-  aggressionFor,
-  type Aggression,
   type MapReplay,
   type RoundEvent,
   type RoundReplay,
@@ -527,6 +528,7 @@ export function createGame(
       finances: 'balanced',
       sponsorships: false,
       personalities: false,
+      autoLineup: false,
     },
     rng: 20260201,
     saveTimestamp: new Date().toISOString(),
@@ -3045,6 +3047,31 @@ export function autoAssignRoles(state: GameState, team: Team) {
     team.lineup.map((id) => state.players[id]).filter(Boolean),
   )
 }
+/** Puts the strongest five on the lineup. Starters outside the five become substitutes. */
+export function applySuggestedLineup(
+  input: GameState,
+  teamId: string,
+): { ok: true; state: GameState } | { ok: false; error: string } {
+  const suggestion = suggestLineup(input, teamId)
+  if (!suggestion)
+    return { ok: false, error: 'Five players who are not inactive are needed for a lineup.' }
+  const state = structuredClone(input),
+    team = state.teams[teamId]
+  team.playerIds.forEach((id) => {
+    const player = state.players[id]
+    if (!player || player.status === 'inactive') return
+    player.status = suggestion.ids.includes(id) ? 'starter' : 'substitute'
+  })
+  team.lineup = suggestion.ids
+  team.roleAssignments = suggestion.roles
+  return { ok: true, state }
+}
+/** Re-applies the suggested lineup for the managed team when the auto-set toggle is on. */
+export function autoSetLineup(state: GameState): GameState {
+  if (!state.settings.autoLineup) return state
+  const outcome = applySuggestedLineup(state, state.currentTeamId)
+  return outcome.ok ? outcome.state : state
+}
 function resolveExpiredContracts(state: GameState, team: Team) {
   const managed = team.id === state.currentTeamId
   const expired = team.playerIds.filter((id) => state.players[id].years <= 0)
@@ -3726,6 +3753,9 @@ export function advanceWeek(
     phase = phaseForWeek(state.week),
     managedTeam = currentTeam(state)
   updateDevelopmentAndFinances(state)
+  // Ratings and form have just moved, so the auto-set lineup is refreshed before matches play.
+  const autoState = autoSetLineup(state)
+  Object.assign(state, autoState)
   ensureWeekScheduled(state, state.week)
   if (phase === 'Break') {
     state.inbox.unshift(

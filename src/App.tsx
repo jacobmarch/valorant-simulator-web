@@ -18,8 +18,8 @@ import { type ReactNode, useEffect, useState } from 'react'
 import { CompetitionV2 } from './competition-view'
 import { DEBT_LIMIT } from './debt'
 import { DEFAULT_TRAINING } from './development'
-import { FiredScreen } from './fired-view'
 import { Finances } from './finances-view'
+import { FiredScreen } from './fired-view'
 import {
   attentionItems,
   type ContinueReport,
@@ -32,7 +32,9 @@ import {
 import {
   acceptFiredPosition,
   advanceWeek,
+  applySuggestedLineup,
   assignedRole,
+  autoSetLineup,
   createGame,
   currentTeam,
   type DelegationMode,
@@ -255,14 +257,24 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
   const history = rosterHistory(s, t.id).slice(0, 8)
   const negotiable = ps.filter((p) => canRenegotiate(s, p))
   const shortfall = rosterShortfall(s)
-  const apply = (outcome: TransferOutcome) => {
+  // Roster moves re-run the auto-set lineup when it is on. Manual status edits keep the lineup
+  // the manager chose, so the auto-set does not undo them straight away.
+  const apply = (outcome: TransferOutcome, lineupEdit = false) => {
     if (!outcome.ok) {
       setNotice(outcome.error)
       return
     }
     setNotice(null)
-    saveGame(outcome.state)
-    setState(outcome.state)
+    const next = lineupEdit ? outcome.state : autoSetLineup(outcome.state)
+    saveGame(next)
+    setState(next)
+  }
+  const toggleAutoLineup = () => {
+    const next = structuredClone(s)
+    next.settings.autoLineup = !s.settings.autoLineup
+    const updated = next.settings.autoLineup ? autoSetLineup(next) : next
+    saveGame(updated)
+    setState(updated)
   }
   const describe = (m: TransferRecord) => {
     const from = m.fromTeamId ? s.teams[m.fromTeamId]?.short : 'Free agency'
@@ -365,6 +377,28 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
               </span>
             }
           />
+          <div className="depth-toolbar">
+            <button
+              className="secondary compact"
+              title="Start the five players with the highest team strength"
+              onClick={() => apply(applySuggestedLineup(s, t.id), true)}
+            >
+              Suggest best lineup
+            </button>
+            <span className="depth-auto">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={Boolean(s.settings.autoLineup)}
+                aria-label="Auto-set best lineup"
+                className={`toggle ${s.settings.autoLineup ? 'on' : ''}`}
+                onClick={toggleAutoLineup}
+              >
+                <i />
+              </button>
+              <span>Auto-set best lineup</span>
+            </span>
+          </div>
           <div className="depth-head" aria-hidden="true">
             <span />
             <span>Player</span>
@@ -447,6 +481,7 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
                           p.id,
                           e.target.value as 'starter' | 'substitute' | 'inactive',
                         ),
+                        true,
                       )
                     }
                   >

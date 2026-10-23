@@ -3228,6 +3228,23 @@ table {
   width: 128px;
 }
 
+/* Depth chart: lineup actions above the player list */
+.depth-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  padding-bottom: 12px;
+}
+.depth-auto {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
 /* Depth chart: one set of columns shared by the header and every player row */
 .depth-head,
 .depth-row {
