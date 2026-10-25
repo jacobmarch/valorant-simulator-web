@@ -56,6 +56,22 @@ import { type PlayerDatabase, validateDatabase } from './player-database'
 import { Results } from './results-view'
 import { rolePenalty } from './roles'
 import type { SeriesReplay } from './round-sim'
+import {
+  hasTrialed,
+  inviteTrial,
+  inviteTrialError,
+  ladderPlayers,
+  negotiateTrialist,
+  releaseTrialist,
+  SCOUT_SUBREGIONS,
+  type ScoutSubregion,
+  SUBREGION_LABELS,
+  scoutRange,
+  TRIAL_LIMIT_OFFSEASON,
+  TRIAL_LIMIT_SEASON,
+  trialLimit,
+  trialsLeft,
+} from './scouting'
 import { YearInReview } from './season-review-view'
 import { type Region, type Role, roles, seedTeams, skills } from './seed'
 import { SeriesWalkthrough, SimChoice } from './series-walkthrough'
@@ -718,67 +734,165 @@ function Training({ s, setState }: { s: GameState; setState: (s: GameState) => v
   )
 }
 function Scouting({ s, setState }: { s: GameState; setState: (s: GameState) => void }) {
-  const t = currentTeam(s)
-  const targets = Object.values(s.players)
-    .filter((p) => p.teamId !== t.id && p.status !== 'retired')
-    .slice(0, 36)
-  const setH = (id: string, v: number) => {
+  const [notice, setNotice] = useState<string | null>(null)
+  const [years, setYears] = useState<Record<string, number>>({})
+  const commit = (outcome: TransferOutcome) => {
+    if (!outcome.ok) return setNotice(outcome.error)
+    setNotice(null)
+    saveGame(outcome.state)
+    setState(outcome.state)
+  }
+  const setHours = (subregion: ScoutSubregion, value: number) => {
     const n = structuredClone(s)
-    const used = Object.entries(n.scoutingHours)
-      .filter(([key]) => key !== id)
-      .reduce((sum, [, x]) => sum + x, 0)
-    n.scoutingHours[id] = Math.max(0, Math.min(40 - used, v))
+    const used = SCOUT_SUBREGIONS.filter((key) => key !== subregion).reduce(
+      (sum, key) => sum + (n.scoutingHours[key] ?? 0),
+      0,
+    )
+    n.scoutingHours[subregion] = Math.max(
+      0,
+      Math.min(SCOUTING_HOURS - used, Math.round(value) || 0),
+    )
     saveGame(n)
     setState(n)
   }
-  const scoutUsed = Object.values(s.scoutingHours).reduce((sum, x) => sum + x, 0)
+  const scoutUsed = SCOUT_SUBREGIONS.reduce((sum, key) => sum + (s.scoutingHours[key] ?? 0), 0)
+  const pool = ladderPlayers(s)
+  const trialists = pool.filter((p) => hasTrialed(s, p.id))
+  const left = trialsLeft(s)
+  const limit = trialLimit(s.week)
   return (
     <Page
-      eyebrow={`SQUAD / WEEK ${s.week}`}
+      eyebrow={`SCOUTING / WEEK ${s.week}`}
       title="Scouting"
-      subtitle="Assign the weekly 40-hour pool; ratings show once a player is 60% scouted."
+      subtitle="Scout regions with the 40-hour weekly pool. Until a trial, ratings show as a range; a trial reveals the exact number."
     >
+      {notice && (
+        <div className="callout" role="alert">
+          <strong>Not allowed</strong>
+          <span>{notice}</span>
+        </div>
+      )}
       <section className="panel">
         <PanelTitle
-          eyebrow="PLAYER DATABASE"
-          title="Targets & intelligence"
+          eyebrow="TRIALS"
+          title="Trialists"
           right={
-            <Badge color={scoutUsed >= SCOUTING_HOURS ? tone.accent : tone.warn}>
-              {SCOUTING_HOURS - scoutUsed}h unassigned
+            <Badge color={left ? tone.accent : tone.warn}>
+              {left} of {limit} trials left this week
             </Badge>
           }
         />
-        <div className="scout-list">
-          {targets.map((p) => {
-            const overall = Math.round(Object.values(p.ratings).reduce((a, b) => a + b, 0) / 6)
-            return (
-              <div className="scout-row" key={p.id}>
-                <div className="player-name">
-                  <strong>{p.name}</strong>
-                  <span>
-                    {p.teamId ? (s.teams[p.teamId]?.name ?? 'Tier 2') : 'Free agent'} ·{' '}
-                    {p.primaryRole}
-                  </span>
-                </div>
-                <div className="reveal">
-                  <strong>{p.scoutProgress >= 60 ? `${overall} OVR` : 'Unknown rating'}</strong>
-                  <div className="bar">
-                    <i style={{ width: `${p.scoutProgress}%` }} />
-                  </div>
-                  <small>{Math.round(p.scoutProgress)}% scouted</small>
-                </div>
-                <input
-                  type="number"
-                  min="0"
-                  max="40"
-                  value={s.scoutingHours[p.id] ?? 0}
-                  onChange={(e) => setH(p.id, Number(e.target.value))}
-                />
+        <p className="muted">
+          Trials are limited to {TRIAL_LIMIT_SEASON} a week in season and {TRIAL_LIMIT_OFFSEASON} in
+          the off-season and preseason. After a trial, offer a contract or let the player go.
+          Contracts can only be signed in a transfer window.
+        </p>
+        {trialists.length ? (
+          trialists.map((p) => (
+            <div className="prospect-row" key={p.id}>
+              <div className="player-name">
+                <strong>{p.name}</strong>
+                <span>
+                  {p.primaryRole} · age {p.age} · {SUBREGION_LABELS[p.ladder?.subregion ?? 'NA']}
+                </span>
               </div>
-            )
-          })}
-        </div>
+              <div className="reveal">
+                <strong>{playerOverall(p)} OVR</strong>
+                <small>Asks {money(askingSalary(p))} a year</small>
+              </div>
+              <div className="prospect-actions">
+                <select
+                  value={years[p.id] ?? 1}
+                  onChange={(e) => setYears({ ...years, [p.id]: Number(e.target.value) })}
+                >
+                  {Array.from({ length: maxRenewalYears(p) }, (_, i) => i + 1).map((y) => (
+                    <option key={y} value={y}>
+                      {y} year{y > 1 ? 's' : ''}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  className="primary"
+                  onClick={() => commit(negotiateTrialist(s, p.id, years[p.id] ?? 1))}
+                >
+                  Offer contract
+                </button>
+                <button className="link" onClick={() => commit(releaseTrialist(s, p.id))}>
+                  Let go
+                </button>
+              </div>
+            </div>
+          ))
+        ) : (
+          <p className="muted">No trialists yet. Invite a scouted player from the regions below.</p>
+        )}
       </section>
+      {SCOUT_SUBREGIONS.map((subregion) => {
+        const players = pool.filter(
+          (p) => p.ladder?.subregion === subregion && !hasTrialed(s, p.id),
+        )
+        const scouted = players.length
+          ? Math.round(players.reduce((sum, p) => sum + p.scoutProgress, 0) / players.length)
+          : 0
+        const hours = s.scoutingHours[subregion] ?? 0
+        return (
+          <section className="panel" key={subregion}>
+            <PanelTitle
+              eyebrow={subregion}
+              title={SUBREGION_LABELS[subregion]}
+              right={
+                <label className="hours-field">
+                  <input
+                    type="number"
+                    min="0"
+                    max={SCOUTING_HOURS}
+                    value={hours}
+                    onChange={(e) => setHours(subregion, Number(e.target.value))}
+                    aria-label={`${SUBREGION_LABELS[subregion]} scouting hours per week`}
+                  />
+                  <small>h / week</small>
+                </label>
+              }
+            />
+            <p className="muted">
+              {scouted}% scouted on average · {players.length} players ·{' '}
+              {SCOUTING_HOURS - scoutUsed}h of the pool unassigned
+            </p>
+            {players.map((p) => {
+              const range = scoutRange(p)
+              const blocked = inviteTrialError(s, p.id)
+              return (
+                <div className="prospect-row" key={p.id}>
+                  <div className="player-name">
+                    <strong>{p.name}</strong>
+                    <span>
+                      {p.primaryRole} · age {p.age}
+                    </span>
+                  </div>
+                  <div className="reveal">
+                    <strong>
+                      {range.low}–{range.high} OVR
+                    </strong>
+                    <div className="bar">
+                      <i style={{ width: `${p.scoutProgress}%` }} />
+                    </div>
+                    <small>{Math.round(p.scoutProgress)}% scouted</small>
+                  </div>
+                  <div className="prospect-actions">
+                    <button
+                      disabled={Boolean(blocked)}
+                      title={blocked ?? 'Invite to a trial'}
+                      onClick={() => commit(inviteTrial(s, p.id))}
+                    >
+                      Invite to trial
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </section>
+        )
+      })}
     </Page>
   )
 }

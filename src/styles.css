@@ -3366,3 +3366,44 @@ table {
   align-items: center;
   gap: 10px;
 }
+
+/* Scouting: regional prospect lists and the trials panel. */
+.prospect-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line, rgba(127, 127, 127, 0.18));
+}
+.prospect-row:last-child {
+  border-bottom: 0;
+}
+.prospect-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.prospect-actions select {
+  width: auto;
+}
+.hours-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.hours-field input {
+  width: 64px;
+  text-align: center;
+  padding: 7px 4px;
+}
+@media (max-width: 900px) {
+  .prospect-row {
+    grid-template-columns: 1fr;
+  }
+  .prospect-actions {
+    justify-content: flex-start;
+  }
+}

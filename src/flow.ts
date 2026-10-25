@@ -195,7 +195,7 @@ export function attentionItems(s: GameState): AttentionItem[] {
       id: 'scouting',
       level: 'info',
       title: `${SCOUTING_HOURS - scouting} scouting hours unassigned`,
-      detail: 'Point scouts at targets to reveal their ratings.',
+      detail: 'Point scouts at a region to reveal the players on its ladder.',
       view: 'scouting',
     })
   return items
