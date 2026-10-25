@@ -2,10 +2,12 @@
 // season line is tallied as each series is played; at rollover those lines and
 // the season's brackets are condensed into a small SeasonReview that outlives
 // the fixtures. The pop-up shows the newest one once, then lives on Results.
+
+import { overallRating } from './development'
 import {
   type CompetitionPhase,
-  championsQualifiers,
   championshipPointsTable,
+  championsQualifiers,
   eventFinish,
   type GameState,
   type MatchResult,
@@ -253,9 +255,70 @@ export function closeSeasonReview(state: GameState) {
   const review = buildSeasonReview(state)
   // Every season is kept: a review is a few KB, and it is the game's only record of past winners.
   state.reviews = [review, ...(state.reviews ?? []).filter((r) => r.season !== review.season)]
+  recordCareers(state, review)
   state.pendingReview = review.season
   state.seasonStats = {}
   return review
+}
+
+/** One player's season, as the player card lists it. Written once per season at rollover. */
+export type PlayerSeasonRecord = {
+  season: number
+  teamId: string | null
+  /** Contract terms in force when the season closed. */
+  salary: number
+  years: number
+  overall: number
+  potential: number
+  maps: number
+  acs: number | null
+  kd: number | null
+  /** Events the player's club won this season, such as "Masters 1" or "EMEA Stage 2". */
+  titles: string[]
+  /** Individual awards from the review: "Global MVP", "Team MVP", "EMEA MVP". */
+  awards: string[]
+}
+const CAREER_SEASONS = 10
+
+/** Adds each rostered or active player's season to their career log before rollover resets it. */
+function recordCareers(state: GameState, review: SeasonReview) {
+  const titles: Record<string, string[]> = {}
+  review.events.forEach((event) => {
+    const winner = event.podium[0]
+    if (!winner || event.phase === 'Kickoff') return
+    ;(titles[winner] ??= []).push(eventName(event))
+  })
+  const awards: Record<string, string[]> = {}
+  const award = (player: ReviewPlayer | null, label: string) => {
+    if (player) (awards[player.playerId] ??= []).push(label)
+  }
+  award(review.globalMvp, 'Global MVP')
+  award(review.teamMvp, 'Team MVP')
+  review.leagues.forEach((league) => award(league.mvp, `${league.region} MVP`))
+  Object.values(state.players).forEach((player) => {
+    const line = state.seasonStats?.[player.id]
+    const teamId = player.teamId ?? line?.teamId ?? null
+    if (!teamId) return
+    const record: PlayerSeasonRecord = {
+      season: state.season,
+      teamId,
+      salary: player.salary,
+      years: player.years,
+      overall: Math.round(overallRating(player.ratings)),
+      potential: player.potential,
+      maps: line?.maps ?? 0,
+      acs: line?.maps ? Math.round(line.acs / line.maps) : null,
+      kd: line?.maps
+        ? Math.round((line.deaths ? line.kills / line.deaths : line.kills) * 100) / 100
+        : null,
+      titles: titles[teamId] ?? [],
+      awards: awards[player.id] ?? [],
+    }
+    player.career = [
+      ...(player.career ?? []).filter((entry) => entry.season !== state.season),
+      record,
+    ].slice(-CAREER_SEASONS)
+  })
 }
 
 export const eventName = (event: { phase: ReviewEventPhase; region?: Region }) =>

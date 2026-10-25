@@ -36,6 +36,7 @@ import {
   backfillSeasonStats,
   closeSeasonReview,
   type PlayerSeasonLine,
+  type PlayerSeasonRecord,
   recordSeasonStats,
   type SeasonReview,
 } from './season-review'
@@ -110,6 +111,8 @@ export type Player = {
   renewal?: { years: number; salary: number }
   /** Season the player retired in; retirees are pruned once history no longer needs them. */
   retiredSeason?: number
+  /** Season-by-season log for the player card: club, contract, honours. Newest last. */
+  career?: PlayerSeasonRecord[]
 }
 export type Team = {
   id: string
