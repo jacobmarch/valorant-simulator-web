@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
-import { MORALE_DEFAULT } from '../src/development'
 import { DEBT_LIMIT } from '../src/debt'
+import { MORALE_DEFAULT } from '../src/development'
 import { nextAction } from '../src/flow'
 import { advanceWeek, createGame, type GameState } from '../src/game'
 import {

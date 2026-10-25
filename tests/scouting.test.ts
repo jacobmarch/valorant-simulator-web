@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import { advanceWeek, createGame, type GameState, loadGame, SAVE_KEY } from '../src/game'
+import { ratingsRevealed } from '../src/player-card'
 import {
   advanceScouting,
   ensureLadder,
@@ -200,5 +201,17 @@ describe('trials', () => {
     expect(ladderPlayers(offer.state, 'NA').length).toBeGreaterThanOrEqual(LADDER_PER_SUBREGION)
     ensureLadder(offer.state)
     expect(ladderPlayers(offer.state, 'NA').length).toBe(LADDER_PER_SUBREGION)
+  })
+})
+
+describe('player card and trials', () => {
+  test('a ladder prospect shows exact ratings only after a trial', () => {
+    const state = fresh()
+    state.week = 11
+    const prospect = scoutedProspect(state)
+    expect(ratingsRevealed(state, prospect)).toBe(false)
+    const invited = inviteTrial(state, prospect.id)
+    if (!invited.ok) throw new Error(invited.error)
+    expect(ratingsRevealed(invited.state, invited.state.players[prospect.id])).toBe(true)
   })
 })

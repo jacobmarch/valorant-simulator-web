@@ -52,6 +52,7 @@ import {
   teamPlayers,
 } from './game'
 import { DashboardV2, MatchesV2, MatchPreview, TacticsV2 } from './game-views'
+import { PlayerCard } from './player-card-view'
 import { type PlayerDatabase, validateDatabase } from './player-database'
 import { Results } from './results-view'
 import { rolePenalty } from './roles'
@@ -263,6 +264,7 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
   const [marketRegion, setMarketRegion] = useState<Region>(t.region)
   const [notice, setNotice] = useState<string | null>(null)
   const [popup, setPopup] = useState<'history' | 'rules' | null>(null)
+  const [cardId, setCardId] = useState<string | null>(null)
   const openWindow = transferWindowForWeek(s.week)
   const next = nextTransferWindow(s.week)
   const free = freeAgents(s).sort((a, b) => playerOverall(b) - playerOverall(a))
@@ -435,7 +437,16 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
                     {p.name.slice(0, 2).toUpperCase()}
                   </b>
                   <div className="player-name">
-                    <strong>{p.name}</strong>
+                    <strong>
+                      <button
+                        type="button"
+                        className="player-link"
+                        onClick={() => setCardId(p.id)}
+                        aria-label={`Open ${p.name}'s player card`}
+                      >
+                        {p.name}
+                      </button>
+                    </strong>
                     <span>
                       <Badge color={p.status === 'starter' ? tone.accent : tone.muted}>
                         {p.status}
@@ -557,7 +568,15 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
                 <div className="market-row" key={p.id}>
                   <span>
                     <strong>
-                      {p.name} · {playerOverall(p)} OVR
+                      <button
+                        type="button"
+                        className="player-link"
+                        onClick={() => setCardId(p.id)}
+                        aria-label={`Open ${p.name}'s player card`}
+                      >
+                        {p.name}
+                      </button>{' '}
+                      · {playerOverall(p)} OVR
                     </strong>
                     <small>
                       {p.primaryRole}
@@ -590,6 +609,9 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
           </div>
         </section>
       </div>
+      {cardId && s.players[cardId] && (
+        <PlayerCard s={s} playerId={cardId} onClose={() => setCardId(null)} />
+      )}
       {popup === 'history' && (
         <Modal eyebrow="ROSTER HISTORY" title="Recent moves" onClose={() => setPopup(null)}>
           {history.length ? (

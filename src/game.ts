@@ -37,6 +37,7 @@ import {
   backfillSeasonStats,
   closeSeasonReview,
   type PlayerSeasonLine,
+  type PlayerSeasonRecord,
   recordSeasonStats,
   type SeasonReview,
 } from './season-review'
@@ -113,6 +114,8 @@ export type Player = {
   retiredSeason?: number
   /** Set on players in the scouting pool: tier 2 ladder players, reached through trials. */
   ladder?: { subregion: ScoutSubregion }
+  /** Season-by-season log for the player card: club, contract, honours. Newest last. */
+  career?: PlayerSeasonRecord[]
 }
 export type Team = {
   id: string

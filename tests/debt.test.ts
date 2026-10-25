@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
+import { DEBT_LIMIT, FIRED_TEAM_OPTIONS } from '../src/debt'
 import {
   acceptFiredPosition,
   advanceWeek,
@@ -7,9 +8,8 @@ import {
   simulateTournamentRound,
   teamStrength,
 } from '../src/game'
-import { DEBT_LIMIT, FIRED_TEAM_OPTIONS } from '../src/debt'
-import { fillRoster } from './helpers'
 import { freeAgents, signFreeAgent, signFreeAgentError } from '../src/transfers'
+import { fillRoster } from './helpers'
 
 const memory = new Map<string, string>()
 Object.assign(globalThis, {

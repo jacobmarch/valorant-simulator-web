@@ -9,5 +9,6 @@ Each file describes one feature contract. Implementers should read the relevant 
 - `training-scouting.md` — individual hours, rating movement, and scouting discovery.
 - `debt-and-firing.md` — managed-club debt limit, the firing screen, and taking over a new club.
 - `automation-save.md` — delegation modes, disabled systems, local persistence, New Game, and Reset Save.
+- `player-card.md` — the player pop-up, scouting-gated ratings, and the per-season career log.
 
 Every specification should contain purpose, inputs, state changes, validation, user-visible output, edge cases, and acceptance criteria.
