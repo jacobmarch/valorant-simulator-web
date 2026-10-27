@@ -262,9 +262,14 @@ export type GameState = {
     {
       season: number
       week: number
-      benched?: { playerId: string; status: PlayerStatus; morale: number }
+      benched?: { playerId: string; status: PlayerStatus }
+      moraleBefore?: Record<string, number>
     }
   >
+  /** Regions whose prospect list is known: a region is revealed once any hours are spent on it. */
+  regionsScouted?: Partial<Record<ScoutSubregion, boolean>>
+  /** This week's hours on individual prospects, once their region is revealed. */
+  playerScoutingHours?: Record<string, number>
   /** Trials started in one week, so the weekly limit can be enforced. */
   trialUsage?: { season: number; week: number; count: number }
   settings: Record<string, DelegationMode | boolean>

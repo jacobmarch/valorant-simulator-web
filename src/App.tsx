@@ -58,16 +58,19 @@ import { Results } from './results-view'
 import { rolePenalty } from './roles'
 import type { SeriesReplay } from './round-sim'
 import {
+  allocateScouting,
   hasTrialed,
   inviteTrial,
   inviteTrialError,
   ladderPlayers,
   negotiateTrialist,
+  regionRevealed,
   releaseTrialist,
   SCOUT_SUBREGIONS,
   type ScoutSubregion,
   SUBREGION_LABELS,
   scoutedSkillTiers,
+  scoutingPoolUsed,
   scoutRange,
   TRIAL_LIMIT_OFFSEASON,
   TRIAL_LIMIT_SEASON,
@@ -262,19 +265,8 @@ function Start({
 function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => void }) {
   const t = currentTeam(s)
   const ps = teamPlayers(s)
-  const [market, setMarket] = useState<'free' | 'contracted'>('free')
-  const [marketRegion, setMarketRegion] = useState<Region>(t.region)
   const [notice, setNotice] = useState<string | null>(null)
-  const [popup, setPopup] = useState<'history' | 'rules' | null>(null)
   const [cardId, setCardId] = useState<string | null>(null)
-  const openWindow = transferWindowForWeek(s.week)
-  const next = nextTransferWindow(s.week)
-  const free = freeAgents(s).sort((a, b) => playerOverall(b) - playerOverall(a))
-  const contracted = contractedPlayers(s, t.id)
-    .filter((p) => s.teams[p.teamId as string].region === marketRegion)
-    .sort((a, b) => playerOverall(b) - playerOverall(a))
-    .slice(0, 20)
-  const history = rosterHistory(s, t.id).slice(0, 8)
   const negotiable = ps.filter((p) => canRenegotiate(s, p))
   const shortfall = rosterShortfall(s)
   // Roster moves re-run the auto-set lineup when it is on. Manual status edits keep the lineup
@@ -296,30 +288,11 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
     saveGame(updated)
     setState(updated)
   }
-  const describe = (m: TransferRecord) => {
-    const from = m.fromTeamId ? s.teams[m.fromTeamId]?.short : 'Free agency'
-    const to = m.toTeamId ? s.teams[m.toTeamId]?.short : 'Free agency'
-    if (m.kind === 'status') return `${m.playerName}: ${m.note}`
-    if (m.kind === 'release') return `${m.playerName} released by ${from}`
-    if (m.kind === 'expiry') return `${m.playerName}'s contract with ${from} expired`
-    if (m.kind === 'renewal') return `${m.playerName} re-signed with ${from} · ${m.note}`
-    if (m.kind === 'retirement') return `${m.playerName} retired from ${from}`
-    return `${m.playerName} · ${from} → ${to} · ${money(m.fee)}`
-  }
   return (
     <Page
       eyebrow={`SQUAD / ${t.short}`}
-      title="Roster & transfers"
-      subtitle={`${ps.length} players on contract · ${t.lineup.length}/5 starters assigned · ${
-        openWindow
-          ? `${openWindow.label} open through week ${openWindow.end}`
-          : `Transfer window closed · ${next.label} opens week ${next.start}`
-      }`}
-      actions={
-        <button className="secondary" onClick={() => setPopup('history')}>
-          Roster history
-        </button>
-      }
+      title="Roster"
+      subtitle={`${ps.length} players on contract · ${t.lineup.length}/5 starters assigned · Free agents and buyouts are on the Scouting page.`}
     >
       {notice && (
         <div className="callout" role="alert">
@@ -386,230 +359,290 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
           ))}
         </section>
       )}
-      <div className="columns roster-columns">
-        <section className="panel depth-panel">
-          <PanelTitle
-            eyebrow="CURRENT ROSTER"
-            title="Depth chart"
-            right={
-              <span className="muted">
-                {ps.length} / {MAX_ROSTER}
-              </span>
-            }
-          />
-          <div className="depth-toolbar">
-            <button
-              className="secondary compact"
-              title="Start the five players with the highest team strength"
-              onClick={() => apply(applySuggestedLineup(s, t.id), true)}
-            >
-              Suggest best lineup
-            </button>
-            <span className="depth-auto">
-              <button
-                type="button"
-                role="switch"
-                aria-checked={Boolean(s.settings.autoLineup)}
-                aria-label="Auto-set best lineup"
-                className={`toggle ${s.settings.autoLineup ? 'on' : ''}`}
-                onClick={toggleAutoLineup}
-              >
-                <i />
-              </button>
-              <span>Auto-set best lineup</span>
+      <section className="panel depth-panel">
+        <PanelTitle
+          eyebrow="CURRENT ROSTER"
+          title="Depth chart"
+          right={
+            <span className="muted">
+              {ps.length} / {MAX_ROSTER}
             </span>
-          </div>
-          <div className="depth-head" aria-hidden="true">
-            <span />
-            <span>Player</span>
-            <span className="num">Salary</span>
-            <span className="num">OVR</span>
-            <span>Lineup role</span>
-            <span>Status</span>
-            <span />
-          </div>
-          <div className="market-list roster-list">
-            {ps.map((p) => {
-              const releaseBlock = releaseError(s, t.id, p.id),
-                role = assignedRole(t, p),
-                penalty = rolePenalty(p, role)
-              return (
-                <div className="player-row depth-row" key={p.id}>
-                  <b className="avatar" style={{ color: t.color, background: `${t.color}22` }}>
-                    {p.name.slice(0, 2).toUpperCase()}
-                  </b>
-                  <div className="player-name">
-                    <strong>
-                      <button
-                        type="button"
-                        className="player-link"
-                        onClick={() => setCardId(p.id)}
-                        aria-label={`Open ${p.name}'s player card`}
-                      >
-                        {p.name}
-                      </button>
-                    </strong>
-                    <span>
-                      <Badge color={p.status === 'starter' ? tone.accent : tone.muted}>
-                        {p.status}
-                      </Badge>
-                      <Badge>{p.primaryRole}</Badge>
-                      {p.igl && <Badge color={tone.accent}>IGL</Badge>}
-                      {p.isImport && <Badge>Import</Badge>}
-                    </span>
-                    <small>
-                      <span className={p.years <= 1 ? 'depth-warn' : undefined}>
-                        {`Age ${p.age} · ${p.years}y left`}
-                      </span>
-                      {` · POT ${p.potential} · Morale ${Math.round(p.morale)} · Form `}
-                      {p.form > 0 ? '+' : ''}
-                      {p.form.toFixed(1)}
-                    </small>
-                  </div>
-                  <b className="salary depth-salary">
-                    {money(p.salary)}
-                    <small>/ YR</small>
-                  </b>
-                  <b
-                    className={`ovr depth-ovr${p.status === 'starter' && penalty ? ' off-role' : ''}`}
-                  >
-                    {playerOverall(p) + (p.status === 'starter' ? penalty : 0)}
-                    <small>OVR</small>
-                  </b>
-                  {p.status === 'starter' ? (
-                    <select
-                      className="role-select depth-role"
-                      title="Role played in the lineup"
-                      value={role}
-                      onChange={(e) => {
-                        const next = setLineupRole(s, t.id, p.id, e.target.value as Role)
-                        saveGame(next)
-                        setState(next)
-                      }}
-                    >
-                      {roles.map((option) => {
-                        const cost = rolePenalty(p, option)
-                        return (
-                          <option key={option} value={option}>
-                            {cost ? `${option} (${cost})` : option}
-                          </option>
-                        )
-                      })}
-                    </select>
-                  ) : (
-                    <span className="depth-role" />
-                  )}
-                  <select
-                    className="depth-status"
-                    value={p.status}
-                    onChange={(e) =>
-                      apply(
-                        setPlayerStatus(
-                          s,
-                          t.id,
-                          p.id,
-                          e.target.value as 'starter' | 'substitute' | 'inactive',
-                        ),
-                        true,
-                      )
-                    }
-                  >
-                    <option value="starter">Starter</option>
-                    <option value="substitute">Substitute</option>
-                    <option value="inactive">Inactive</option>
-                  </select>
-                  <button
-                    className="x depth-release"
-                    aria-label={releaseBlock ?? `Release ${p.name}`}
-                    title={releaseBlock ?? `Release ${p.name}`}
-                    onClick={() => apply(releasePlayer(s, t.id, p.id))}
-                  >
-                    ×
-                  </button>
-                </div>
-              )
-            })}
-          </div>
-        </section>
-        <section className="panel">
-          <PanelTitle
-            eyebrow="MARKET"
-            title="Available talent"
-            right={
-              <button className="link" onClick={() => setPopup('rules')}>
-                Transfer rules
-              </button>
-            }
-          />
-          <div className="tabs">
-            <button className={market === 'free' ? 'active' : ''} onClick={() => setMarket('free')}>
-              Free agents
-            </button>
+          }
+        />
+        <div className="depth-toolbar">
+          <button
+            className="secondary compact"
+            title="Start the five players with the highest team strength"
+            onClick={() => apply(applySuggestedLineup(s, t.id), true)}
+          >
+            Suggest best lineup
+          </button>
+          <span className="depth-auto">
             <button
-              className={market === 'contracted' ? 'active' : ''}
-              onClick={() => setMarket('contracted')}
+              type="button"
+              role="switch"
+              aria-checked={Boolean(s.settings.autoLineup)}
+              aria-label="Auto-set best lineup"
+              className={`toggle ${s.settings.autoLineup ? 'on' : ''}`}
+              onClick={toggleAutoLineup}
             >
-              Buyouts
+              <i />
             </button>
-            {market === 'contracted' &&
-              (['Americas', 'EMEA', 'Pacific', 'China'] as Region[]).map((r) => (
-                <button
-                  key={r}
-                  className={marketRegion === r ? 'active' : ''}
-                  onClick={() => setMarketRegion(r)}
-                >
-                  {r}
-                </button>
-              ))}
-          </div>
-          <div className="market-list">
-            {(market === 'free' ? free : contracted).map((p) => {
-              const block =
-                market === 'free' ? signFreeAgentError(s, t.id, p.id) : buyOutError(s, t.id, p.id)
-              return (
-                <div className="market-row" key={p.id}>
+            <span>Auto-set best lineup</span>
+          </span>
+        </div>
+        <div className="depth-head" aria-hidden="true">
+          <span />
+          <span>Player</span>
+          <span className="num">Salary</span>
+          <span className="num">OVR</span>
+          <span>Lineup role</span>
+          <span>Status</span>
+          <span />
+        </div>
+        <div className="market-list roster-list">
+          {ps.map((p) => {
+            const releaseBlock = releaseError(s, t.id, p.id),
+              role = assignedRole(t, p),
+              penalty = rolePenalty(p, role)
+            return (
+              <div className="player-row depth-row" key={p.id}>
+                <b className="avatar" style={{ color: t.color, background: `${t.color}22` }}>
+                  {p.name.slice(0, 2).toUpperCase()}
+                </b>
+                <div className="player-name">
+                  <strong>
+                    <button
+                      type="button"
+                      className="player-link"
+                      onClick={() => setCardId(p.id)}
+                      aria-label={`Open ${p.name}'s player card`}
+                    >
+                      {p.name}
+                    </button>
+                  </strong>
                   <span>
-                    <strong>
-                      <button
-                        type="button"
-                        className="player-link"
-                        onClick={() => setCardId(p.id)}
-                        aria-label={`Open ${p.name}'s player card`}
-                      >
-                        {p.name}
-                      </button>{' '}
-                      · {playerOverall(p)} OVR
-                    </strong>
-                    <small>
-                      {p.primaryRole}
-                      {p.igl ? ' · IGL' : ''} · Age {p.age}
-                      {p.teamId ? ` · ${s.teams[p.teamId].short}` : ''} · {money(askingSalary(p))} /
-                      yr × {p.years} · {market === 'free' ? 'cost' : 'buyout'}{' '}
-                      {money(contractValue(p))}
-                      {market !== 'free' && newContractSalary(p) > p.salary
-                        ? ` · wants ${money(newContractSalary(p))} / yr to move`
-                        : ''}
-                    </small>
+                    <Badge color={p.status === 'starter' ? tone.accent : tone.muted}>
+                      {p.status}
+                    </Badge>
+                    <Badge>{p.primaryRole}</Badge>
+                    {p.igl && <Badge color={tone.accent}>IGL</Badge>}
+                    {p.isImport && <Badge>Import</Badge>}
                   </span>
-                  <button
-                    className="secondary compact"
-                    disabled={Boolean(block)}
-                    title={block ?? undefined}
-                    onClick={() =>
-                      apply(
-                        market === 'free'
-                          ? signFreeAgent(s, t.id, p.id)
-                          : buyOutPlayer(s, t.id, p.id),
-                      )
-                    }
-                  >
-                    {market === 'free' ? 'Sign' : 'Buy out'}
-                  </button>
+                  <small>
+                    <span className={p.years <= 1 ? 'depth-warn' : undefined}>
+                      {`Age ${p.age} · ${p.years}y left`}
+                    </span>
+                    {` · POT ${p.potential} · Morale ${Math.round(p.morale)} · Form `}
+                    {p.form > 0 ? '+' : ''}
+                    {p.form.toFixed(1)}
+                  </small>
+                  <span className="skill-chips">
+                    {skills.map((skill) => (
+                      <span key={skill}>
+                        {skill} <b>{p.ratings[skill]}</b>
+                      </span>
+                    ))}
+                  </span>
                 </div>
-              )
-            })}
-          </div>
-        </section>
+                <b className="salary depth-salary">
+                  {money(p.salary)}
+                  <small>/ YR</small>
+                </b>
+                <b
+                  className={`ovr depth-ovr${p.status === 'starter' && penalty ? ' off-role' : ''}`}
+                >
+                  {playerOverall(p) + (p.status === 'starter' ? penalty : 0)}
+                  <small>OVR</small>
+                </b>
+                {p.status === 'starter' ? (
+                  <select
+                    className="role-select depth-role"
+                    title="Role played in the lineup"
+                    value={role}
+                    onChange={(e) => {
+                      const next = setLineupRole(s, t.id, p.id, e.target.value as Role)
+                      saveGame(next)
+                      setState(next)
+                    }}
+                  >
+                    {roles.map((option) => {
+                      const cost = rolePenalty(p, option)
+                      return (
+                        <option key={option} value={option}>
+                          {cost ? `${option} (${cost})` : option}
+                        </option>
+                      )
+                    })}
+                  </select>
+                ) : (
+                  <span className="depth-role" />
+                )}
+                <select
+                  className="depth-status"
+                  value={p.status}
+                  onChange={(e) =>
+                    apply(
+                      setPlayerStatus(
+                        s,
+                        t.id,
+                        p.id,
+                        e.target.value as 'starter' | 'substitute' | 'inactive',
+                      ),
+                      true,
+                    )
+                  }
+                >
+                  <option value="starter">Starter</option>
+                  <option value="substitute">Substitute</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+                <button
+                  className="x depth-release"
+                  aria-label={releaseBlock ?? `Release ${p.name}`}
+                  title={releaseBlock ?? `Release ${p.name}`}
+                  onClick={() => apply(releasePlayer(s, t.id, p.id))}
+                >
+                  ×
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      </section>
+      {cardId && s.players[cardId] && (
+        <PlayerCard s={s} playerId={cardId} onClose={() => setCardId(null)} />
+      )}
+    </Page>
+  )
+}
+
+function TransferMarket({ s, setState }: { s: GameState; setState: (s: GameState) => void }) {
+  const t = currentTeam(s)
+  const [market, setMarket] = useState<'free' | 'contracted'>('free')
+  const [marketRegion, setMarketRegion] = useState<Region>(t.region)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [popup, setPopup] = useState<'history' | 'rules' | null>(null)
+  const [cardId, setCardId] = useState<string | null>(null)
+  const openWindow = transferWindowForWeek(s.week)
+  const next = nextTransferWindow(s.week)
+  const free = freeAgents(s).sort((a, b) => playerOverall(b) - playerOverall(a))
+  const contracted = contractedPlayers(s, t.id)
+    .filter((p) => s.teams[p.teamId as string].region === marketRegion)
+    .sort((a, b) => playerOverall(b) - playerOverall(a))
+    .slice(0, 20)
+  const history = rosterHistory(s, t.id).slice(0, 8)
+  const apply = (outcome: TransferOutcome) => {
+    if (!outcome.ok) {
+      setNotice(outcome.error)
+      return
+    }
+    setNotice(null)
+    const updated = autoSetLineup(outcome.state)
+    saveGame(updated)
+    setState(updated)
+  }
+  const describe = (m: TransferRecord) => {
+    const from = m.fromTeamId ? s.teams[m.fromTeamId]?.short : 'Free agency'
+    const to = m.toTeamId ? s.teams[m.toTeamId]?.short : 'Free agency'
+    if (m.kind === 'status') return `${m.playerName}: ${m.note}`
+    if (m.kind === 'release') return `${m.playerName} released by ${from}`
+    if (m.kind === 'expiry') return `${m.playerName}'s contract with ${from} expired`
+    if (m.kind === 'renewal') return `${m.playerName} re-signed with ${from} · ${m.note}`
+    if (m.kind === 'retirement') return `${m.playerName} retired from ${from}`
+    return `${m.playerName} · ${from} → ${to} · ${money(m.fee)}`
+  }
+  return (
+    <section className="panel transfers-panel">
+      <PanelTitle
+        eyebrow="TRANSFERS"
+        title="Free agents & buyouts"
+        right={
+          <span className="muted">
+            {openWindow
+              ? `${openWindow.label} open through week ${openWindow.end}`
+              : `Window closed · ${next.label} opens week ${next.start}`}
+          </span>
+        }
+      />
+      <div className="row-actions transfers-actions">
+        <button className="secondary compact" onClick={() => setPopup('history')}>
+          Roster history
+        </button>
+        <button className="link" onClick={() => setPopup('rules')}>
+          Transfer rules
+        </button>
+      </div>
+      {notice && (
+        <div className="callout" role="alert">
+          <strong>Move not allowed</strong>
+          <span>{notice}</span>
+        </div>
+      )}
+      <div className="tabs">
+        <button className={market === 'free' ? 'active' : ''} onClick={() => setMarket('free')}>
+          Free agents
+        </button>
+        <button
+          className={market === 'contracted' ? 'active' : ''}
+          onClick={() => setMarket('contracted')}
+        >
+          Buyouts
+        </button>
+        {market === 'contracted' &&
+          (['Americas', 'EMEA', 'Pacific', 'China'] as Region[]).map((r) => (
+            <button
+              key={r}
+              className={marketRegion === r ? 'active' : ''}
+              onClick={() => setMarketRegion(r)}
+            >
+              {r}
+            </button>
+          ))}
+      </div>
+      <div className="market-list">
+        {(market === 'free' ? free : contracted).map((p) => {
+          const block =
+            market === 'free' ? signFreeAgentError(s, t.id, p.id) : buyOutError(s, t.id, p.id)
+          return (
+            <div className="market-row" key={p.id}>
+              <span>
+                <strong>
+                  <button
+                    type="button"
+                    className="player-link"
+                    onClick={() => setCardId(p.id)}
+                    aria-label={`Open ${p.name}'s player card`}
+                  >
+                    {p.name}
+                  </button>{' '}
+                  · {playerOverall(p)} OVR
+                </strong>
+                <small>
+                  {p.primaryRole}
+                  {p.igl ? ' · IGL' : ''} · Age {p.age}
+                  {p.teamId ? ` · ${s.teams[p.teamId].short}` : ''} · {money(askingSalary(p))} / yr
+                  × {p.years} · {market === 'free' ? 'cost' : 'buyout'} {money(contractValue(p))}
+                  {market !== 'free' && newContractSalary(p) > p.salary
+                    ? ` · wants ${money(newContractSalary(p))} / yr to move`
+                    : ''}
+                </small>
+              </span>
+              <button
+                className="secondary compact"
+                disabled={Boolean(block)}
+                title={block ?? undefined}
+                onClick={() =>
+                  apply(
+                    market === 'free' ? signFreeAgent(s, t.id, p.id) : buyOutPlayer(s, t.id, p.id),
+                  )
+                }
+              >
+                {market === 'free' ? 'Sign' : 'Buy out'}
+              </button>
+            </div>
+          )
+        })}
       </div>
       {cardId && s.players[cardId] && (
         <PlayerCard s={s} playerId={cardId} onClose={() => setCardId(null)} />
@@ -650,9 +683,10 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
           </p>
         </Modal>
       )}
-    </Page>
+    </section>
   )
 }
+
 function Training({ s, setState }: { s: GameState; setState: (s: GameState) => void }) {
   const ps = teamPlayers(s)
   const setH = (id: string, skill: Skill, value: number) => {
@@ -771,20 +805,15 @@ function Scouting({ s, setState }: { s: GameState; setState: (s: GameState) => v
     saveGame(outcome.state)
     setState(outcome.state)
   }
-  const setHours = (subregion: ScoutSubregion, value: number) => {
-    const n = structuredClone(s)
-    const used = SCOUT_SUBREGIONS.filter((key) => key !== subregion).reduce(
-      (sum, key) => sum + (n.scoutingHours[key] ?? 0),
-      0,
-    )
-    n.scoutingHours[subregion] = Math.max(
-      0,
-      Math.min(SCOUTING_HOURS - used, Math.round(value) || 0),
-    )
-    saveGame(n)
-    setState(n)
+  // Region rows set the region's hours; prospect rows set hours on one player.
+  const setHours = (target: ScoutSubregion | string, value: number) => {
+    const outcome = allocateScouting(s, target, value)
+    if (!outcome.ok) return setNotice(outcome.error)
+    setNotice(null)
+    saveGame(outcome.state)
+    setState(outcome.state)
   }
-  const scoutUsed = SCOUT_SUBREGIONS.reduce((sum, key) => sum + (s.scoutingHours[key] ?? 0), 0)
+  const scoutUsed = scoutingPoolUsed(s)
   const pool = ladderPlayers(s)
   const trialists = pool.filter((p) => hasTrialed(s, p.id))
   const left = trialsLeft(s)
@@ -793,7 +822,12 @@ function Scouting({ s, setState }: { s: GameState; setState: (s: GameState) => v
     <Page
       eyebrow={`SCOUTING / WEEK ${s.week}`}
       title="Scouting"
-      subtitle="Scout regions with the 40-hour weekly pool. Until a trial, ratings show as a range; a trial reveals the exact number."
+      subtitle="Scout a region to reveal its prospects. Their info uncovers slowly; hours on one prospect speed it up. Transfers are at the bottom of the page."
+      actions={
+        <Badge color={scoutUsed >= SCOUTING_HOURS ? tone.accent : tone.warn}>
+          {SCOUTING_HOURS - scoutUsed}h of the pool unassigned
+        </Badge>
+      }
     >
       {notice && (
         <div className="callout" role="alert">
@@ -813,8 +847,8 @@ function Scouting({ s, setState }: { s: GameState; setState: (s: GameState) => v
         />
         <p className="muted">
           Trials are limited to {TRIAL_LIMIT_SEASON} a week in season and {TRIAL_LIMIT_OFFSEASON} in
-          the off-season and preseason. After a trial, offer a contract or let the player go.
-          Contracts can only be signed in a transfer window.
+          the off-season and preseason. A trial reveals exact ratings. After a trial, offer a
+          contract or let the player go. Contracts can only be signed in a transfer window.
         </p>
         {trialists.length ? (
           trialists.map((p) => (
@@ -863,6 +897,7 @@ function Scouting({ s, setState }: { s: GameState; setState: (s: GameState) => v
         const players = pool.filter(
           (p) => p.ladder?.subregion === subregion && !hasTrialed(s, p.id),
         )
+        const revealed = regionRevealed(s, subregion)
         const scouted = players.length
           ? Math.round(players.reduce((sum, p) => sum + p.scoutProgress, 0) / players.length)
           : 0
@@ -886,70 +921,91 @@ function Scouting({ s, setState }: { s: GameState; setState: (s: GameState) => v
                 </label>
               }
             />
-            <p className="muted">
-              {scouted}% scouted on average · {players.length} players ·{' '}
-              {SCOUTING_HOURS - scoutUsed}h of the pool unassigned
-            </p>
-            {players.map((p) => {
-              const range = scoutRange(p)
-              const replaceId = benchFor[p.id] ?? rosterPlayers[0]?.id ?? ''
-              const blocked = inviteTrialError(s, p.id, fullRoster ? replaceId : undefined)
-              const tiers = scoutedSkillTiers(p)
-              return (
-                <div className="prospect-row" key={p.id}>
-                  <div className="player-name">
-                    <strong>{p.name}</strong>
-                    <span>
-                      {p.primaryRole} · age {p.age}
-                    </span>
-                    <small className="muted">
-                      {tiers
-                        ? tiers.map((t) => `${t.skill} ${t.tier}`).join(' · ')
-                        : 'Scout to see general skill tiers'}
-                    </small>
-                  </div>
-                  <div className="reveal">
-                    <strong>
-                      {range.low}–{range.high} OVR
-                    </strong>
-                    <div className="bar">
-                      <i style={{ width: `${p.scoutProgress}%` }} />
+            {revealed ? (
+              <>
+                <p className="muted">
+                  {scouted}% scouted on average · {players.length} prospects
+                </p>
+                {players.map((p) => {
+                  const range = scoutRange(p)
+                  const replaceId = benchFor[p.id] ?? rosterPlayers[0]?.id ?? ''
+                  const blocked = inviteTrialError(s, p.id, fullRoster ? replaceId : undefined)
+                  const tiers = scoutedSkillTiers(p)
+                  return (
+                    <div className="prospect-row" key={p.id}>
+                      <div className="player-name">
+                        <strong>{p.name}</strong>
+                        <span>
+                          {p.primaryRole} · age {p.age}
+                        </span>
+                        <small className="muted">
+                          {tiers
+                            ? tiers.map((t) => `${t.skill} ${t.tier}`).join(' · ')
+                            : 'Scout further to see skill tiers'}
+                        </small>
+                      </div>
+                      <div className="reveal">
+                        <strong>
+                          {range.low}–{range.high} OVR
+                        </strong>
+                        <div className="bar">
+                          <i style={{ width: `${p.scoutProgress}%` }} />
+                        </div>
+                        <small>{Math.round(p.scoutProgress)}% scouted</small>
+                      </div>
+                      <div className="prospect-actions">
+                        <label className="hours-field">
+                          <input
+                            type="number"
+                            min="0"
+                            max={SCOUTING_HOURS}
+                            value={s.playerScoutingHours?.[p.id] ?? 0}
+                            onChange={(e) => setHours(p.id, Number(e.target.value))}
+                            aria-label={`Hours on ${p.name} per week`}
+                          />
+                          <small>h</small>
+                        </label>
+                        {fullRoster && (
+                          <select
+                            value={replaceId}
+                            onChange={(e) => setBenchFor({ ...benchFor, [p.id]: e.target.value })}
+                            aria-label={`Player to bench for ${p.name}'s trial`}
+                          >
+                            {rosterPlayers.map((r) => (
+                              <option key={r.id} value={r.id}>
+                                Bench {r.name}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                        <button
+                          disabled={Boolean(blocked)}
+                          title={blocked ?? 'Invite to a trial'}
+                          onClick={() =>
+                            commit(inviteTrial(s, p.id, fullRoster ? replaceId : undefined))
+                          }
+                        >
+                          Invite to trial
+                        </button>
+                      </div>
                     </div>
-                    <small>{Math.round(p.scoutProgress)}% scouted</small>
-                  </div>
-                  <div className="prospect-actions">
-                    {fullRoster && (
-                      <select
-                        value={replaceId}
-                        onChange={(e) => setBenchFor({ ...benchFor, [p.id]: e.target.value })}
-                        aria-label={`Player to bench for ${p.name}'s trial`}
-                      >
-                        {rosterPlayers.map((r) => (
-                          <option key={r.id} value={r.id}>
-                            Bench {r.name}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                    <button
-                      disabled={Boolean(blocked)}
-                      title={blocked ?? 'Invite to a trial'}
-                      onClick={() =>
-                        commit(inviteTrial(s, p.id, fullRoster ? replaceId : undefined))
-                      }
-                    >
-                      Invite to trial
-                    </button>
-                  </div>
-                </div>
-              )
-            })}
+                  )
+                })}
+              </>
+            ) : (
+              <p className="muted">
+                {players.length} prospects are in this region. Assign hours to reveal the list.
+                Their info then uncovers slowly.
+              </p>
+            )}
           </section>
         )
       })}
+      <TransferMarket s={s} setState={setState} />
     </Page>
   )
 }
+
 function Settings({
   s,
   setState,

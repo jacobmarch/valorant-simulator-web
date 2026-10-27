@@ -3516,3 +3516,25 @@ table {
     grid-template-columns: 96px minmax(0, 1fr) 34px;
   }
 }
+
+/* Roster: each current player shows their full skill line. */
+.skill-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 12px;
+  color: var(--muted, rgba(127, 127, 127, 0.9));
+}
+.skill-chips b {
+  color: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Scouting: transfers sit below the regions. */
+.transfers-panel {
+  margin-top: 8px;
+}
+.transfers-actions {
+  justify-content: flex-start;
+  margin-bottom: 8px;
+}

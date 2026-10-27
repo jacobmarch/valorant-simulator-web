@@ -1,4 +1,4 @@
-import { MORALE_DEFAULT, MORALE_MAX, MORALE_MIN, overallRating, seedPotential } from './development'
+import { MORALE_DEFAULT, MORALE_MIN, overallRating, seedPotential } from './development'
 import type { GameState, Player, PlayerStatus, Ratings } from './game'
 import type { Region } from './seed'
 import { roles, skills } from './seed'
@@ -35,8 +35,12 @@ const parentRegion: Record<ScoutSubregion, Region> = {
 
 /** Ladder players kept in each subregion's pool. */
 export const LADDER_PER_SUBREGION = 24
-/** Scouting progress gained per scouting hour, applied to every ladder player in the region. */
-export const SCOUT_PROGRESS_PER_HOUR = 0.35
+/** The weekly scouting pool shared by regions and individual players. */
+export const SCOUTING_POOL = 40
+/** Region hours uncover every prospect in the region this slowly, per hour. */
+export const REGION_PROGRESS_PER_HOUR = 0.05
+/** Hours on one prospect, once the region's list is known, uncover them much faster. */
+export const PLAYER_PROGRESS_PER_HOUR = 1
 /** A player must be scouted this far before a trial can be offered. */
 export const TRIAL_MIN_SCOUTING = 25
 export const TRIAL_LIMIT_SEASON = 2
@@ -45,6 +49,8 @@ export const TRIAL_LIMIT_OFFSEASON = 4
 export const TRIAL_FULL_ROSTER = 5
 /** Morale a benched player loses when a trial takes their place. */
 export const BENCH_MORALE_PENALTY = 25
+/** Morale every other starter loses while a trial could bench one of them. */
+export const STARTER_MORALE_PENALTY = 5
 /** Scouting progress at which general skill tiers start to show. */
 export const SKILL_SCOUT_MIN = 25
 // Rating ranges are never exact before a trial: the width narrows from MAX to MIN as scouting rises.
@@ -88,7 +94,12 @@ export function hasTrialed(state: GameState, playerId: string) {
   return Boolean(state.trials?.[playerId])
 }
 
-type BenchedPlayer = { playerId: string; status: PlayerStatus; morale: number }
+type TrialRecord = {
+  season: number
+  week: number
+  benched?: { playerId: string; status: PlayerStatus }
+  moraleBefore?: Record<string, number>
+}
 
 /** Ladder players still on the market for a club to scout, best overall first. */
 export function ladderPlayers(state: GameState, subregion?: ScoutSubregion) {
@@ -131,14 +142,69 @@ export function scoutRange(player: Player) {
   return { low: clamp(low, 1, 100), high: clamp(high, 1, 100) }
 }
 
-/** Scouting hours move every ladder player in their subregion forward. */
+/** Hours spent this week across regions and individual prospects. */
+export function scoutingPoolUsed(state: GameState) {
+  const regions = Object.values(state.scoutingHours).reduce((sum, hours) => sum + hours, 0)
+  const players = Object.values(state.playerScoutingHours ?? {}).reduce(
+    (sum, hours) => sum + hours,
+    0,
+  )
+  return regions + players
+}
+
+/** Whether the region's list of prospects is visible yet. */
+export function regionRevealed(state: GameState, subregion: ScoutSubregion) {
+  return Boolean(state.regionsScouted?.[subregion])
+}
+
+/**
+ * Weekly progress: region hours slowly uncover every prospect in that region, and once the list
+ * is known, hours on one prospect uncover that player quickly.
+ */
 export function advanceScouting(state: GameState) {
+  state.regionsScouted ??= {}
   for (const subregion of SCOUT_SUBREGIONS) {
     const hours = state.scoutingHours[subregion] ?? 0
     if (!hours) continue
+    state.regionsScouted[subregion] = true
     for (const player of ladderPlayers(state, subregion))
-      player.scoutProgress = Math.min(100, player.scoutProgress + hours * SCOUT_PROGRESS_PER_HOUR)
+      player.scoutProgress = Math.min(100, player.scoutProgress + hours * REGION_PROGRESS_PER_HOUR)
   }
+  for (const [id, hours] of Object.entries(state.playerScoutingHours ?? {})) {
+    const player = state.players[id]
+    if (!hours || !player?.ladder || player.status !== 'free-agent') continue
+    if (!regionRevealed(state, player.ladder.subregion)) continue
+    player.scoutProgress = Math.min(100, player.scoutProgress + hours * PLAYER_PROGRESS_PER_HOUR)
+  }
+}
+
+/**
+ * Sets this week's hours for a region or one prospect. Hours are clamped to what is left of the
+ * shared pool. A prospect can get hours only after their region's list is known.
+ */
+export function allocateScouting(
+  input: GameState,
+  target: ScoutSubregion | string,
+  hours: number,
+): TransferOutcome {
+  const state = structuredClone(input)
+  state.playerScoutingHours ??= {}
+  const wanted = Math.max(0, Math.min(SCOUTING_POOL, Math.round(hours) || 0))
+  if (isSubregion(target)) {
+    const others = scoutingPoolUsed(state) - (state.scoutingHours[target] ?? 0)
+    state.scoutingHours[target] = Math.max(0, Math.min(wanted, SCOUTING_POOL - others))
+    return { ok: true, state }
+  }
+  const player = state.players[target]
+  if (!player?.ladder) return { ok: false, error: 'That player is not in the scouting pool.' }
+  if (!regionRevealed(state, player.ladder.subregion))
+    return {
+      ok: false,
+      error: `Scout ${SUBREGION_LABELS[player.ladder.subregion]} first to see its prospects.`,
+    }
+  const others = scoutingPoolUsed(state) - (state.playerScoutingHours[target] ?? 0)
+  state.playerScoutingHours[target] = Math.max(0, Math.min(wanted, SCOUTING_POOL - others))
+  return { ok: true, state }
 }
 
 function createLadderPlayer(state: GameState, subregion: ScoutSubregion) {
@@ -192,6 +258,12 @@ export function ensureLadder(state: GameState) {
   state.scoutingHours ??= {}
   state.scoutingHours = Object.fromEntries(
     Object.entries(state.scoutingHours).filter(([key]) => isSubregion(key)),
+  )
+  state.regionsScouted ??= {}
+  state.playerScoutingHours = Object.fromEntries(
+    Object.entries(state.playerScoutingHours ?? {}).filter(
+      ([id]) => state.players[id]?.ladder !== undefined,
+    ),
   )
   Object.values(state.players).forEach((player) => {
     if (player.ladder && (player.status !== 'free-agent' || player.teamId)) {
@@ -251,13 +323,20 @@ export function inviteTrial(
   const state = structuredClone(input)
   const player = state.players[playerId]
   state.trials ??= {}
-  const trial: { season: number; week: number; benched?: BenchedPlayer } = {
-    season: state.season,
-    week: state.week,
-  }
+  const trial: TrialRecord = { season: state.season, week: state.week }
   if (replaceId && trialNeedsReplacement(state)) {
     const benched = state.players[replaceId]
-    trial.benched = { playerId: replaceId, status: benched.status, morale: benched.morale }
+    // Every starter who could be benched feels it, and the chosen player takes the largest hit.
+    const moraleBefore: Record<string, number> = {}
+    for (const id of state.teams[state.currentTeamId].lineup) {
+      const starter = state.players[id]
+      if (!starter || starter.status !== 'starter' || id === replaceId) continue
+      moraleBefore[id] = starter.morale
+      starter.morale = Math.max(MORALE_MIN, starter.morale - STARTER_MORALE_PENALTY)
+    }
+    moraleBefore[replaceId] = benched.morale
+    trial.benched = { playerId: replaceId, status: benched.status }
+    trial.moraleBefore = moraleBefore
     benched.status = 'inactive'
     benched.morale = Math.max(MORALE_MIN, benched.morale - BENCH_MORALE_PENALTY)
     repairLineup(state, state.currentTeamId)
@@ -303,13 +382,14 @@ export function releaseTrialist(input: GameState, playerId: string): TransferOut
     return { ok: false, error: 'Only a player who has trialled can be let go here.' }
   const state = structuredClone(input)
   const released = state.players[playerId]
-  const benched = state.trials![playerId].benched
+  const { benched, moraleBefore } = state.trials![playerId]
   delete released.ladder
   delete state.trials![playerId]
+  for (const [id, morale] of Object.entries(moraleBefore ?? {})) {
+    if (state.players[id]?.teamId === state.currentTeamId) state.players[id].morale = morale
+  }
   if (benched && state.players[benched.playerId]?.teamId === state.currentTeamId) {
-    const restored = state.players[benched.playerId]
-    restored.status = benched.status
-    restored.morale = Math.min(MORALE_MAX, benched.morale)
+    state.players[benched.playerId].status = benched.status
     repairLineup(state, state.currentTeamId)
   }
   state.inbox.unshift(`Let ${released.name} go after their trial. They are now a free agent.`)

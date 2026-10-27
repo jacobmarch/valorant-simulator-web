@@ -3,6 +3,7 @@ import { advanceWeek, createGame, type GameState, loadGame, SAVE_KEY } from '../
 import { ratingsRevealed } from '../src/player-card'
 import {
   advanceScouting,
+  allocateScouting,
   BENCH_MORALE_PENALTY,
   ensureLadder,
   hasTrialed,
@@ -11,9 +12,13 @@ import {
   LADDER_PER_SUBREGION,
   ladderPlayers,
   negotiateTrialist,
+  regionRevealed,
   releaseTrialist,
   SCOUT_SUBREGIONS,
+  SCOUTING_POOL,
+  STARTER_MORALE_PENALTY,
   scoutedSkillTiers,
+  scoutingPoolUsed,
   scoutRange,
   skillTier,
   TRIAL_FULL_ROSTER,
@@ -292,5 +297,67 @@ describe('trial replacements and morale', () => {
     const state = fresh()
     for (const subregion of SCOUT_SUBREGIONS)
       expect(ladderPlayers(state, subregion).length).toBeGreaterThanOrEqual(20)
+  })
+})
+
+describe('region reveal and shared hours', () => {
+  test('a region stays hidden until hours are spent on it for a week', () => {
+    const state = fresh()
+    const prospect = ladderPlayers(state, 'NA')[0]
+    expect(regionRevealed(state, 'NA')).toBe(false)
+    expect(allocateScouting(state, prospect.id, 5).ok).toBe(false)
+    const region = allocateScouting(state, 'NA', 10)
+    if (!region.ok) throw new Error(region.error)
+    const after = advanceWeek(region.state, 'Measured defaults', 'Disciplined retakes')
+    expect(regionRevealed(after, 'NA')).toBe(true)
+  })
+
+  test('region hours uncover prospects slowly and hours on one prospect much faster', () => {
+    const regionOnly = fresh()
+    regionOnly.regionsScouted = { NA: true }
+    const slow = allocateScouting(regionOnly, 'NA', 40)
+    if (!slow.ok) throw new Error(slow.error)
+    advanceScouting(slow.state)
+    const sample = ladderPlayers(slow.state, 'NA')[0]
+    expect(sample.scoutProgress).toBeLessThan(5)
+
+    const direct = fresh()
+    direct.regionsScouted = { NA: true }
+    const prospect = ladderPlayers(direct, 'NA')[0]
+    const fast = allocateScouting(direct, prospect.id, 20)
+    if (!fast.ok) throw new Error(fast.error)
+    advanceScouting(fast.state)
+    expect(fast.state.players[prospect.id].scoutProgress).toBeGreaterThanOrEqual(20)
+  })
+
+  test('region and prospect hours share one pool that cannot exceed the weekly total', () => {
+    const state = fresh()
+    state.regionsScouted = { NA: true }
+    const prospect = ladderPlayers(state, 'NA')[0]
+    const region = allocateScouting(state, 'NA', SCOUTING_POOL - 5)
+    if (!region.ok) throw new Error(region.error)
+    const capped = allocateScouting(region.state, prospect.id, 20)
+    if (!capped.ok) throw new Error(capped.error)
+    expect(capped.state.playerScoutingHours?.[prospect.id]).toBe(5)
+    expect(scoutingPoolUsed(capped.state)).toBe(SCOUTING_POOL)
+  })
+
+  test('starters lose morale while a trial could bench one of them', () => {
+    const state = fresh()
+    state.week = 11
+    const prospect = scoutedProspect(state)
+    const starters = state.teams[state.currentTeamId].lineup.filter(
+      (id) => state.players[id].status === 'starter',
+    )
+    const benchId = starters[0]
+    const before = Object.fromEntries(starters.map((id) => [id, state.players[id].morale]))
+    const invited = inviteTrial(state, prospect.id, benchId)
+    if (!invited.ok) throw new Error(invited.error)
+    expect(invited.state.players[starters[1]].morale).toBe(
+      Math.max(5, before[starters[1]] - STARTER_MORALE_PENALTY),
+    )
+    const released = releaseTrialist(invited.state, prospect.id)
+    if (!released.ok) throw new Error(released.error)
+    expect(released.state.players[starters[1]].morale).toBe(before[starters[1]])
   })
 })
