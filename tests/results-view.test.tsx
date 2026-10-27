@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { advanceWeek, createGame, hasMatchDetail, pruneHistory, type GameState } from '../src/game'
+import { advanceWeek, createGame, type GameState, hasMatchDetail, pruneHistory } from '../src/game'
 import { BoxScoreModal } from '../src/game-views'
-import { Results, eventRecords, seasonResults } from '../src/results-view'
+import { eventRecords, Results, seasonResults } from '../src/results-view'
 
 const memory = new Map<string, string>()
 Object.assign(globalThis, {

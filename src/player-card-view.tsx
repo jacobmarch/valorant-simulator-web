@@ -7,6 +7,7 @@ import {
   ratingsRevealed,
   SCOUT_REVEAL,
 } from './player-card'
+import { hasTrialed, scoutRange } from './scouting'
 import { skills } from './seed'
 import { playerOverall } from './transfers'
 import { Badge, Modal, money, Stat, tone } from './ui'
@@ -59,13 +60,16 @@ function PlayerCardBody({ s, player }: { s: GameState; player: Player }) {
   const awards = honours(player)
   const moves = (s.transfers ?? []).filter((move) => move.playerId === player.id).slice(0, 8)
   const hidden = '??'
+  // Ladder prospects show their overall as a scouting range until a trial reveals it.
+  const range = player.ladder && !revealed ? scoutRange(player) : null
+  const trialed = hasTrialed(s, player.id)
 
   return (
     <div className="player-card">
       <div className="player-card-stats stats">
         <Stat
           label="Overall"
-          value={revealed ? `${overall}` : hidden}
+          value={revealed ? `${overall}` : range ? `${range.low}–${range.high}` : hidden}
           detail={`${player.primaryRole}${player.igl ? ' · IGL' : ''} · Age ${player.age}`}
           accent
         />
@@ -95,7 +99,11 @@ function PlayerCardBody({ s, player }: { s: GameState; player: Player }) {
           <div className="eyebrow">RATINGS</div>
           {!revealed && (
             <p className="muted player-card-note">
-              Scout this player to {SCOUT_REVEAL}% to read their ratings and potential.
+              {player.ladder
+                ? trialed
+                  ? 'Trial complete. Offer a contract or let them go on the scouting page.'
+                  : 'Invite this player to a trial to read their exact ratings and potential.'
+                : `Scout this player to ${SCOUT_REVEAL}% to read their ratings and potential.`}
             </p>
           )}
           <div className="rating-list">

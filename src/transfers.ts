@@ -48,7 +48,7 @@ export type TransferOutcome = { ok: true; state: GameState } | { ok: false; erro
 const money = (value: number) => Math.round(value / 1000) * 1000
 const dollars = (value: number) =>
   `${value < 0 ? '-' : ''}$${Math.abs(Math.round(value)).toLocaleString('en-US')}`
-const random = (state: GameState) => {
+export const random = (state: GameState) => {
   state.rng = (state.rng * 1664525 + 1013904223) >>> 0
   return state.rng / 4294967296
 }
@@ -97,6 +97,8 @@ export function canRenegotiate(state: GameState, player: Player) {
   )
 }
 /** Agrees new terms now; they take effect when the current contract ends at rollover. */
+/** Below this morale a player will not agree new terms, typically after being benched for a trial. */
+export const RENEW_MORALE_FLOOR = 40
 export function renegotiateContract(
   input: GameState,
   playerId: string,
@@ -105,6 +107,11 @@ export function renegotiateContract(
   const player = input.players[playerId]
   if (!player || player.teamId !== input.currentTeamId)
     return { ok: false, error: 'That player is not on your roster.' }
+  if (player.morale < RENEW_MORALE_FLOOR)
+    return {
+      ok: false,
+      error: `${player.name} is too unhappy to re-sign. Being benched has hurt their morale.`,
+    }
   if (input.week < RENEGOTIATION_START_WEEK)
     return {
       ok: false,
@@ -151,8 +158,11 @@ export function contractValue(player: Player) {
 export function playerOverall(player: Player) {
   return Math.round(Object.values(player.ratings).reduce((a, b) => a + b, 0) / 6)
 }
+/** Open market only: scouted ladder players are reached through trials, see src/scouting.ts. */
 export function freeAgents(state: GameState) {
-  return Object.values(state.players).filter((player) => player.status === 'free-agent')
+  return Object.values(state.players).filter(
+    (player) => player.status === 'free-agent' && !player.ladder,
+  )
 }
 export function contractedPlayers(state: GameState, excludeTeamId?: string) {
   return Object.values(state.players).filter(
@@ -280,6 +290,8 @@ export function signFreeAgentError(state: GameState, teamId: string, playerId: s
     player = state.players[playerId]
   if (!team || !player) return 'That player or team no longer exists.'
   if (player.status !== 'free-agent') return `${player.name} is not a free agent.`
+  if (player.ladder && !state.trials?.[playerId])
+    return `${player.name} is a scouted prospect: invite them to a trial before offering a contract.`
   const closed = windowError(state)
   if (closed) return closed
   if (team.playerIds.length >= MAX_ROSTER)
@@ -296,13 +308,17 @@ export function signFreeAgent(input: GameState, teamId: string, playerId: string
   applySigning(state, teamId, playerId)
   return { ok: true, state }
 }
-function applySigning(state: GameState, teamId: string, playerId: string) {
+export function applySigning(state: GameState, teamId: string, playerId: string) {
   const team = state.teams[teamId],
     player = state.players[playerId],
-    cost = contractValue(player)
+    cost = contractValue(player),
+    fromTrial = Boolean(player.ladder)
   player.salary = newContractSalary(player)
   team.cash -= cost
   joinTeam(state, player, team)
+  // A signed prospect leaves the scouting pool and its trial record.
+  delete player.ladder
+  if (state.trials) delete state.trials[playerId]
   recordMove(state, {
     kind: 'signing',
     playerId,
@@ -311,7 +327,11 @@ function applySigning(state: GameState, teamId: string, playerId: string) {
     fee: cost,
   })
   if (teamId === state.currentTeamId)
-    state.inbox.unshift(`Signed ${player.name} from the free-agent market for ${dollars(cost)}.`)
+    state.inbox.unshift(
+      fromTrial
+        ? `Signed ${player.name} after their trial for ${dollars(cost)}.`
+        : `Signed ${player.name} from the free-agent market for ${dollars(cost)}.`,
+    )
 }
 
 export function buyOutError(state: GameState, buyerId: string, playerId: string) {
@@ -481,6 +501,12 @@ export function addProspectClass(state: GameState, size = PROSPECT_CLASS_SIZE) {
   for (let index = 0; index < size; index++)
     createProspect(state, 17 + Math.floor(random(state) * 3))
 }
+export function randomName(state: GameState) {
+  return (
+    prefixes[Math.floor(random(state) * prefixes.length)] +
+    suffixes[Math.floor(random(state) * suffixes.length)]
+  )
+}
 function createProspect(state: GameState, age: number) {
   // Retirees get pruned, so count past the highest id rather than the number of prospects.
   const index = Object.keys(state.players)
@@ -554,7 +580,6 @@ export function processRetirements(state: GameState) {
     player.igl = false
     delete player.renewal
     delete state.training[player.id]
-    delete state.scoutingHours[player.id]
     retired.push(player)
   })
   return retired
