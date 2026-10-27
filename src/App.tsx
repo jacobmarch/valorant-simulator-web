@@ -129,9 +129,9 @@ const navGroups: Array<{ label: string; items: Array<[View, string, ReactNode]> 
   {
     label: 'Squad',
     items: [
-      ['roster', 'Roster & transfers', <Users size={17} key="i" />],
+      ['roster', 'Roster', <Users size={17} key="i" />],
+      ['scouting', 'Scouting & transfers', <Binoculars size={17} key="i" />],
       ['training', 'Training', <Dumbbell size={17} key="i" />],
-      ['scouting', 'Scouting', <Binoculars size={17} key="i" />],
     ],
   },
   {
