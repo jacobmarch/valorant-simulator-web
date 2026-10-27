@@ -257,7 +257,14 @@ export type GameState = {
   /** Weekly scouting hours per subregion; the pool is SCOUTING_HOURS across all of them. */
   scoutingHours: Record<string, number>
   /** Players who have completed a trial with the managed club, keyed by player id. */
-  trials?: Record<string, { season: number; week: number }>
+  trials?: Record<
+    string,
+    {
+      season: number
+      week: number
+      benched?: { playerId: string; status: PlayerStatus; morale: number }
+    }
+  >
   /** Trials started in one week, so the weekly limit can be enforced. */
   trialUsage?: { season: number; week: number; count: number }
   settings: Record<string, DelegationMode | boolean>

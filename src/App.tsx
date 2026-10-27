@@ -67,10 +67,12 @@ import {
   SCOUT_SUBREGIONS,
   type ScoutSubregion,
   SUBREGION_LABELS,
+  scoutedSkillTiers,
   scoutRange,
   TRIAL_LIMIT_OFFSEASON,
   TRIAL_LIMIT_SEASON,
   trialLimit,
+  trialNeedsReplacement,
   trialsLeft,
 } from './scouting'
 import { YearInReview } from './season-review-view'
@@ -758,6 +760,11 @@ function Training({ s, setState }: { s: GameState; setState: (s: GameState) => v
 function Scouting({ s, setState }: { s: GameState; setState: (s: GameState) => void }) {
   const [notice, setNotice] = useState<string | null>(null)
   const [years, setYears] = useState<Record<string, number>>({})
+  const [benchFor, setBenchFor] = useState<Record<string, string>>({})
+  const fullRoster = trialNeedsReplacement(s)
+  const rosterPlayers = s.teams[s.currentTeamId].playerIds
+    .map((id) => s.players[id])
+    .filter((p) => p.status !== 'inactive')
   const commit = (outcome: TransferOutcome) => {
     if (!outcome.ok) return setNotice(outcome.error)
     setNotice(null)
@@ -816,6 +823,9 @@ function Scouting({ s, setState }: { s: GameState; setState: (s: GameState) => v
                 <strong>{p.name}</strong>
                 <span>
                   {p.primaryRole} · age {p.age} · {SUBREGION_LABELS[p.ladder?.subregion ?? 'NA']}
+                  {s.trials?.[p.id]?.benched
+                    ? ` · in place of ${s.players[s.trials[p.id].benched!.playerId]?.name ?? 'a benched player'}`
+                    : ''}
                 </span>
               </div>
               <div className="reveal">
@@ -882,7 +892,9 @@ function Scouting({ s, setState }: { s: GameState; setState: (s: GameState) => v
             </p>
             {players.map((p) => {
               const range = scoutRange(p)
-              const blocked = inviteTrialError(s, p.id)
+              const replaceId = benchFor[p.id] ?? rosterPlayers[0]?.id ?? ''
+              const blocked = inviteTrialError(s, p.id, fullRoster ? replaceId : undefined)
+              const tiers = scoutedSkillTiers(p)
               return (
                 <div className="prospect-row" key={p.id}>
                   <div className="player-name">
@@ -890,6 +902,11 @@ function Scouting({ s, setState }: { s: GameState; setState: (s: GameState) => v
                     <span>
                       {p.primaryRole} · age {p.age}
                     </span>
+                    <small className="muted">
+                      {tiers
+                        ? tiers.map((t) => `${t.skill} ${t.tier}`).join(' · ')
+                        : 'Scout to see general skill tiers'}
+                    </small>
                   </div>
                   <div className="reveal">
                     <strong>
@@ -901,10 +918,25 @@ function Scouting({ s, setState }: { s: GameState; setState: (s: GameState) => v
                     <small>{Math.round(p.scoutProgress)}% scouted</small>
                   </div>
                   <div className="prospect-actions">
+                    {fullRoster && (
+                      <select
+                        value={replaceId}
+                        onChange={(e) => setBenchFor({ ...benchFor, [p.id]: e.target.value })}
+                        aria-label={`Player to bench for ${p.name}'s trial`}
+                      >
+                        {rosterPlayers.map((r) => (
+                          <option key={r.id} value={r.id}>
+                            Bench {r.name}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                     <button
                       disabled={Boolean(blocked)}
                       title={blocked ?? 'Invite to a trial'}
-                      onClick={() => commit(inviteTrial(s, p.id))}
+                      onClick={() =>
+                        commit(inviteTrial(s, p.id, fullRoster ? replaceId : undefined))
+                      }
                     >
                       Invite to trial
                     </button>

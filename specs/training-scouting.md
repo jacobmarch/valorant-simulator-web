@@ -12,12 +12,15 @@ Scouting covers tier 2 players on the ranked ladder, not the tier 1 rosters. The
 
 - The manager spends the weekly 40-hour pool across subregions, not players. Each hour moves every ladder player in that subregion forward by 0.35 percentage points of scouting progress.
 - Before a trial, a ladder player's overall shows as a range, never an exact number. The range is 18 points wide at 0% scouted and narrows to 4 points at 100%. It always contains the true overall.
-- Each subregion keeps at least 8 ladder players. The pool is refilled on load and at season rollover.
+- Scouting shows only general knowledge about skills: once a region is 25% scouted, each skill shows a broad tier (Elite 80+, Strong 70–79, Solid 60–69, Developing below 60). Exact skill numbers appear only after a trial.
+- Each subregion keeps at least 24 ladder players, so there are dozens per region. The pool is refilled on load and at season rollover.
 - Ladder players are not on the open market. Players who have trialled and then been let go return to the market as ordinary free agents.
 
 ## Trials
 
 - A trial can be invited once a player is at least 25% scouted. It runs at once and reveals the exact ratings.
+- When the roster has 5 or more players, a trial must take the place of a current player. The manager chooses who to bench. The benched player's status becomes inactive and their morale drops by 25.
+- A benched player below 40 morale will not agree new terms on the Roster page. A trial that is let go restores the benched player's status and morale.
 - The weekly limit is 2 trials in season (weeks 2–42) and 4 in the off-season and preseason (weeks 43–52 and 1). The count resets each week.
 - After a trial, the manager either offers a contract or lets the player go. A contract is signed at the player's asking salary for 1–3 years (veterans 30+ take only one; players 23 and under take up to three). It follows the normal transfer window rules and buys the player into the roster, subject to roster size and the debt limit.
 - A trialled player who is let go leaves the pool and enters the open market.

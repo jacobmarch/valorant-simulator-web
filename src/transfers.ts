@@ -97,6 +97,8 @@ export function canRenegotiate(state: GameState, player: Player) {
   )
 }
 /** Agrees new terms now; they take effect when the current contract ends at rollover. */
+/** Below this morale a player will not agree new terms, typically after being benched for a trial. */
+export const RENEW_MORALE_FLOOR = 40
 export function renegotiateContract(
   input: GameState,
   playerId: string,
@@ -105,6 +107,11 @@ export function renegotiateContract(
   const player = input.players[playerId]
   if (!player || player.teamId !== input.currentTeamId)
     return { ok: false, error: 'That player is not on your roster.' }
+  if (player.morale < RENEW_MORALE_FLOOR)
+    return {
+      ok: false,
+      error: `${player.name} is too unhappy to re-sign. Being benched has hurt their morale.`,
+    }
   if (input.week < RENEGOTIATION_START_WEEK)
     return {
       ok: false,

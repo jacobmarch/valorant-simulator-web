@@ -1,7 +1,7 @@
-import { MORALE_DEFAULT, overallRating, seedPotential } from './development'
-import type { GameState, Player, Ratings } from './game'
+import { MORALE_DEFAULT, MORALE_MAX, MORALE_MIN, overallRating, seedPotential } from './development'
+import type { GameState, Player, PlayerStatus, Ratings } from './game'
 import type { Region } from './seed'
-import { roles } from './seed'
+import { roles, skills } from './seed'
 import {
   applySigning,
   isSeasonWeek,
@@ -9,6 +9,7 @@ import {
   playerOverall,
   random,
   randomName,
+  repairLineup,
   salaryDemand,
   signFreeAgentError,
   type TransferOutcome,
@@ -33,16 +34,40 @@ const parentRegion: Record<ScoutSubregion, Region> = {
 }
 
 /** Ladder players kept in each subregion's pool. */
-export const LADDER_PER_SUBREGION = 8
+export const LADDER_PER_SUBREGION = 24
 /** Scouting progress gained per scouting hour, applied to every ladder player in the region. */
 export const SCOUT_PROGRESS_PER_HOUR = 0.35
 /** A player must be scouted this far before a trial can be offered. */
 export const TRIAL_MIN_SCOUTING = 25
 export const TRIAL_LIMIT_SEASON = 2
 export const TRIAL_LIMIT_OFFSEASON = 4
+/** With this many players on the roster, a trial must take the place of a current player. */
+export const TRIAL_FULL_ROSTER = 5
+/** Morale a benched player loses when a trial takes their place. */
+export const BENCH_MORALE_PENALTY = 25
+/** Scouting progress at which general skill tiers start to show. */
+export const SKILL_SCOUT_MIN = 25
 // Rating ranges are never exact before a trial: the width narrows from MAX to MIN as scouting rises.
 const MAX_RANGE_WIDTH = 18
 const MIN_RANGE_WIDTH = 4
+
+/** General skill tier only, so scouting never gives an exact skill. */
+export function skillTier(rating: number) {
+  if (rating >= 80) return 'Elite'
+  if (rating >= 70) return 'Strong'
+  if (rating >= 60) return 'Solid'
+  return 'Developing'
+}
+/** Null until the region is scouted enough; exact skills appear only after a trial. */
+export function scoutedSkillTiers(player: Player) {
+  if (player.scoutProgress < SKILL_SCOUT_MIN) return null
+  return skills.map((skill) => ({ skill, tier: skillTier(player.ratings[skill]) }))
+}
+
+/** Whether a trial would need someone on the roster to make way. */
+export function trialNeedsReplacement(state: GameState) {
+  return state.teams[state.currentTeamId].playerIds.length >= TRIAL_FULL_ROSTER
+}
 
 const clamp = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value))
 const isSubregion = (value: string): value is ScoutSubregion =>
@@ -62,6 +87,8 @@ export function trialsLeft(state: GameState) {
 export function hasTrialed(state: GameState, playerId: string) {
   return Boolean(state.trials?.[playerId])
 }
+
+type BenchedPlayer = { playerId: string; status: PlayerStatus; morale: number }
 
 /** Ladder players still on the market for a club to scout, best overall first. */
 export function ladderPlayers(state: GameState, subregion?: ScoutSubregion) {
@@ -186,7 +213,7 @@ export function ensureLadder(state: GameState) {
   }
 }
 
-export function inviteTrialError(state: GameState, playerId: string) {
+export function inviteTrialError(state: GameState, playerId: string, replaceId?: string) {
   const player = state.players[playerId]
   if (!player?.ladder || player.status !== 'free-agent')
     return 'That player is not in the scouting pool.'
@@ -198,17 +225,44 @@ export function inviteTrialError(state: GameState, playerId: string) {
     const limit = trialLimit(state.week)
     return `All ${limit} trials this week are used. The limit resets next week.`
   }
+  if (trialNeedsReplacement(state)) {
+    if (!replaceId)
+      return 'Your roster is full, so the trial must take the place of a current player. Choose who to bench.'
+    const benched = state.players[replaceId]
+    if (!benched || benched.teamId !== state.currentTeamId)
+      return 'That player is not on your roster.'
+    if (benched.status === 'inactive') return `${benched.name} is already benched.`
+  }
   return null
 }
 
-/** Runs a trial now: exact ratings are revealed and the prospect waits for a decision. */
-export function inviteTrial(input: GameState, playerId: string): TransferOutcome {
-  const error = inviteTrialError(input, playerId)
+/**
+ * Runs a trial now: exact ratings are revealed and the prospect waits for a decision. With a full
+ * roster, the chosen player is benched for the trial; their morale drops, and a low-morale player
+ * will not re-sign at rollover. Letting the prospect go restores the benched player.
+ */
+export function inviteTrial(
+  input: GameState,
+  playerId: string,
+  replaceId?: string,
+): TransferOutcome {
+  const error = inviteTrialError(input, playerId, replaceId)
   if (error) return { ok: false, error }
   const state = structuredClone(input)
   const player = state.players[playerId]
   state.trials ??= {}
-  state.trials[playerId] = { season: state.season, week: state.week }
+  const trial: { season: number; week: number; benched?: BenchedPlayer } = {
+    season: state.season,
+    week: state.week,
+  }
+  if (replaceId && trialNeedsReplacement(state)) {
+    const benched = state.players[replaceId]
+    trial.benched = { playerId: replaceId, status: benched.status, morale: benched.morale }
+    benched.status = 'inactive'
+    benched.morale = Math.max(MORALE_MIN, benched.morale - BENCH_MORALE_PENALTY)
+    repairLineup(state, state.currentTeamId)
+  }
+  state.trials[playerId] = trial
   state.trialUsage = {
     season: state.season,
     week: state.week,
@@ -249,8 +303,15 @@ export function releaseTrialist(input: GameState, playerId: string): TransferOut
     return { ok: false, error: 'Only a player who has trialled can be let go here.' }
   const state = structuredClone(input)
   const released = state.players[playerId]
+  const benched = state.trials![playerId].benched
   delete released.ladder
   delete state.trials![playerId]
+  if (benched && state.players[benched.playerId]?.teamId === state.currentTeamId) {
+    const restored = state.players[benched.playerId]
+    restored.status = benched.status
+    restored.morale = Math.min(MORALE_MAX, benched.morale)
+    repairLineup(state, state.currentTeamId)
+  }
   state.inbox.unshift(`Let ${released.name} go after their trial. They are now a free agent.`)
   ensureLadder(state)
   return { ok: true, state }

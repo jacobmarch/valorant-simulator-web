@@ -3,6 +3,7 @@ import { advanceWeek, createGame, type GameState, loadGame, SAVE_KEY } from '../
 import { ratingsRevealed } from '../src/player-card'
 import {
   advanceScouting,
+  BENCH_MORALE_PENALTY,
   ensureLadder,
   hasTrialed,
   inviteTrial,
@@ -12,16 +13,21 @@ import {
   negotiateTrialist,
   releaseTrialist,
   SCOUT_SUBREGIONS,
+  scoutedSkillTiers,
   scoutRange,
+  skillTier,
+  TRIAL_FULL_ROSTER,
   TRIAL_LIMIT_OFFSEASON,
   TRIAL_LIMIT_SEASON,
   trialLimit,
+  trialNeedsReplacement,
   trialsLeft,
 } from '../src/scouting'
 import {
   contractValue,
   freeAgents,
   playerOverall,
+  renegotiateContract,
   signFreeAgent,
   signFreeAgentError,
 } from '../src/transfers'
@@ -37,6 +43,15 @@ Object.assign(globalThis, {
 beforeEach(() => memory.clear())
 
 const fresh = () => createGame('Manager', 'c9')
+
+/** Invites a prospect, benching a current player first when the roster is full, as the screen does. */
+function invite(state: GameState, playerId: string) {
+  const team = state.teams[state.currentTeamId]
+  const benchId = trialNeedsReplacement(state)
+    ? team.playerIds.find((id) => state.players[id].status !== 'inactive')
+    : undefined
+  return inviteTrial(state, playerId, benchId)
+}
 
 /** A ladder prospect the managed club can scout, with its region fully scouted. */
 function scoutedProspect(state: GameState) {
@@ -108,7 +123,7 @@ describe('trials', () => {
     const prospect = ladderPlayers(state, 'NA')[0]
     prospect.scoutProgress = 10
     expect(inviteTrialError(state, prospect.id)).toContain('Scout')
-    expect(inviteTrial(state, prospect.id).ok).toBe(false)
+    expect(invite(state, prospect.id).ok).toBe(false)
   })
 
   test('the weekly trial limit is lower in season than in the off-season', () => {
@@ -120,12 +135,12 @@ describe('trials', () => {
     pool.forEach((player) => (player.scoutProgress = 100))
     let next = state
     for (let i = 0; i < TRIAL_LIMIT_SEASON; i++) {
-      const outcome = inviteTrial(next, pool[i].id)
+      const outcome = invite(next, pool[i].id)
       expect(outcome.ok).toBe(true)
       if (outcome.ok) next = outcome.state
     }
     expect(trialsLeft(next)).toBe(0)
-    expect(inviteTrial(next, pool[TRIAL_LIMIT_SEASON].id).ok).toBe(false)
+    expect(invite(next, pool[TRIAL_LIMIT_SEASON].id).ok).toBe(false)
     // The count resets in a new week.
     next.week = 6
     expect(trialsLeft(next)).toBe(TRIAL_LIMIT_SEASON)
@@ -135,7 +150,7 @@ describe('trials', () => {
     const state = fresh()
     state.week = 11
     const prospect = scoutedProspect(state)
-    const outcome = inviteTrial(state, prospect.id)
+    const outcome = invite(state, prospect.id)
     expect(outcome.ok).toBe(true)
     if (!outcome.ok) return
     expect(hasTrialed(outcome.state, prospect.id)).toBe(true)
@@ -148,7 +163,7 @@ describe('trials', () => {
     base.week = 11
     base.teams[base.currentTeamId].cash = 5_000_000
     const prospect = scoutedProspect(base)
-    const invited = inviteTrial(base, prospect.id)
+    const invited = invite(base, prospect.id)
     if (!invited.ok) throw new Error(invited.error)
     const cashBefore = invited.state.teams[invited.state.currentTeamId].cash
     const offer = negotiateTrialist(invited.state, prospect.id, 2)
@@ -170,7 +185,7 @@ describe('trials', () => {
     const prospect = scoutedProspect(state)
     expect(negotiateTrialist(state, prospect.id, 1).ok).toBe(false)
     state.week = 11
-    const invited = inviteTrial(state, prospect.id)
+    const invited = invite(state, prospect.id)
     if (!invited.ok) throw new Error(invited.error)
     const tooLong = negotiateTrialist(invited.state, prospect.id, 9)
     expect(tooLong.ok).toBe(false)
@@ -180,7 +195,7 @@ describe('trials', () => {
     const state = fresh()
     state.week = 11
     const prospect = scoutedProspect(state)
-    const invited = inviteTrial(state, prospect.id)
+    const invited = invite(state, prospect.id)
     if (!invited.ok) throw new Error(invited.error)
     const released = releaseTrialist(invited.state, prospect.id)
     expect(released.ok).toBe(true)
@@ -194,7 +209,7 @@ describe('trials', () => {
     const state = fresh()
     state.week = 11
     const prospect = scoutedProspect(state)
-    const invited = inviteTrial(state, prospect.id)
+    const invited = invite(state, prospect.id)
     if (!invited.ok) throw new Error(invited.error)
     const offer = negotiateTrialist(invited.state, prospect.id, 1)
     if (!offer.ok) throw new Error(offer.error)
@@ -210,8 +225,72 @@ describe('player card and trials', () => {
     state.week = 11
     const prospect = scoutedProspect(state)
     expect(ratingsRevealed(state, prospect)).toBe(false)
-    const invited = inviteTrial(state, prospect.id)
+    const invited = invite(state, prospect.id)
     if (!invited.ok) throw new Error(invited.error)
     expect(ratingsRevealed(invited.state, invited.state.players[prospect.id])).toBe(true)
+  })
+})
+
+describe('trial replacements and morale', () => {
+  test('a full roster must bench a current player to make way for a trial', () => {
+    const state = fresh()
+    state.week = 11
+    const prospect = scoutedProspect(state)
+    expect(trialNeedsReplacement(state)).toBe(
+      state.teams[state.currentTeamId].playerIds.length >= TRIAL_FULL_ROSTER,
+    )
+    if (!trialNeedsReplacement(state)) return
+    expect(inviteTrialError(state, prospect.id)).toContain('Choose who to bench')
+    expect(inviteTrial(state, prospect.id).ok).toBe(false)
+  })
+
+  test('the benched player loses morale and is restored if the prospect is let go', () => {
+    const state = fresh()
+    state.week = 11
+    const prospect = scoutedProspect(state)
+    const benchId = state.teams[state.currentTeamId].playerIds[0]
+    const benchedBefore = state.players[benchId]
+    const { status, morale } = benchedBefore
+    if (!trialNeedsReplacement(state)) return
+    const invited = inviteTrial(state, prospect.id, benchId)
+    if (!invited.ok) throw new Error(invited.error)
+    expect(invited.state.players[benchId].status).toBe('inactive')
+    expect(invited.state.players[benchId].morale).toBe(Math.max(5, morale - BENCH_MORALE_PENALTY))
+    const released = releaseTrialist(invited.state, prospect.id)
+    if (!released.ok) throw new Error(released.error)
+    expect(released.state.players[benchId].status).toBe(status)
+    expect(released.state.players[benchId].morale).toBe(morale)
+  })
+
+  test('a benched player with low morale will not re-sign', () => {
+    const state = fresh()
+    state.week = 43
+    const player = state.players[state.teams[state.currentTeamId].playerIds[0]]
+    player.years = 1
+    player.morale = 30
+    const refused = renegotiateContract(state, player.id, 1)
+    expect(refused.ok).toBe(false)
+    player.morale = 60
+    expect(renegotiateContract(state, player.id, 1).ok).toBe(true)
+  })
+
+  test('skill tiers stay general and only show once the region is partly scouted', () => {
+    const state = fresh()
+    const prospect = ladderPlayers(state, 'Asia')[0]
+    prospect.scoutProgress = 0
+    expect(scoutedSkillTiers(prospect)).toBeNull()
+    prospect.scoutProgress = 50
+    const tiers = scoutedSkillTiers(prospect)
+    expect(
+      tiers?.every((entry) => ['Elite', 'Strong', 'Solid', 'Developing'].includes(entry.tier)),
+    ).toBe(true)
+    expect(skillTier(85)).toBe('Elite')
+    expect(skillTier(40)).toBe('Developing')
+  })
+
+  test('each region keeps a pool of dozens of prospects', () => {
+    const state = fresh()
+    for (const subregion of SCOUT_SUBREGIONS)
+      expect(ladderPlayers(state, subregion).length).toBeGreaterThanOrEqual(20)
   })
 })
