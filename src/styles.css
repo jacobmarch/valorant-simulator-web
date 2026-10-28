@@ -941,6 +941,19 @@ input {
   padding: 8px 10px;
   font-size: 13px;
 }
+/* Shared select chevron: drawn in-CSS so it sits inside the padding, away from the border */
+select {
+  appearance: none;
+  padding-right: 34px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--text-2) 50%),
+    linear-gradient(135deg, var(--text-2) 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) 50%,
+    calc(100% - 13px) 50%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+}
 select:hover,
 input:hover {
   border-color: rgb(255 255 255 / 0.2);
@@ -1328,16 +1341,6 @@ input:hover {
 .lineup select {
   width: 172px;
   flex: none;
-  appearance: none;
-  padding-right: 36px;
-  background-image:
-    linear-gradient(45deg, transparent 50%, var(--text-2) 50%),
-    linear-gradient(135deg, var(--text-2) 50%, transparent 50%);
-  background-position:
-    calc(100% - 20px) 50%,
-    calc(100% - 15px) 50%;
-  background-size: 5px 5px;
-  background-repeat: no-repeat;
 }
 .role-coverage {
   display: flex;
@@ -1354,7 +1357,7 @@ input:hover {
 .field select {
   display: block;
   width: 100%;
-  padding: 11px;
+  padding: 11px 34px 11px 11px;
   margin-top: 7px;
 }
 .maps {
@@ -2170,7 +2173,7 @@ table {
 /* Match center: header strip + box score on one screen */
 .series-select {
   min-width: 220px;
-  padding: 9px 10px;
+  padding: 9px 34px 9px 10px;
 }
 .broadcast {
   display: grid;
@@ -3219,7 +3222,7 @@ table {
 }
 .player-row select {
   padding-left: 8px;
-  padding-right: 4px;
+  padding-right: 30px;
 }
 .roster-columns .market-list {
   max-height: calc(100vh - 390px);
