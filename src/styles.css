@@ -950,6 +950,9 @@ select {
   background-size: 10px 6px;
   background-repeat: no-repeat;
 }
+select {
+  cursor: pointer;
+}
 select:hover,
 input:hover {
   border-color: rgb(255 255 255 / 0.2);
