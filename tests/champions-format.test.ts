@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
-import { stepWeek } from './helpers'
 import { createGame, type Fixture, type GameState } from '../src/game'
+import { stepWeek } from './helpers'
 
 const memory = new Map<string, string>()
 Object.assign(globalThis, {

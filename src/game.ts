@@ -32,6 +32,7 @@ import {
   startingEconomy,
   weaponFor,
 } from './round-sim'
+import { advanceScouting, ensureLadder, type ScoutSubregion } from './scouting'
 import {
   backfillSeasonStats,
   closeSeasonReview,
@@ -111,6 +112,8 @@ export type Player = {
   renewal?: { years: number; salary: number }
   /** Season the player retired in; retirees are pruned once history no longer needs them. */
   retiredSeason?: number
+  /** Set on players in the scouting pool: tier 2 ladder players, reached through trials. */
+  ladder?: { subregion: ScoutSubregion }
   /** Season-by-season log for the player card: club, contract, honours. Newest last. */
   career?: PlayerSeasonRecord[]
 }
@@ -251,7 +254,24 @@ export type GameState = {
   /** The managed team's open sponsor offers, if it has not signed yet. */
   sponsorOffers?: SponsorOffers | null
   training: Record<string, Partial<Record<Skill, number>>>
+  /** Weekly scouting hours per subregion; the pool is SCOUTING_HOURS across all of them. */
   scoutingHours: Record<string, number>
+  /** Players who have completed a trial with the managed club, keyed by player id. */
+  trials?: Record<
+    string,
+    {
+      season: number
+      week: number
+      benched?: { playerId: string; status: PlayerStatus }
+      moraleBefore?: Record<string, number>
+    }
+  >
+  /** Regions whose prospect list is known: a region is revealed once any hours are spent on it. */
+  regionsScouted?: Partial<Record<ScoutSubregion, boolean>>
+  /** This week's hours on individual prospects, once their region is revealed. */
+  playerScoutingHours?: Record<string, number>
+  /** Trials started in one week, so the weekly limit can be enforced. */
+  trialUsage?: { season: number; week: number; count: number }
   settings: Record<string, DelegationMode | boolean>
   rng: number
   saveTimestamp: string
@@ -540,6 +560,7 @@ export function createGame(
     pendingReview: null,
   }
   replenishFreeAgents(state, undefined, currentTeam(state).region, rosterShortfall(state))
+  ensureLadder(state)
   seedSponsors(state)
   ensureWeekScheduled(state, 1)
   return state
@@ -793,6 +814,8 @@ function migrateGame(raw: unknown): GameState | null {
     }
     if (state.week < 6) state.week++
   }
+  // Scouting moved to regions and trials; saves from before it get their ladder pool here.
+  ensureLadder(state)
   state.version = 18
   pruneHistory(state)
   ensureWeekScheduled(state, state.week)
@@ -3169,6 +3192,7 @@ export function rolloverSeason(state: GameState) {
     team.mapLosses = 0
   })
   addProspectClass(state)
+  ensureLadder(state)
   fillAiRosters(state)
   state.jobs.forEach((job) => {
     if (job.status === 'pending') job.status = 'declined'
@@ -3701,13 +3725,7 @@ function updateDevelopmentAndFinances(state: GameState) {
     const allocation = state.training[player.id] ?? (managed ? {} : DEFAULT_TRAINING)
     developPlayer(player, allocation, () => random(state))
   })
-  Object.entries(state.scoutingHours).forEach(([id, hours]) => {
-    if (state.players[id])
-      state.players[id].scoutProgress = Math.min(
-        100,
-        state.players[id].scoutProgress + hours * 0.35,
-      )
-  })
+  advanceScouting(state)
   Object.values(state.teams).forEach((team) => {
     team.cash -= team.playerIds.reduce((sum, id) => sum + (state.players[id]?.salary ?? 0) / 52, 0)
   })

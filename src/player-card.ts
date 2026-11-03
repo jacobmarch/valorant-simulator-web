@@ -1,12 +1,17 @@
 // Read-only summaries behind the player card: what a player's ratings reveal to the
 // manager, and their club, contract and honour history from the career log.
 import type { GameState, Player } from './game'
+import { hasTrialed } from './scouting'
 
 /** Scouting progress at which a rival or free agent's ratings become readable. */
 export const SCOUT_REVEAL = 60
 
-/** Own players are always readable; everyone else needs enough scouting. */
+/**
+ * Own players are always readable; everyone else needs enough scouting. Ladder prospects are the
+ * exception: their exact ratings appear only after a trial, and scouting shows just a range.
+ */
 export function ratingsRevealed(state: GameState, player: Player) {
+  if (player.ladder) return hasTrialed(state, player.id)
   return player.teamId === state.currentTeamId || player.scoutProgress >= SCOUT_REVEAL
 }
 

@@ -12,7 +12,11 @@ export function fillRoster(state: GameState): GameState {
   let next = state
   while (rosterShortfall(next)) {
     next.teams[next.currentTeamId].cash = Math.max(next.teams[next.currentTeamId].cash, 5_000_000)
-    const candidates = freeAgents(next).sort((a, b) => playerOverall(b) - playerOverall(a))
+    // Local players only: a second import would block the season until someone is released.
+    const team = next.teams[next.currentTeamId]
+    const candidates = freeAgents(next)
+      .filter((agent) => !agent.isImport && (agent.region === null || agent.region === team.region))
+      .sort((a, b) => playerOverall(b) - playerOverall(a))
     let signed: GameState | null = null
     for (const agent of candidates) {
       const outcome = signFreeAgent(next, next.currentTeamId, agent.id)

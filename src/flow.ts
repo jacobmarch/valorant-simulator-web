@@ -11,6 +11,7 @@ import {
   playableTournamentFixtureIds,
   teamPlayers,
 } from './game'
+import { SCOUTING_POOL, scoutingPoolUsed } from './scouting'
 import { skills } from './seed'
 import { pendingSponsorOffers } from './sponsors'
 import {
@@ -25,7 +26,7 @@ import {
 import type { View } from './ui'
 
 export const TRAINING_HOURS = 40
-export const SCOUTING_HOURS = 40
+export const SCOUTING_HOURS = SCOUTING_POOL
 
 /** Weeks where the calendar is played one bracket round at a time. */
 export function isRoundWeek(s: GameState) {
@@ -189,13 +190,13 @@ export function attentionItems(s: GameState): AttentionItem[] {
           : expiring.map((player) => player.name).join(', '),
       view: 'roster',
     })
-  const scouting = Object.values(s.scoutingHours).reduce((sum, hours) => sum + hours, 0)
+  const scouting = scoutingPoolUsed(s)
   if (scouting < SCOUTING_HOURS)
     items.push({
       id: 'scouting',
       level: 'info',
       title: `${SCOUTING_HOURS - scouting} scouting hours unassigned`,
-      detail: 'Point scouts at targets to reveal their ratings.',
+      detail: 'Point scouts at a region to reveal the players on its ladder.',
       view: 'scouting',
     })
   return items
