@@ -1,5 +1,6 @@
 import { ArrowRight, Check, ChevronRight, CircleAlert, Info, TriangleAlert } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { Dropdown } from './dropdown'
 import { type AttentionItem, attentionItems } from './flow'
 import {
   acceptJob,
@@ -469,10 +470,7 @@ export function TacticsV2({
                     ) : null}
                   </small>
                 </span>
-                <select
-                  value={role}
-                  onChange={(event) => setRole(player, event.target.value as Role)}
-                >
+                <Dropdown value={role} onChange={(value) => setRole(player, value as Role)}>
                   {roles.map((option) => {
                     const cost = rolePenalty(player, option)
                     return (
@@ -481,7 +479,7 @@ export function TacticsV2({
                       </option>
                     )
                   })}
-                </select>
+                </Dropdown>
               </div>
             )
           })}
@@ -492,19 +490,19 @@ export function TacticsV2({
           <PanelTitle eyebrow="SERIES PLAN" title="Broad tactical identity" />
           <label className="field">
             Attack style
-            <select value={attack} onChange={(event) => setAttack(event.target.value)}>
+            <Dropdown value={attack} onChange={(value) => setAttack(value)}>
               <option>Measured defaults</option>
               <option>Fast and explosive</option>
               <option>Slow information play</option>
-            </select>
+            </Dropdown>
           </label>
           <label className="field">
             Defense style
-            <select value={defense} onChange={(event) => setDefense(event.target.value)}>
+            <Dropdown value={defense} onChange={(value) => setDefense(value)}>
               <option>Disciplined retakes</option>
               <option>Proactive contesting</option>
               <option>Deep site anchors</option>
-            </select>
+            </Dropdown>
           </label>
           <MapPlan s={s} setState={setState} team={team} opponent={opponent} fixture={fixture} />
         </section>
@@ -964,12 +962,12 @@ export function MatchesV2({ s, initialMatchId }: { s: GameState; initialMatchId?
       title="Match center"
       actions={
         <>
-          <select
+          <Dropdown
             className="series-select"
             aria-label="Series"
             value={match.id}
-            onChange={(event) => {
-              setSelectedId(event.target.value)
+            onChange={(value) => {
+              setSelectedId(value)
               setTab('series')
             }}
           >
@@ -979,7 +977,7 @@ export function MatchesV2({ s, initialMatchId }: { s: GameState; initialMatchId?
                 {candidate.bScore} {s.teams[candidate.bId].short}
               </option>
             ))}
-          </select>
+          </Dropdown>
           <button className="secondary" onClick={() => setShowNotes(true)}>
             {tab === 'series' ? 'Highlights' : 'Key rounds'}
           </button>

@@ -18,6 +18,7 @@ import { type ReactNode, useEffect, useState } from 'react'
 import { CompetitionV2 } from './competition-view'
 import { DEBT_LIMIT } from './debt'
 import { DEFAULT_TRAINING } from './development'
+import { Dropdown } from './dropdown'
 import { Finances } from './finances-view'
 import { FiredScreen } from './fired-view'
 import {
@@ -456,12 +457,12 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
                   <small>OVR</small>
                 </b>
                 {p.status === 'starter' ? (
-                  <select
+                  <Dropdown
                     className="role-select depth-role"
                     title="Role played in the lineup"
                     value={role}
-                    onChange={(e) => {
-                      const next = setLineupRole(s, t.id, p.id, e.target.value as Role)
+                    onChange={(value) => {
+                      const next = setLineupRole(s, t.id, p.id, value as Role)
                       saveGame(next)
                       setState(next)
                     }}
@@ -474,20 +475,20 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
                         </option>
                       )
                     })}
-                  </select>
+                  </Dropdown>
                 ) : (
                   <span className="depth-role" />
                 )}
-                <select
+                <Dropdown
                   className="depth-status"
                   value={p.status}
-                  onChange={(e) =>
+                  onChange={(value) =>
                     apply(
                       setPlayerStatus(
                         s,
                         t.id,
                         p.id,
-                        e.target.value as 'starter' | 'substitute' | 'inactive',
+                        value as 'starter' | 'substitute' | 'inactive',
                       ),
                       true,
                     )
@@ -496,7 +497,7 @@ function Roster({ s, setState }: { s: GameState; setState: (s: GameState) => voi
                   <option value="starter">Starter</option>
                   <option value="substitute">Substitute</option>
                   <option value="inactive">Inactive</option>
-                </select>
+                </Dropdown>
                 <button
                   className="x depth-release"
                   aria-label={releaseBlock ?? `Release ${p.name}`}
@@ -867,16 +868,16 @@ function Scouting({ s, setState }: { s: GameState; setState: (s: GameState) => v
                 <small>Asks {money(askingSalary(p))} a year</small>
               </div>
               <div className="prospect-actions">
-                <select
+                <Dropdown
                   value={years[p.id] ?? 1}
-                  onChange={(e) => setYears({ ...years, [p.id]: Number(e.target.value) })}
+                  onChange={(value) => setYears({ ...years, [p.id]: Number(value) })}
                 >
                   {Array.from({ length: maxRenewalYears(p) }, (_, i) => i + 1).map((y) => (
                     <option key={y} value={y}>
                       {y} year{y > 1 ? 's' : ''}
                     </option>
                   ))}
-                </select>
+                </Dropdown>
                 <button
                   className="primary"
                   onClick={() => commit(negotiateTrialist(s, p.id, years[p.id] ?? 1))}
@@ -966,9 +967,9 @@ function Scouting({ s, setState }: { s: GameState; setState: (s: GameState) => v
                           <small>h</small>
                         </label>
                         {fullRoster && (
-                          <select
+                          <Dropdown
                             value={replaceId}
-                            onChange={(e) => setBenchFor({ ...benchFor, [p.id]: e.target.value })}
+                            onChange={(value) => setBenchFor({ ...benchFor, [p.id]: value })}
                             aria-label={`Player to bench for ${p.name}'s trial`}
                           >
                             {rosterPlayers.map((r) => (
@@ -976,7 +977,7 @@ function Scouting({ s, setState }: { s: GameState; setState: (s: GameState) => v
                                 Bench {r.name}
                               </option>
                             ))}
-                          </select>
+                          </Dropdown>
                         )}
                         <button
                           disabled={Boolean(blocked)}
@@ -1042,14 +1043,14 @@ function Settings({
               <strong>{label}</strong>
               <small>Choose how much of this area you own.</small>
             </span>
-            <select
+            <Dropdown
               value={String(s.settings[key])}
-              onChange={(e) => change(key, e.target.value as DelegationMode)}
+              onChange={(value) => change(key, value as DelegationMode)}
             >
               <option value="hands-on">Hands-on</option>
               <option value="balanced">Balanced</option>
               <option value="hands-off">Hands-off</option>
-            </select>
+            </Dropdown>
           </div>
         ))}
         <div className="setting">
