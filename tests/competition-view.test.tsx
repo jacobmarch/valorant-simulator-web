@@ -133,10 +133,10 @@ describe('competition center', () => {
     const viewState = structuredClone(state)
     viewState.week = 2
     const broadcast = renderToStaticMarkup(<MatchesV2 s={state} initialMatchId={background.id} />)
-    expect(broadcast).toContain(`value="${background.id}"`)
+    expect(broadcast).toContain(`data-option="${background.id}"`)
     expect(broadcast).toContain(state.teams[background.aId].name)
     expect(broadcast).toContain(state.teams[background.bId].name)
-    expect((broadcast.match(/<option/g) ?? []).length).toBe(state.matches.length)
+    expect((broadcast.match(/data-option=/g) ?? []).length).toBe(state.matches.length)
     const competition = renderToStaticMarkup(<CompetitionV2 s={viewState} onOpenMatch={() => {}} />)
     expect((competition.match(/role="button"/g) ?? []).length).toBeGreaterThan(0)
   })
