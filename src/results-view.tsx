@@ -1,9 +1,10 @@
-import { useState } from 'react'
 import { ChevronRight, Trophy } from 'lucide-react'
+import { useState } from 'react'
+import { Dropdown } from './dropdown'
 import { dateForWeek, type Fixture, type GameState, type MatchResult } from './game'
 import { BoxScoreModal } from './game-views'
 import { YearInReview } from './season-review-view'
-import { Badge, Empty, Page, PanelTitle, Stat, TeamMark, regionColors, tone } from './ui'
+import { Badge, Empty, Page, PanelTitle, regionColors, Stat, TeamMark, tone } from './ui'
 
 export type TeamResult = {
   match: MatchResult
@@ -125,10 +126,10 @@ export function Results({
             </button>
           )}
           {seasons.length > 1 && (
-            <select
+            <Dropdown
               aria-label="Season"
               value={season}
-              onChange={(e) => pickSeason(Number(e.target.value))}
+              onChange={(value) => pickSeason(Number(value))}
             >
               {seasons.map((value) => (
                 <option value={value} key={value}>
@@ -136,7 +137,7 @@ export function Results({
                   {value === s.season ? ' (current)' : ''}
                 </option>
               ))}
-            </select>
+            </Dropdown>
           )}
         </>
       }

@@ -163,12 +163,12 @@
   color: var(--text-3);
   font-size: 12px;
 }
-.match-picker select {
+.match-picker .dropdown {
   min-width: 280px;
+}
+.match-picker .dropdown-trigger {
   background-color: var(--surface-3);
-  border: 1px solid rgb(255 255 255 / 0.094);
-  color: var(--text);
-  padding: 8px 34px 8px 10px;
+  border-color: rgb(255 255 255 / 0.094);
 }
 .bracket-panel {
   overflow: hidden;
@@ -289,7 +289,7 @@
   .match-picker label {
     display: block;
   }
-  .match-picker select {
+  .match-picker .dropdown {
     display: block;
     min-width: 0;
     width: 100%;

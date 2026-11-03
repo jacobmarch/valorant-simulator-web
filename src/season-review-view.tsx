@@ -1,5 +1,6 @@
-import { useState } from 'react'
 import { Crown, Trophy } from 'lucide-react'
+import { useState } from 'react'
+import { Dropdown } from './dropdown'
 import type { GameState } from './game'
 import {
   eventName,
@@ -9,7 +10,7 @@ import {
   type SeasonReview,
 } from './season-review'
 import type { Region } from './seed'
-import { Badge, Modal, Stat, TeamMark, regionColors, tone } from './ui'
+import { Badge, Modal, regionColors, Stat, TeamMark, tone } from './ui'
 
 type Tab = 'overview' | 'events' | Region
 
@@ -345,17 +346,17 @@ export function YearInReview({
           ))}
         </div>
         {reviews.length > 1 && (
-          <select
+          <Dropdown
             aria-label="Review season"
             value={review.season}
-            onChange={(event) => setPicked(Number(event.target.value))}
+            onChange={(value) => setPicked(Number(value))}
           >
             {reviews.map((entry) => (
               <option value={entry.season} key={entry.season}>
                 Season {entry.season}
               </option>
             ))}
-          </select>
+          </Dropdown>
         )}
       </div>
       {tab === 'overview' && <Overview s={s} review={review} />}

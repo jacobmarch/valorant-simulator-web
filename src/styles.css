@@ -932,7 +932,6 @@ tr.current td:first-child {
 }
 
 /* Form controls */
-select,
 input {
   background: var(--surface-1);
   color: var(--text);
@@ -941,31 +940,91 @@ input {
   padding: 8px 10px;
   font-size: 13px;
 }
-/* Shared select chevron: one SVG stroke, so it renders without a seam and sits inside the padding */
-select {
-  appearance: none;
-  padding-right: 34px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23b9c0cc' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-position: calc(100% - 14px) 50%;
-  background-size: 10px 6px;
-  background-repeat: no-repeat;
-}
-select {
-  cursor: pointer;
-}
-/* Open list: browsers that allow option styling pick up the app's surfaces and accent */
-select option {
-  background-color: var(--surface-3);
-  color: var(--text);
-}
-select option:checked,
-select option:hover {
-  background-color: var(--surface-4);
-  color: var(--accent);
-}
-select:hover,
 input:hover {
   border-color: rgb(255 255 255 / 0.2);
+}
+
+/* Dropdown: themed replacement for <select> (src/dropdown.tsx) */
+.dropdown {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: middle;
+}
+.dropdown-trigger {
+  position: relative;
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 8px 34px 8px 10px;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  color: var(--text);
+  background: var(--surface-1);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.dropdown-trigger:hover,
+.dropdown.open .dropdown-trigger {
+  border-color: rgb(255 255 255 / 0.2);
+}
+/* Every label shares one grid cell, so the trigger is as wide as its longest option, like a native select */
+.dropdown-value {
+  display: grid;
+}
+.dropdown-value > span {
+  grid-area: 1 / 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.dropdown-sizer {
+  visibility: hidden;
+}
+.dropdown-chevron {
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  width: 10px;
+  height: 6px;
+  margin-top: -3px;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23b9c0cc' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+    no-repeat center / 10px 6px;
+  transition: transform 0.15s ease;
+}
+.dropdown.open .dropdown-chevron {
+  transform: rotate(180deg);
+}
+.dropdown-menu {
+  position: fixed;
+  z-index: 1100;
+  box-sizing: border-box;
+  max-height: min(320px, 60vh);
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.45);
+}
+.dropdown-option {
+  padding: 7px 9px;
+  border-radius: 4px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.dropdown-option.active {
+  background: var(--surface-4);
+}
+.dropdown-option.selected {
+  color: var(--accent);
 }
 .field {
   display: block;
@@ -1347,7 +1406,7 @@ input:hover {
   background: color-mix(in srgb, var(--accent) 14%, transparent);
   vertical-align: middle;
 }
-.lineup select {
+.lineup .dropdown {
   width: 172px;
   flex: none;
 }
@@ -1363,11 +1422,13 @@ input:hover {
   color: var(--text-3);
   margin-top: 4px;
 }
-.field select {
+.field .dropdown {
   display: block;
   width: 100%;
-  padding: 11px 34px 11px 11px;
   margin-top: 7px;
+}
+.field .dropdown-trigger {
+  padding: 11px 34px 11px 11px;
 }
 .maps {
   margin-top: 25px;
@@ -2182,6 +2243,8 @@ table {
 /* Match center: header strip + box score on one screen */
 .series-select {
   min-width: 220px;
+}
+.series-select .dropdown-trigger {
   padding: 9px 34px 9px 10px;
 }
 .broadcast {
@@ -3229,7 +3292,7 @@ table {
 .player-row .role-select {
   width: 112px;
 }
-.player-row select {
+.player-row .dropdown-trigger {
   padding-left: 8px;
   padding-right: 30px;
 }
